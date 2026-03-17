@@ -2,12 +2,12 @@ import { createBrowserRouter } from "react-router-dom";
 
 import Layout from "../layouts/layout";
 import AdminLayout from "../layouts/AdminLayout";
-import DashboardGeral from "../pages/Dashboard/dashboard";
-import Microsoft365 from "../pages/Microsoft/microsoft";
-import Servidores from "../pages/Servidores/servidores";
-import Rede from "../pages/Rede/rede";
-import DocumentacaoTecnica from "../pages/Documentação/documentacao";
-import ChamadosGLPI from "../pages/ChamadosGLPI/chamados";
+import DashboardGeral from "../pages/paginasClient/Dashboard/dashboard";
+import Microsoft365 from "../pages/paginasClient/Microsoft/microsoft";
+import Servidores from "../pages/paginasClient/Servidores/servidores";
+import Rede from "../pages/paginasClient/Rede/rede";
+import DocumentacaoTecnica from "../pages/paginasClient/Documentação/documentacao";
+import ChamadosGLPI from "../pages/paginasClient/ChamadosGLPI/chamados";
 import Login from "../pages/Login/login";
 
 // Admin Pages
