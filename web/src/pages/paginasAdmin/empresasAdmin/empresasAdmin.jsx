@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-<<<<<<< HEAD
 import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { useCompanies } from '../../../context/CompanyContext';
 import api from '../../../services/api';
@@ -11,17 +10,6 @@ const EmpresasAdmin = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
     const [integrationsCompany, setIntegrationsCompany] = useState(null);
-
-=======
-import { Building2, Plus, Search, Edit2, Trash2, X, Check } from 'lucide-react';
-import { useCompanies } from '../../../context/CompanyContext';
-
-const EmpresasAdmin = () => {
-    const { companies, addCompany, updateCompany, deleteCompany } = useCompanies();
-
-    // Estados para o modal e formulário
-    const [isModalOpen, setIsModalOpen] = useState(false);
->>>>>>> 4eaab92d87a14e7a6d44c5fe62cb9ae2a3ea8c77
     const [searchTerm, setSearchTerm] = useState('');
     const [editingCompany, setEditingCompany] = useState(null);
     const [formValues, setFormValues] = useState({
@@ -30,7 +18,6 @@ const EmpresasAdmin = () => {
         sector: '',
         status: 'Ativo'
     });
-<<<<<<< HEAD
     const [integrationValues, setIntegrationValues] = useState({
         glpi_entity_id: '',
         zabbix_api_url: '', zabbix_user: '', zabbix_password: '',
@@ -92,8 +79,6 @@ const EmpresasAdmin = () => {
             });
         }
     };
-=======
->>>>>>> 4eaab92d87a14e7a6d44c5fe62cb9ae2a3ea8c77
 
     const handleOpenModal = (company = null) => {
         if (company) {
@@ -192,7 +177,6 @@ const EmpresasAdmin = () => {
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-2">
                                             <button
-<<<<<<< HEAD
                                                 onClick={() => handleOpenIntegrationsModal(empresa)}
                                                 className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
                                                 title="Integrações"
@@ -200,8 +184,6 @@ const EmpresasAdmin = () => {
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                                             </button>
                                             <button
-=======
->>>>>>> 4eaab92d87a14e7a6d44c5fe62cb9ae2a3ea8c77
                                                 onClick={() => handleOpenModal(empresa)}
                                                 className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                                                 title="Editar"
@@ -315,7 +297,6 @@ const EmpresasAdmin = () => {
                     </div>
                 </div>
             )}
-<<<<<<< HEAD
 
             {/* Modal de Integrações */}
             {isIntegrationsModalOpen && integrationsCompany && (
@@ -465,8 +446,6 @@ const EmpresasAdmin = () => {
                     </div>
                 </div>
             )}
-=======
->>>>>>> 4eaab92d87a14e7a6d44c5fe62cb9ae2a3ea8c77
         </div>
     );
 };
