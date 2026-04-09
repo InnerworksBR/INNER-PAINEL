@@ -1,0 +1,146 @@
+[
+  {
+    "id": 0,
+    "name": "Entidade raiz"
+  },
+  {
+    "id": 2,
+    "name": "Entidade raiz > InnerWorks"
+  },
+  {
+    "id": 3,
+    "name": "Entidade raiz > InnerWorks > Financeiro"
+  },
+  {
+    "id": 4,
+    "name": "Entidade raiz > Carpolog"
+  },
+  {
+    "id": 5,
+    "name": "Entidade raiz > Carpolog > Administrativo"
+  },
+  {
+    "id": 6,
+    "name": "Entidade raiz > Carpolog > Financeiro"
+  },
+  {
+    "id": 7,
+    "name": "Entidade raiz > Carpolog > RH"
+  },
+  {
+    "id": 8,
+    "name": "Entidade raiz > Carpolog > Controladoria"
+  },
+  {
+    "id": 9,
+    "name": "Entidade raiz > Carpolog > Diretoria"
+  },
+  {
+    "id": 10,
+    "name": "Entidade raiz > Carpolog > NVOCC"
+  },
+  {
+    "id": 11,
+    "name": "Entidade raiz > Carpolog > Despacho"
+  },
+  {
+    "id": 12,
+    "name": "Entidade raiz > Carpolog > Comercial"
+  },
+  {
+    "id": 13,
+    "name": "Entidade raiz > Carpolog > Pricing"
+  },
+  {
+    "id": 14,
+    "name": "Entidade raiz > Carpolog > Rodoviário"
+  },
+  {
+    "id": 15,
+    "name": "Entidade raiz > Carpolog > Frota"
+  },
+  {
+    "id": 16,
+    "name": "Entidade raiz > Carpolog > L3"
+  },
+  {
+    "id": 17,
+    "name": "Entidade raiz > Carpolog > Marketing"
+  },
+  {
+    "id": 18,
+    "name": "Entidade raiz > ABRADIT"
+  },
+  {
+    "id": 19,
+    "name": "Entidade raiz > Sociedade dos médicos"
+  },
+  {
+    "id": 20,
+    "name": "Entidade raiz > Carpolog > Servidores"
+  },
+  {
+    "id": 21,
+    "name": "Entidade raiz > SUSTENTS"
+  },
+  {
+    "id": 22,
+    "name": "Entidade raiz > FLASHCARGO"
+  },
+  {
+    "id": 23,
+    "name": "Entidade raiz > ADESAN"
+  },
+  {
+    "id": 24,
+    "name": "Entidade raiz > UEB-SP"
+  },
+  {
+    "id": 25,
+    "name": "Entidade raiz > Quimidream"
+  },
+  {
+    "id": 26,
+    "name": "Entidade raiz > ABRAJEEP"
+  },
+  {
+    "id": 27,
+    "name": "Entidade raiz > SENAREI"
+  },
+  {
+    "id": 28,
+    "name": "Entidade raiz > JuliãoADV"
+  },
+  {
+    "id": 29,
+    "name": "Entidade raiz > Rocha Assessoria"
+  },
+  {
+    "id": 30,
+    "name": "Entidade raiz > Teste"
+  },
+  {
+    "id": 31,
+    "name": "Entidade raiz > MCP Yachts"
+  },
+  {
+    "id": 32,
+    "name": "Entidade raiz > ABRAHY"
+  },
+  {
+    "id": 33,
+    "name": "Entidade raiz > RCF"
+  },
+  {
+    "id": 34,
+    "name": "Entidade raiz > Avulso"
+  },
+  {
+    "id": 35,
+    "name": "Entidade raiz > Avulsos"
+  },
+  {
+    "id": 36,
+    "name": "Entidade raiz > Agencia Pauta VIP"
+  }
+]
