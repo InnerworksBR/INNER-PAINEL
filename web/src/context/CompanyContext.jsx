@@ -1,9 +1,14 @@
+<<<<<<< HEAD
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
+=======
+import React, { createContext, useContext, useState, useEffect } from 'react';
+>>>>>>> 4eaab92d87a14e7a6d44c5fe62cb9ae2a3ea8c77
 
 const CompanyContext = createContext();
 
 export const CompanyProvider = ({ children }) => {
+<<<<<<< HEAD
     const [companies, setCompanies] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -90,6 +95,39 @@ export const CompanyProvider = ({ children }) => {
             updateIntegrations,
             refreshCompanies: fetchCompanies
         }}>
+=======
+    // Inicializa com dados fictícios ou do localStorage
+    const [companies, setCompanies] = useState(() => {
+        const saved = localStorage.getItem('admin_companies');
+        return saved ? JSON.parse(saved) : [
+            { id: 1, name: 'ABRAHY', cnpj: '12.345.678/0001-90', sector: 'TI', status: 'Ativo' },
+            { id: 2, name: 'SUSTENTS', cnpj: '98.765.432/0001-10', sector: 'TI', status: 'Ativo' },
+            { id: 3, name: 'ROCHA', cnpj: '45.678.901/0001-22', sector: 'TI', status: 'Inativo' },
+            { id: 4, name: 'CARPOLOG', cnpj: '45.678.901/0001-22', sector: 'TI', status: 'Inativo' }
+        ];
+    });
+
+    // Persiste no localStorage sempre que mudar
+    useEffect(() => {
+        localStorage.setItem('admin_companies', JSON.stringify(companies));
+    }, [companies]);
+
+    const addCompany = (company) => {
+        const newId = companies.length > 0 ? Math.max(...companies.map(c => c.id)) + 1 : 1;
+        setCompanies([...companies, { ...company, id: newId }]);
+    };
+
+    const updateCompany = (updatedCompany) => {
+        setCompanies(companies.map(c => c.id === updatedCompany.id ? updatedCompany : c));
+    };
+
+    const deleteCompany = (id) => {
+        setCompanies(companies.filter(c => c.id !== id));
+    };
+
+    return (
+        <CompanyContext.Provider value={{ companies, addCompany, updateCompany, deleteCompany }}>
+>>>>>>> 4eaab92d87a14e7a6d44c5fe62cb9ae2a3ea8c77
             {children}
         </CompanyContext.Provider>
     );
