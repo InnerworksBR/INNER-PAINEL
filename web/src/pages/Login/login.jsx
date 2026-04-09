@@ -1,26 +1,37 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import banner from '../../assets/banner.png';
+import { useAuth } from '../../context/AuthContext';
 
 const Login = () => {
     const navigate = useNavigate();
+    const { login } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
+        setError('');
+        setLoading(true);
 
-        // Trim para evitar espaços em branco acidentais
-        const fixedEmail = email.trim();
-        const fixedPassword = password.trim();
+        const result = await login(email.trim(), password.trim());
 
-        if (fixedEmail === 'suporte@innerworks.com.br' && fixedPassword === 'Inner#@$2026') {
-            navigate('/admin/dashAdmin');
+        if (result.success) {
+            // Recuperar o usuário recém-logado para decidir o redirecionamento
+            const storedUser = JSON.parse(localStorage.getItem('user'));
+            if (storedUser?.role === 'admin') {
+                navigate('/admin/dashAdmin');
+            } else {
+                navigate('/app/dashboard');
+            }
         } else {
-            navigate('/app/dashboard');
-
+            setError(result.error);
         }
+        setLoading(false);
     };
+
     return (
         <div
             className="flex items-center justify-center min-h-screen bg-cover bg-center bg-no-repeat"
@@ -32,6 +43,12 @@ const Login = () => {
                     <p className="text-white/80">Faça login para acessar o Portal de Contratos</p>
                 </div>
 
+                {error && (
+                    <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm text-center">
+                        {error}
+                    </div>
+                )}
+
                 <form className="space-y-5" onSubmit={handleLogin}>
                     <div>
                         <label className="block text-white text-sm font-medium mb-1.5" htmlFor="email">
@@ -39,6 +56,7 @@ const Login = () => {
                         </label>
                         <input
                             id="email"
+                            required
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
@@ -53,6 +71,7 @@ const Login = () => {
                         </label>
                         <input
                             id="password"
+                            required
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
@@ -61,21 +80,12 @@ const Login = () => {
                         />
                     </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                        <label className="flex items-center text-white/90 text-sm cursor-pointer hover:text-white transition-colors">
-                            <input type="checkbox" className="mr-2 rounded bg-white/10 border-white/20 text-blue-500 focus:ring-blue-400" />
-                            Lembrar-me
-                        </label>
-                        <a href="#" className="text-sm text-blue-300 hover:text-blue-100 transition-colors">
-                            Esqueci a senha
-                        </a>
-                    </div>
-
                     <button
                         type="submit"
-                        className="w-full mt-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg shadow-lg hover:shadow-blue-500/30 transition-all duration-300 transform hover:-translate-y-0.5"
+                        disabled={loading}
+                        className={`w-full mt-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg shadow-lg hover:shadow-blue-500/30 transition-all duration-300 transform hover:-translate-y-0.5 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                        Entrar
+                        {loading ? 'Carregando...' : 'Entrar'}
                     </button>
                 </form>
             </div>

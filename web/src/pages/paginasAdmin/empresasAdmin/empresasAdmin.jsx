@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { Building2, Plus, Search, Edit2, Trash2, X, Check } from 'lucide-react';
+import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { useCompanies } from '../../../context/CompanyContext';
+import api from '../../../services/api';
 
 const EmpresasAdmin = () => {
-    const { companies, addCompany, updateCompany, deleteCompany } = useCompanies();
+    const { companies, addCompany, updateCompany, deleteCompany, updateIntegrations } = useCompanies();
 
     // Estados para o modal e formulário
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
+    const [integrationsCompany, setIntegrationsCompany] = useState(null);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [editingCompany, setEditingCompany] = useState(null);
     const [formValues, setFormValues] = useState({
@@ -15,6 +19,67 @@ const EmpresasAdmin = () => {
         sector: '',
         status: 'Ativo'
     });
+    const [integrationValues, setIntegrationValues] = useState({
+        glpi_entity_id: '',
+        zabbix_api_url: '', zabbix_user: '', zabbix_password: '',
+        ms_graph_tenant_id: '', ms_graph_client_id: '', ms_graph_client_secret: ''
+    });
+
+    const handleOpenIntegrationsModal = (company) => {
+        setIntegrationsCompany(company);
+        const ints = Array.isArray(company.company_integrations)
+            ? (company.company_integrations[0] || {})
+            : (company.company_integrations || {});
+            
+        setIntegrationValues({
+            glpi_entity_id: ints.glpi_entity_id || '',
+            zabbix_api_url: ints.zabbix_api_url || '', zabbix_user: ints.zabbix_user || '', zabbix_password: ints.zabbix_password || '',
+            ms_graph_tenant_id: ints.ms_graph_tenant_id || '', ms_graph_client_id: ints.ms_graph_client_id || '', ms_graph_client_secret: ints.ms_graph_client_secret || ''
+        });
+        setIsIntegrationsModalOpen(true);
+    };
+
+    const [syncStatus, setSyncStatus] = useState({ loading: false, result: null });
+    const [saveError, setSaveError] = useState('');
+
+    const handleIntegrationsSubmit = async (e) => {
+        e.preventDefault();
+        setSaveError('');
+        try {
+            const payload = { ...integrationValues };
+            if (payload.glpi_entity_id === '') {
+                payload.glpi_entity_id = null;
+            } else if (payload.glpi_entity_id !== null) {
+                payload.glpi_entity_id = parseInt(payload.glpi_entity_id, 10);
+            }
+
+            const result = await updateIntegrations(integrationsCompany.id, payload);
+            if (result?.success) {
+                alert('Integrações salvas com sucesso!');
+                setIsIntegrationsModalOpen(false);
+            } else {
+                setSaveError(result?.error || 'Erro desconhecido ao salvar integrações');
+            }
+        } catch (err) {
+            setSaveError(err.message || 'Erro ao salvar integrações');
+        }
+    };
+
+    const handleTestSync = async (type) => {
+        if (!integrationsCompany) return;
+        setSyncStatus({ loading: true, result: null });
+        try {
+            const res = await api.post(`/client/metrics/sync/${type}`, {
+                company_id: integrationsCompany.id,
+            });
+            setSyncStatus({ loading: false, result: { success: true, data: res.data } });
+        } catch (error) {
+            setSyncStatus({
+                loading: false,
+                result: { success: false, error: error.response?.data?.error || error.message },
+            });
+        }
+    };
 
     const handleOpenModal = (company = null) => {
         if (company) {
@@ -112,6 +177,13 @@ const EmpresasAdmin = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-2">
+                                            <button
+                                                onClick={() => handleOpenIntegrationsModal(empresa)}
+                                                className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                                                title="Integrações"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                                            </button>
                                             <button
                                                 onClick={() => handleOpenModal(empresa)}
                                                 className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
@@ -220,6 +292,155 @@ const EmpresasAdmin = () => {
                                 >
                                     <Check size={18} />
                                     {editingCompany ? 'Salvar Alterações' : 'Confirmar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Integrações */}
+            {isIntegrationsModalOpen && integrationsCompany && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div>
+                                <h2 className="text-xl font-normal text-slate-900">
+                                    Integrações: {integrationsCompany.name}
+                                </h2>
+                                <p className="text-xs text-slate-500 font-normal uppercase tracking-wider mt-0.5">
+                                    Chaves e Tokens de API
+                                </p>
+                            </div>
+                            <button onClick={() => setIsIntegrationsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                                <X size={20} className="text-slate-500" />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleIntegrationsSubmit} className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
+                            
+                            {/* Error Banner */}
+                            {saveError && (
+                                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 flex items-start gap-2">
+                                    <AlertCircle size={18} className="text-red-600 mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="font-semibold text-sm">Erro ao salvar</p>
+                                        <p className="text-xs mt-1">{saveError}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* GLPI */}
+                            <div className="p-4 border border-slate-200 rounded-2xl bg-white shadow-sm">
+                                <h3 className="font-semibold text-slate-800 mb-4 flex border-b pb-2">GLPI (Chamados)</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">ID da Entidade</label>
+                                        <input type="number" placeholder="Ex: 14" value={integrationValues.glpi_entity_id} onChange={(e) => setIntegrationValues({ ...integrationValues, glpi_entity_id: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Zabbix */}
+                            <div className="p-4 border border-slate-200 rounded-2xl bg-white shadow-sm">
+                                <h3 className="font-semibold text-slate-800 mb-4 flex border-b pb-2">Zabbix (Monitoramento)</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">URL da API</label>
+                                        <input type="text" placeholder="https://zabbix.domain.com/api_jsonrpc.php" value={integrationValues.zabbix_api_url} onChange={(e) => setIntegrationValues({ ...integrationValues, zabbix_api_url: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">Usuário Zabbix</label>
+                                        <input type="text" value={integrationValues.zabbix_user} onChange={(e) => setIntegrationValues({ ...integrationValues, zabbix_user: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">Senha Zabbix</label>
+                                        <input type="password" value={integrationValues.zabbix_password} onChange={(e) => setIntegrationValues({ ...integrationValues, zabbix_password: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Microsoft 365 */}
+                            <div className="p-4 border border-slate-200 rounded-2xl bg-white shadow-sm">
+                                <h3 className="font-semibold text-slate-800 mb-4 flex border-b pb-2">Microsoft 365 (Licenças)</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">Tenant ID</label>
+                                        <input type="text" value={integrationValues.ms_graph_tenant_id} onChange={(e) => setIntegrationValues({ ...integrationValues, ms_graph_tenant_id: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">Client ID</label>
+                                        <input type="text" value={integrationValues.ms_graph_client_id} onChange={(e) => setIntegrationValues({ ...integrationValues, ms_graph_client_id: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">Client Secret</label>
+                                        <input type="password" value={integrationValues.ms_graph_client_secret} onChange={(e) => setIntegrationValues({ ...integrationValues, ms_graph_client_secret: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Resultado do teste */}
+                            {syncStatus.result && (
+                                <div className={`p-4 rounded-xl border ${syncStatus.result.success
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                    : 'bg-red-50 border-red-200 text-red-800'
+                                }`}>
+                                    <div className="flex items-start gap-2">
+                                        {syncStatus.result.success
+                                            ? <CheckCircle size={18} className="text-emerald-600 mt-0.5" />
+                                            : <AlertCircle size={18} className="text-red-600 mt-0.5" />
+                                        }
+                                        <div>
+                                            <p className="font-semibold text-sm">
+                                                {syncStatus.result.success ? 'Sincronização OK!' : 'Erro na Sincronização'}
+                                            </p>
+                                            <p className="text-xs mt-1 whitespace-pre-wrap">
+                                                {syncStatus.result.success
+                                                    ? JSON.stringify(syncStatus.result.data, null, 2)
+                                                    : syncStatus.result.error
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Botões de Teste */}
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Testar Conexão (salve antes)</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    <button type="button" onClick={() => handleTestSync('glpi')} disabled={syncStatus.loading}
+                                        className="px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-lg border border-orange-200 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                                        {syncStatus.loading ? <RefreshCw size={12} className="animate-spin" /> : null}
+                                        Testar GLPI
+                                    </button>
+                                    <button type="button" onClick={() => handleTestSync('ms365')} disabled={syncStatus.loading}
+                                        className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                                        {syncStatus.loading ? <RefreshCw size={12} className="animate-spin" /> : null}
+                                        Testar MS365
+                                    </button>
+                                    <button type="button" onClick={() => handleTestSync('zabbix')} disabled={syncStatus.loading}
+                                        className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg border border-green-200 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                                        {syncStatus.loading ? <RefreshCw size={12} className="animate-spin" /> : null}
+                                        Testar Zabbix
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsIntegrationsModalOpen(false); setSyncStatus({ loading: false, result: null }); }}
+                                    className="px-5 py-2.5 text-sm font-normal text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-5 py-2.5 text-sm font-normal text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2"
+                                >
+                                    <Check size={18} />
+                                    Salvar Integrações
                                 </button>
                             </div>
                         </form>

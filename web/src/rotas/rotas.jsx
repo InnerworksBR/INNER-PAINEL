@@ -17,6 +17,9 @@ import DocAdmin from "../pages/paginasAdmin/docAdmin/docAdmin";
 import UsuariosAdmin from "../pages/paginasAdmin/usuariosAdmin/usuariosAdmin";
 import ConfigAdmin from "../pages/paginasAdmin/configAdmin/configAdmin";
 
+// Route Protection
+import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -24,7 +27,11 @@ export const router = createBrowserRouter([
   },
   {
     path: "/admin",
-    element: <AdminLayout />,
+    element: (
+      <AdminRoute>
+        <AdminLayout />
+      </AdminRoute>
+    ),
     children: [
       { index: true, element: <DashAdmin /> },
       { path: "dashAdmin", element: <DashAdmin /> },
@@ -36,7 +43,11 @@ export const router = createBrowserRouter([
   },
   {
     path: "/app",
-    element: <Layout />,
+    element: (
+      <ProtectedRoute>
+        <Layout />
+      </ProtectedRoute>
+    ),
     children: [
       { index: true, element: <DashboardGeral /> },
       { path: "dashboard", element: <DashboardGeral /> },

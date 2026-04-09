@@ -1,24 +1,30 @@
-import React, { useState } from 'react';
-import { Search, Folder, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Folder, ChevronLeft, ChevronRight, FileText, RefreshCw, Download } from 'lucide-react';
+import api from '../../../services/api';
 
 const DocumentacaoTecnica = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState('Todas');
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const categoriesList = [
     'Contratos', 'Diagramas', 'Inventários', 'SLAs', 'Políticas', 'Manuais', 'Procedimentos'
   ];
 
-  const documents = [
-    { id: 1, name: 'Contrato_Prestacao_Servicos_ABRAHY.pdf', category: 'Contratos', company: 'ABRAHY' },
-    { id: 2, name: 'Diagrama_Rede_Sustents_V2.pdf', category: 'Diagramas', company: 'SUSTENTS' },
-    { id: 3, name: 'Inventario_Ativos_TI_Rocha.xlsx', category: 'Inventários', company: 'ROCHA' },
-    { id: 4, name: 'SLA_Servicos_Cloud_Carpolog.pdf', category: 'SLAs', company: 'CARPOLOG' },
-    { id: 5, name: 'Politica_Seguranca_Informacao.pdf', category: 'Políticas', company: 'ABRAHY' },
-    { id: 6, name: 'Manual_Usuario_Sistema.docx', category: 'Manuais', company: 'SUSTENTS' },
-    { id: 7, name: 'Procedimento_Backup_Semanal.pdf', category: 'Procedimentos', company: 'ROCHA' },
-    { id: 8, name: 'Contrato_Manutencao_Hardware.pdf', category: 'Contratos', company: 'SUSTENTS' },
-  ];
+  useEffect(() => {
+    const fetchDocs = async () => {
+      try {
+        const response = await api.get('/client/docs');
+        setDocuments(response.data);
+      } catch (error) {
+        console.error('Error fetching documents:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDocs();
+  }, []);
 
   // Cálculo dinâmico de contagem por categoria
   const categoriesWithCounts = categoriesList.map(catName => ({
@@ -28,11 +34,33 @@ const DocumentacaoTecnica = () => {
 
   // Lógica de Filtragem
   const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         doc.company.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = category === 'Todas' || doc.category === category;
     return matchesSearch && matchesCategory;
   });
+
+  const handleDownload = async (doc) => {
+    if (!doc.file_url || doc.file_url === 'storage_pendente') {
+      alert('Arquivo não disponível para download.');
+      return;
+    }
+    try {
+      const res = await api.get(`/client/docs/${doc.id}/download`);
+      window.open(res.data.url, '_blank');
+    } catch (error) {
+      console.error('Erro ao gerar link de download:', error);
+      alert('Falha ao baixar o arquivo: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+        <span className="ml-3 text-gray-500 font-medium">Carregando central de documentos...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -48,15 +76,15 @@ const DocumentacaoTecnica = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="Buscar documentos por nome ou empresa..."
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow outline-none shadow-sm"
+            placeholder="Buscar documentos por título..."
+            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow outline-none shadow-sm"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="w-full sm:w-64">
           <select
-            className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer text-gray-700 shadow-sm"
+            className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-gray-700 shadow-sm"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
           >
@@ -110,42 +138,26 @@ const DocumentacaoTecnica = () => {
               <div
                 key={doc.id}
                 className="p-4 px-5 sm:px-6 hover:bg-gray-50 transition-colors flex items-center justify-between cursor-pointer group"
+                onClick={() => handleDownload(doc)}
               >
                 <div className="flex items-center space-x-3">
                   <FileText className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition-colors" />
                   <div className="flex flex-col">
-                    <span className="font-medium text-gray-700 group-hover:text-blue-600 transition-colors">{doc.name}</span>
-                    <span className="text-xs text-gray-400 uppercase tracking-wider">{doc.company} • {doc.category}</span>
+                    <span className="font-medium text-gray-700 group-hover:text-blue-600 transition-colors">{doc.title}</span>
+                    <span className="text-xs text-gray-400 uppercase tracking-wider">{doc.category} • Adicionado em {new Date(doc.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
+                {doc.file_url && (
+                  <Download className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                )}
               </div>
+
             ))
           ) : (
-            <div className="p-12 text-center">
-              <p className="text-gray-400">Nenhum documento encontrado para estes filtros.</p>
+            <div className="p-12 text-center text-gray-400">
+              Nenhum documento encontrado para estes filtros.
             </div>
           )}
-        </div>
-
-        {/* Rodapé e Paginação */}
-        <div className="p-4 sm:p-5 border-t border-gray-100 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-sm text-gray-600">
-            Mostrando {filteredDocuments.length} de {documents.length} resultados
-          </span>
-
-          <div className="flex items-center space-x-2">
-            <button className="px-3 py-1.5 bg-white border border-gray-200 rounded-md text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex items-center gap-1 disabled:opacity-50 shadow-sm">
-              <ChevronLeft className="w-4 h-4" />
-              <span>Anterior</span>
-            </button>
-            <span className="px-3.5 py-1.5 bg-blue-50 border border-blue-100 text-blue-600 rounded-md text-sm font-medium shadow-sm">
-              1
-            </span>
-            <button className="px-3 py-1.5 bg-white border border-gray-200 rounded-md text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex items-center gap-1 disabled:opacity-50 shadow-sm">
-              <span>Próximo</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
         </div>
       </div>
     </div>
