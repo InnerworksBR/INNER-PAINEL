@@ -9,8 +9,19 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# Copia o resto do projeto (React/Vite) e faz o build
+# Copia o resto do projeto (React/Vite)
 COPY . .
+
+# Variáveis de ambiente para o Build (Vite precisa delas no momento do build)
+ARG VITE_API_URL
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
+# Faz o build
 RUN npm run build
 
 # ==========================
