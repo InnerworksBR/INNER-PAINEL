@@ -69,22 +69,49 @@ export async function fetchZabbixMetrics(
     const serverHosts = hosts.filter((h: any) => !isNetworkHost(h));
 
     const serversToUpsert = serverHosts.map((h: any) => {
+      // Items de CPU
       const cpuItem = h.items?.find((i: any) => i.key_ === 'system.cpu.util');
-      const memItem = h.items?.find((i: any) =>
+      
+      // Items de Memória (%)
+      const memPusedItem = h.items?.find((i: any) =>
         i.key_ === 'vm.memory.util' || i.key_ === 'vm.memory.size[pused]'
       );
-      const diskItem = h.items?.find((i: any) =>
-        i.key_ === 'vfs.fs.size[/,pused]' || i.key_.startsWith('vfs.fs.size')
+      
+      // Items de Memória (Absolutos em Bytes)
+      const memTotalItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[total]');
+      const memAvailItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[available]');
+
+      // Items de Disco (Procura Linux '/' ou Windows 'C:')
+      const diskPusedItem = h.items?.find((i: any) =>
+        i.key_ === 'vfs.fs.size[/,pused]' || i.key_ === 'vfs.fs.size[C:,pused]'
       );
+      const diskTotalItem = h.items?.find((i: any) =>
+        i.key_ === 'vfs.fs.size[/,total]' || i.key_ === 'vfs.fs.size[C:,total]'
+      );
+      const diskUsedItem = h.items?.find((i: any) =>
+        i.key_ === 'vfs.fs.size[/,used]' || i.key_ === 'vfs.fs.size[C:,used]'
+      );
+
       const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping' || i.key_ === 'agent.ping');
 
+      // Conversão para GB (Bytes -> GB)
+      const toGB = (bytes: any) => bytes ? parseFloat((parseFloat(bytes) / 1024 / 1024 / 1024).toFixed(2)) : 0;
+
       const cpuVal = cpuItem ? parseFloat(cpuItem.lastvalue) : 0;
-      const memVal = memItem ? parseFloat(memItem.lastvalue) : 0;
+      const memPercent = memPusedItem ? parseFloat(memPusedItem.lastvalue) : 0;
+      const memTotal = toGB(memTotalItem?.lastvalue);
+      const memAvailable = toGB(memAvailItem?.lastvalue);
+      const memUsed = memTotal > 0 ? parseFloat((memTotal - memAvailable).toFixed(2)) : 0;
+
+      const diskPercent = diskPusedItem ? parseFloat(diskPusedItem.lastvalue) : 0;
+      const diskTotal = toGB(diskTotalItem?.lastvalue);
+      const diskUsed = toGB(diskUsedItem?.lastvalue);
+
       const pingVal = pingItem ? parseFloat(pingItem.lastvalue) : 0;
 
       // Se o ping for 1, ou se estivermos recebendo qualquer métrica de CPU/RAM, consideramos Online
       let status = 'Offline';
-      if (pingVal === 1 || cpuVal > 0 || memVal > 0) {
+      if (pingVal === 1 || cpuVal > 0 || memPercent > 0) {
         status = 'Online';
       }
 
@@ -92,8 +119,12 @@ export async function fetchZabbixMetrics(
         company_id,
         hostname: h.name,
         cpu_usage: parseFloat(cpuVal.toFixed(2)),
-        memory_usage: parseFloat(memVal.toFixed(2)),
-        disk_usage: diskItem ? parseFloat(parseFloat(diskItem.lastvalue).toFixed(2)) : 0,
+        memory_usage: parseFloat(memPercent.toFixed(2)),
+        disk_usage: parseFloat(diskPercent.toFixed(2)),
+        memory_total: memTotal,
+        memory_used: memUsed,
+        disk_total: diskTotal,
+        disk_used: diskUsed,
         status,
         last_updated: new Date().toISOString(),
       };
