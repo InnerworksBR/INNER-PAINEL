@@ -175,8 +175,10 @@ const Servidores = () => {
                       <div className="absolute inset-0 flex items-center justify-center font-bold text-lg">{activeServer.memory_usage}%</div>
                    </div>
                    <div className="text-sm text-gray-500 text-center">
-                      <div className="font-semibold text-gray-800">Dinâmico</div>
-                      <div className="text-[10px]">Coletado via Agente</div>
+                      <div className="font-semibold text-gray-800">
+                        {activeServer.memory_used || 0} GB / {activeServer.memory_total || 0} GB
+                      </div>
+                      <div className="text-[10px]">Utilização de RAM</div>
                    </div>
                 </div>
               </div>
@@ -186,13 +188,18 @@ const Servidores = () => {
                 <h3 className="font-semibold text-gray-800 flex items-center gap-2 mb-4">
                   <HardDrive className="w-5 h-5 text-indigo-500" /> Armazenamento
                 </h3>
-                <div className="text-2xl font-bold mb-2">{activeServer.disk_usage}%</div>
-                <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-                   <div className="bg-indigo-500 h-full" style={{ width: `${activeServer.disk_usage}%` }}></div>
-                </div>
-                <div className="mt-4 text-xs text-gray-500 flex justify-between">
-                   <span>Atualizado: {new Date(activeServer.last_updated).toLocaleString()}</span>
-                </div>
+                 <div className="text-xs font-semibold text-indigo-600 mb-2">
+                    {activeServer.disk_used || 0} GB usados de {activeServer.disk_total || 0} GB
+                 </div>
+                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mb-4">
+                    <div className="bg-indigo-500 h-full" style={{ width: `${activeServer.disk_usage}%` }}></div>
+                 </div>
+                 <div className="text-xs text-gray-400 mt-2">
+                    Capacidade Total: {activeServer.disk_total || 0} GB
+                 </div>
+                 <div className="mt-4 text-[10px] text-gray-400 flex justify-between">
+                    <span>Atualizado: {new Date(activeServer.last_updated).toLocaleString()}</span>
+                 </div>
               </div>
             </div>
 
@@ -206,19 +213,27 @@ const Servidores = () => {
                   <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
                     <tr>
                       <th className="px-6 py-4">Hostname</th>
-                      <th className="px-6 py-4">CPU</th>
-                      <th className="px-6 py-4">Memória</th>
-                      <th className="px-6 py-4">Disco</th>
-                      <th className="px-6 py-4">Status</th>
+                       <th className="px-6 py-4">CPU</th>
+                       <th className="px-6 py-4">Memória (GB)</th>
+                       <th className="px-6 py-4">Disco (GB)</th>
+                       <th className="px-6 py-4">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {servers.map((s) => (
                       <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 font-semibold">{s.hostname}</td>
-                        <td className="px-6 py-4">{s.cpu_usage}%</td>
-                        <td className="px-6 py-4">{s.memory_usage}%</td>
-                        <td className="px-6 py-4">{s.disk_usage}%</td>
+                         <td className="px-6 py-4">{s.cpu_usage}%</td>
+                         <td className="px-6 py-4 flex flex-col">
+                            <span className="text-sm font-medium">{s.memory_usage}%</span>
+                            <span className="text-[10px] text-gray-500">{s.memory_used}GB / {s.memory_total}GB</span>
+                         </td>
+                         <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                               <span className="text-sm font-medium">{s.disk_usage}%</span>
+                               <span className="text-[10px] text-gray-500">{s.disk_used}GB / {s.disk_total}GB</span>
+                            </div>
+                         </td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${getStatusColor(s.status)}`}>
                             {s.status}
