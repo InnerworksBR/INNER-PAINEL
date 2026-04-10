@@ -76,15 +76,25 @@ export async function fetchZabbixMetrics(
       const diskItem = h.items?.find((i: any) =>
         i.key_ === 'vfs.fs.size[/,pused]' || i.key_.startsWith('vfs.fs.size')
       );
-      const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping');
+      const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping' || i.key_ === 'agent.ping');
+
+      const cpuVal = cpuItem ? parseFloat(cpuItem.lastvalue) : 0;
+      const memVal = memItem ? parseFloat(memItem.lastvalue) : 0;
+      const pingVal = pingItem ? parseFloat(pingItem.lastvalue) : 0;
+
+      // Se o ping for 1, ou se estivermos recebendo qualquer métrica de CPU/RAM, consideramos Online
+      let status = 'Offline';
+      if (pingVal === 1 || cpuVal > 0 || memVal > 0) {
+        status = 'Online';
+      }
 
       return {
         company_id,
         hostname: h.name,
-        cpu_usage: cpuItem ? parseFloat(parseFloat(cpuItem.lastvalue).toFixed(2)) : 0,
-        memory_usage: memItem ? parseFloat(parseFloat(memItem.lastvalue).toFixed(2)) : 0,
+        cpu_usage: parseFloat(cpuVal.toFixed(2)),
+        memory_usage: parseFloat(memVal.toFixed(2)),
         disk_usage: diskItem ? parseFloat(parseFloat(diskItem.lastvalue).toFixed(2)) : 0,
-        status: (pingItem && parseFloat(pingItem.lastvalue) === 1) ? 'Online' : 'Offline',
+        status,
         last_updated: new Date().toISOString(),
       };
     });
@@ -148,9 +158,10 @@ export async function fetchZabbixNetworkDevices(
     console.log(`[Zabbix Network] Encontrados ${networkHosts.length} equipamentos de rede.`);
 
     const devicesToUpsert = networkHosts.map((h: any) => {
-      const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping');
-      const uptimeItem = h.items?.find((i: any) => i.key_ === 'system.uptime');
+      const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping' || i.key_ === 'agent.ping' || i.key_.includes('status'));
       const ip = h.interfaces?.[0]?.ip || '';
+      
+      const pingVal = pingItem ? parseFloat(pingItem.lastvalue) : 0;
 
       return {
         company_id,
@@ -158,8 +169,8 @@ export async function fetchZabbixNetworkDevices(
         device_type: guessDeviceType(h),
         location: '',
         ip_address: ip,
-        uptime_percent: 0, // Would need historical data to calculate
-        status: (pingItem && parseFloat(pingItem.lastvalue) === 1) ? 'Online' : 'Offline',
+        uptime_percent: 0, 
+        status: (pingVal === 1 || pingVal >= 1) ? 'Online' : 'Offline',
         last_updated: new Date().toISOString(),
       };
     });

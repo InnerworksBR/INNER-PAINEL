@@ -8,14 +8,14 @@ import { fetchZabbixMetrics, fetchZabbixNetworkDevices } from '../services/zabbi
 export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
   console.log('🕐 Iniciando scheduler de sincronização automática...');
 
-  // Sync Zabbix (servidores) — a cada 5 minutos
-  cron.schedule('*/5 * * * *', async () => {
+  // Sync Zabbix (servidores) — a cada 30 segundos
+  cron.schedule('*/30 * * * * *', async () => {
     console.log('[CRON] Iniciando sync Zabbix (servidores)...');
     await syncAllCompanies(supabaseAdmin, 'zabbix');
   });
 
-  // Sync Zabbix (rede) — a cada 15 minutos
-  cron.schedule('*/15 * * * *', async () => {
+  // Sync Zabbix (rede) — a cada 1 minuto
+  cron.schedule('* * * * *', async () => {
     console.log('[CRON] Iniciando sync Zabbix (rede)...');
     await syncAllCompanies(supabaseAdmin, 'zabbix-network');
   });
@@ -33,8 +33,8 @@ export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
   });
 
   console.log('✅ Scheduler configurado:');
-  console.log('   - Zabbix (servidores): a cada 5 min');
-  console.log('   - Zabbix (rede): a cada 15 min');
+  console.log('   - Zabbix (servidores): a cada 30 seg');
+  console.log('   - Zabbix (rede): a cada 60 seg');
   console.log('   - GLPI: a cada 30 min');
   console.log('   - MS365: a cada 6 horas');
 }
