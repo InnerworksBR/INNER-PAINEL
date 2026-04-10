@@ -80,23 +80,23 @@ export async function fetchZabbixMetrics(
       const cpuItem = h.items?.find((i: any) => i.key_ === 'system.cpu.util');
       
       // Items de Memória (%)
-      const memPusedItem = h.items?.find((i: any) =>
-        i.key_ === 'vm.memory.util' || i.key_ === 'vm.memory.size[pused]'
+      const memPavailItem = h.items?.find((i: any) =>
+        i.key_ === 'vm.memory.size[pavailable]' || i.key_ === 'vm.memory.util'
       );
       
       // Items de Memória (Absolutos em Bytes)
       const memTotalItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[total]');
       const memAvailItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[available]');
 
-      // Items de Disco (Procura Linux '/' ou Windows 'C:')
+      // Items de Disco (Linux '/' ou Windows 'C:' com e sem barra invertida)
       const diskPusedItem = h.items?.find((i: any) =>
-        i.key_ === 'vfs.fs.size[/,pused]' || i.key_ === 'vfs.fs.size[C:,pused]'
+        ['vfs.fs.size[/,pused]', 'vfs.fs.size[C:,pused]', 'vfs.fs.size[C:\\,pused]'].includes(i.key_)
       );
       const diskTotalItem = h.items?.find((i: any) =>
-        i.key_ === 'vfs.fs.size[/,total]' || i.key_ === 'vfs.fs.size[C:,total]'
+        ['vfs.fs.size[/,total]', 'vfs.fs.size[C:,total]', 'vfs.fs.size[C:\\,total]'].includes(i.key_)
       );
       const diskUsedItem = h.items?.find((i: any) =>
-        i.key_ === 'vfs.fs.size[/,used]' || i.key_ === 'vfs.fs.size[C:,used]'
+        ['vfs.fs.size[/,used]', 'vfs.fs.size[C:,used]', 'vfs.fs.size[C:\\,used]'].includes(i.key_)
       );
 
       const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping' || i.key_ === 'agent.ping');
@@ -105,7 +105,11 @@ export async function fetchZabbixMetrics(
       const toGB = (bytes: any) => bytes ? parseFloat((parseFloat(bytes) / 1024 / 1024 / 1024).toFixed(2)) : 0;
 
       const cpuVal = cpuItem ? parseFloat(cpuItem.lastvalue) : 0;
-      const memPercent = memPusedItem ? parseFloat(memPusedItem.lastvalue) : 0;
+
+      // Percentual de memória: se tiver pavailable, calcula pused = 100 - pavailable
+      const memPavailVal = memPavailItem ? parseFloat(memPavailItem.lastvalue) : null;
+      const memPercent = memPavailVal !== null ? parseFloat((100 - memPavailVal).toFixed(2)) : 0;
+
       const memTotal = toGB(memTotalItem?.lastvalue);
       const memAvailable = toGB(memAvailItem?.lastvalue);
       const memUsed = memTotal > 0 ? parseFloat((memTotal - memAvailable).toFixed(2)) : 0;
