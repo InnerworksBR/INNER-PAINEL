@@ -77,4 +77,58 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
       return reply.code(500).send({ error: error.message });
     }
   });
+
+  // Diagnóstico Zabbix — lista chaves de itens brutas (apenas admins)
+  fastify.get('/zabbix-debug', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+    if (user.role !== 'admin') return reply.code(403).send({ error: 'Apenas admins' });
+
+    const companyId = (request.query as any).company_id || user.company_id;
+    if (!companyId) return reply.code(400).send({ error: 'company_id obrigatório' });
+
+    const { data: integrations } = await supabaseAdmin
+      .from('company_integrations')
+      .select('zabbix_api_url, zabbix_user, zabbix_password')
+      .eq('company_id', companyId)
+      .single();
+
+    if (!integrations?.zabbix_api_url) {
+      return reply.code(400).send({ error: 'Credenciais Zabbix não configuradas' });
+    }
+
+    const axiosModule = await import('axios');
+    const { zabbix_api_url, zabbix_user, zabbix_password } = integrations;
+
+    const loginRes = await axiosModule.default.post(zabbix_api_url, {
+      jsonrpc: '2.0', method: 'user.login',
+      params: { username: zabbix_user, password: zabbix_password },
+      id: 1, auth: null,
+    });
+    const token = loginRes.data.result;
+
+    const hostsRes = await axiosModule.default.post(zabbix_api_url, {
+      jsonrpc: '2.0', method: 'host.get',
+      params: {
+        limit: 3,
+        filter: { status: '0' },
+        selectGroups: ['name'],
+        selectItems: ['key_', 'lastvalue', 'name', 'units'],
+      },
+      id: 2, auth: token,
+    });
+
+    await axiosModule.default.post(zabbix_api_url, { jsonrpc: '2.0', method: 'user.logout', params: [], id: 3, auth: token }).catch(() => {});
+
+    const hosts = hostsRes.data.result || [];
+    return hosts.map((h: any) => ({
+      hostname: h.name,
+      groups: h.groups?.map((g: any) => g.name),
+      items: (h.items || [])
+        .filter((i: any) => {
+          const k = i.key_;
+          return k.includes('cpu') || k.includes('memory') || k.includes('vfs') || k.includes('icmp') || k.includes('agent');
+        })
+        .map((i: any) => ({ key: i.key_, name: i.name, value: i.lastvalue, unit: i.units })),
+    }));
+  });
 }

@@ -68,6 +68,13 @@ export async function fetchZabbixMetrics(
 
     const serverHosts = hosts.filter((h: any) => !isNetworkHost(h));
 
+    // 🔍 DEBUG: Mostra chaves de itens do primeiro servidor no terminal
+    if (serverHosts.length > 0) {
+      const firstHost = serverHosts[0];
+      const allKeys = (firstHost.items || []).map((i: any) => `  ${i.key_} = "${i.lastvalue}"`).join('\n');
+      console.log(`\n[ZABBIX DEBUG] Servidor: ${firstHost.name}\n[ZABBIX DEBUG] Itens disponíveis:\n${allKeys}\n`);
+    }
+
     const serversToUpsert = serverHosts.map((h: any) => {
       // Items de CPU
       const cpuItem = h.items?.find((i: any) => i.key_ === 'system.cpu.util');
