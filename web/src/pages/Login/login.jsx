@@ -70,107 +70,114 @@ const Login = () => {
                 ))}
             </div>
 
-            {/*CONTEÚDO */}
-            <div className="relative flex items-center justify-end pr-[10vw] min-h-screen overflow-auto">
+            {/* CONTEÚDO PRINCIPAL ESTÁTICO (h-screen e overflow-hidden) */}
+            <div className="relative z-10 flex flex-col lg:flex-row h-screen w-full overflow-hidden">
 
-                {/* BANNER ESQUERDA IGUAL FIGMA REAL */}
-                <div className="absolute inset-0 pointer-events-none z-0">
+                {/* 🔵 LADO ESQUERDO: BANNER E LOGOS */}
+                <div className="flex flex-col justify-between h-full w-full lg:w-1/2 px-8 lg:px-[5vw] py-8 lg:py-12 flex-1">
+                
+                {/*LOGO MICROSOFT*/}
+                <div className="flex items-center gap-3 lg:gap-4">
+                    <img src={logoMicrosoft} className="absolute top-[-70px] left-[-40px] w-[450px]"/>
+                </div>
 
-                    {/* LOGO MICROSOFT NO TOPO */}
-                    <img src={logoMicrosoft} className="absolute left-[10px] top-[0px] w-[480px]" />
-
-
-                    {/* LOGO INNER */}
-                    <img src={logoInner} className="absolute left-[90px] top-[210px] w-[350px]" />
-                    {/* SUBTÍTULO INNER*/}
-                    <h2 className="absolute left-[170px] top-[350px] text-white text-[24px] font-medium">
+                {/*LOGO INNER*/}
+                <div className="flex items-center gap-3 lg:gap-4">
+                <img src={logoInner}className="absolute top-[145px] left-[40px] w-[250px]" />
+                </div>
+                {/* SUBTÍTULO INNER*/}
+                    <h2 className="absolute left-[90px] top-[235px] text-white text-[20px] font-medium">
                         Let's <span className='italic font-semibold text-[#55F525]'> work </span> together
                     </h2>
 
-                    {/* TITULO BANNER */}
-                    <div className="absolute left-[30px] top-[460px] text-white w-[900px]">
-                        <h1 className="text-[70px] font-bold leading-tight">
+
+                {/* TITULO BANNER */}
+                    <div className="absolute left-[2%] top-1/2 -translate-y-1/2 text-white max-w-[900px] w-full">
+                        <h1 className="text-[60px] font-bold leading-tight">
                             Transformando Tecnologia <br /> em resultados<span className="italic font-bold"> reais </span>
                         </h1>
                     </div>
 
-                    {/* CONTATOS FIXOS NO RODAPÉ */}
-                    <div className="absolute left-[30px] bottom-[40px] space-y-4 text-[30px] text-gray-300 pointer-events-auto">
 
-                        <div className="flex items-center gap-4">
-                            <img src={iconHome} className="w-[40px]" />
+                   
+                {/* CONTATOS */}
+                    <div className="absolute bottom-[40px] left-[20px] flex flex-col space-y-4 text-gray-300  text-lg lg:text-xl 2xl:text-2xl">
+                        <div className="flex items-center gap-3 lg:gap-4">
+                            <img src={iconHome} className="w-[20px] lg:w-[30px] 2xl:w-[40px]" alt="Ícone Site" />
                             <span>innerworks.com.br</span>
                         </div>
-
-                        <div className="flex items-center gap-4">
-                            <img src={iconEmail} className="w-[40px]" />
+                        <div className="flex items-center gap-3 lg:gap-4">
+                            <img src={iconEmail} className="w-[20px] lg:w-[30px] 2xl:w-[40px]" alt="Ícone Email" />
                             <span>contato@innerworks.com.br</span>
                         </div>
-
-                        <div className="flex items-center gap-4">
-                            <img src={iconZap} className="w-[40px]" />
+                        <div className="flex items-center gap-3 lg:gap-4">
+                            <img src={iconZap} className="w-[20px] lg:w-[30px] 2xl:w-[40px]" alt="Ícone Telefone" />
                             <span>(13) 99119-8852</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Portal de Contratos */}
-                <div className="bg-white/10 backdrop-blur-md border border-white/20 p-16 rounded-3xl shadow-2xl w-full max-w-2xl">
+                {/* 🟢 LADO DIREITO: FORMULÁRIO DE LOGIN */}
+                <div className="flex items-center justify-center w-full lg:w-1/2 h-full lg:pr-[5vw] px-4 flex-1">
 
-                    <div className="text-center mb-12">
-                        <h2 className="text-5xl font-bold text-white mb-3">Bem-vindo</h2>
-                        <p className="text-white/80 text-lg">
-                            Faça login para acessar o Portal de Contratos
-                        </p>
+                    {/* Portal de Contratos */}
+                    <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 lg:p-10 2xl:p-16 rounded-3xl shadow-2xl w-full max-w-[380px] lg:max-w-[450px] 2xl:max-w-2xl">
+
+                        <div className="text-center mb-6 2xl:mb-12">
+                            <h2 className="text-3xl lg:text-4xl 2xl:text-5xl font-bold text-white mb-2 2xl:mb-3">Bem-vindo</h2>
+                            <p className="text-white/80 text-xs lg:text-sm 2xl:text-lg">
+                                Faça login para acessar o Portal de Contratos
+                            </p>
+                        </div>
+
+                        {error && (
+                            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs 2xl:text-sm text-center">
+                                {error}
+                            </div>
+                        )}
+
+                        <form className="space-y-4 2xl:space-y-6" onSubmit={handleLogin}>
+                            <div>
+                                <label className="block text-white text-xs lg:text-sm 2xl:text-lg font-medium mb-1 2xl:mb-2">
+                                    E-mail
+                                </label>
+                                <input
+                                    required
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full px-3 py-2 2xl:px-5 2xl:py-4 bg-white/10 border border-white/20 rounded-xl text-white text-sm 2xl:text-lg"
+                                    placeholder="Digite seu e-mail"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-white text-xs lg:text-sm 2xl:text-lg font-medium mb-1 2xl:mb-2">
+                                    Senha
+                                </label>
+                                <input
+                                    required
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full px-3 py-2 2xl:px-5 2xl:py-4 bg-white/10 border border-white/20 rounded-xl text-white text-sm 2xl:text-lg"
+                                    placeholder="Digite sua senha"
+                                />
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className={`w-full mt-4 2xl:mt-8 py-3 2xl:py-4 bg-blue-600 hover:bg-blue-500 text-white text-sm lg:text-base 2xl:text-xl font-semibold rounded-xl transition ${loading ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
+                            >
+                                {loading ? 'Carregando...' : 'Entrar'}
+                            </button>
+                        </form>
+
                     </div>
 
-                    {error && (
-                        <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-sm text-center">
-                            {error}
-                        </div>
-                    )}
-
-                    <form className="space-y-6" onSubmit={handleLogin}>
-                        <div>
-                            <label className="block text-white text-lg font-medium mb-2">
-                                E-mail
-                            </label>
-                            <input
-                                required
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-xl text-white text-lg"
-                                placeholder="Digite seu e-mail"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-white text-lg font-medium mb-2">
-                                Senha
-                            </label>
-                            <input
-                                required
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-5 py-4 bg-white/10 border border-white/20 rounded-xl text-white text-lg"
-                                placeholder="Digite sua senha"
-                            />
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className={`w-full mt-8 py-4 bg-blue-600 hover:bg-blue-500 text-white text-xl font-semibold rounded-xl transition ${loading ? 'opacity-50 cursor-not-allowed' : ''
-                                }`}
-                        >
-                            {loading ? 'Carregando...' : 'Entrar'}
-                        </button>
-                    </form>
-
                 </div>
-
             </div>
         </div>
     );
