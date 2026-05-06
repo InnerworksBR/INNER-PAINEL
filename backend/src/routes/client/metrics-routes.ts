@@ -41,6 +41,26 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
     return data;
   });
 
+  fastify.get('/servers/events', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+
+    let query = supabaseAdmin
+      .from('monitoring_events')
+      .select('*')
+      .eq('source', 'server')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (user.role !== 'admin') {
+      if (!user.company_id) return reply.code(403).send({ error: 'UsuÃ¡rio sem empresa associada' });
+      query = query.eq('company_id', user.company_id);
+    }
+
+    const { data, error } = await query;
+    if (error) return reply.code(500).send({ error: error.message });
+    return data;
+  });
+
   // Forçar sincronização — FIX B2: usar supabaseAdmin em vez de supabase
   fastify.post<{ Params: { type: string }; Body: { company_id?: string; host_ids?: string[] } }>('/sync/:type', async (request, reply) => {
     const { user } = request.user as JWTPayload;

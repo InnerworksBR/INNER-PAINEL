@@ -2,33 +2,23 @@ import React, { useState } from 'react';
 import {
   Server,
   Search,
-  Settings,
-  Bell,
   Activity,
   Cpu,
   HardDrive,
-  Clock,
   RefreshCw,
-  AlertCircle,
-  CheckCircle2,
-  ChevronRight
+  AlertCircle
 } from 'lucide-react';
 import {
   PieChart as RechartsPieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
   ResponsiveContainer
 } from 'recharts';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 
 const Servidores = () => {
   const { data: servers, loading, refresh } = useRealtimeData('/client/metrics/servers', 'servers', { intervalMs: 30000 });
+  const { data: events, refresh: refreshEvents } = useRealtimeData('/client/metrics/servers/events', 'server_events', { intervalMs: 30000 });
   const [activeServerId, setActiveServerId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -49,6 +39,11 @@ const Servidores = () => {
   const filteredServers = servers.filter(s => 
     s.hostname.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleRefresh = () => {
+    refresh();
+    refreshEvents();
+  };
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
@@ -123,7 +118,7 @@ const Servidores = () => {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-2xl font-bold text-gray-800">Monitoramento de Servidores</h1>
           <button
-            onClick={refresh}
+            onClick={handleRefresh}
             className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-full hover:bg-emerald-100 transition-colors"
           >
             <RefreshCw size={14} className="text-emerald-700" />
@@ -200,6 +195,37 @@ const Servidores = () => {
             </div>
 
             {/* Tabela de Inventário */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">Eventos Recentes</h2>
+                  <p className="text-xs text-gray-500 mt-1">Quedas e retornos detectados nas sincronizações do Zabbix</p>
+                </div>
+                <AlertCircle className="w-5 h-5 text-gray-400" />
+              </div>
+              <div className="divide-y divide-gray-100">
+                {events.length > 0 ? events.slice(0, 8).map((event) => (
+                  <div key={event.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${event.severity === 'critical' ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{event.entity_name}</p>
+                        <p className="text-xs text-gray-500 truncate">{event.message}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-medium text-gray-700">{event.previous_status || '-'} -&gt; {event.current_status}</p>
+                      <p className="text-[10px] text-gray-400">{new Date(event.created_at).toLocaleString('pt-BR')}</p>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="px-5 py-8 text-center text-sm text-gray-400">
+                    Nenhuma queda ou retorno registrado ainda. Os eventos aparecem quando o status muda entre sincronizações.
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="p-5 border-b border-gray-100">
                 <h2 className="text-lg font-bold text-gray-800">Todos os Servidores</h2>

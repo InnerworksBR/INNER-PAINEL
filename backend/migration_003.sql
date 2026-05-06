@@ -135,6 +135,49 @@ ALTER TABLE company_integrations ADD COLUMN IF NOT EXISTS glpi_last_sync_at TIME
 ALTER TABLE company_integrations ADD COLUMN IF NOT EXISTS glpi_last_sync_error TEXT;
 ALTER TABLE company_integrations ADD COLUMN IF NOT EXISTS glpi_last_sync_count INTEGER DEFAULT 0;
 
+-- Eventos de monitoramento: histórico de queda/retorno e alertas simples.
+CREATE TABLE IF NOT EXISTS monitoring_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  source TEXT NOT NULL CHECK (source IN ('server', 'network')),
+  entity_name TEXT NOT NULL,
+  entity_type TEXT,
+  previous_status TEXT,
+  current_status TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'critical')),
+  message TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS monitoring_events_company_source_created_idx
+  ON monitoring_events (company_id, source, created_at DESC);
+
+ALTER TABLE monitoring_events ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'monitoring_events'
+      AND policyname = 'Admins can do everything on monitoring events'
+  ) THEN
+    CREATE POLICY "Admins can do everything on monitoring events" ON monitoring_events FOR ALL USING (
+      EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'monitoring_events'
+      AND policyname = 'Clients view own monitoring events'
+  ) THEN
+    CREATE POLICY "Clients view own monitoring events" ON monitoring_events FOR SELECT USING (
+      company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
+    );
+  END IF;
+END $$;
+
 ALTER TABLE ms365_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE servers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE glpi_tickets ENABLE ROW LEVEL SECURITY;

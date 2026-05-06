@@ -60,6 +60,26 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
   });
 
   // Forçar sincronização de dispositivos de rede
+  fastify.get('/events', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+
+    let query = supabaseAdmin
+      .from('monitoring_events')
+      .select('*')
+      .eq('source', 'network')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (user.role !== 'admin') {
+      if (!user.company_id) return reply.code(403).send({ error: 'UsuÃ¡rio sem empresa associada' });
+      query = query.eq('company_id', user.company_id);
+    }
+
+    const { data, error } = await query;
+    if (error) return reply.code(500).send({ error: error.message });
+    return data;
+  });
+
   fastify.post<{ Body: { company_id?: string } }>('/sync', async (request, reply) => {
     const { user } = request.user as JWTPayload;
     if (user.role !== 'admin') {

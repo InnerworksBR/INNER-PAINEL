@@ -6,6 +6,7 @@ const Rede = () => {
   const [loading, setLoading] = useState(true);
   const [devices, setDevices] = useState([]);
   const [stats, setStats] = useState(null);
+  const [events, setEvents] = useState([]);
 
   useEffect(() => {
     fetchData();
@@ -21,6 +22,14 @@ const Rede = () => {
       ]);
       setDevices(devicesRes.data || []);
       setStats(statsRes.data || null);
+
+      try {
+        const eventsRes = await api.get('/client/network/events');
+        setEvents(eventsRes.data || []);
+      } catch (eventsError) {
+        console.warn('Network events unavailable:', eventsError);
+        setEvents([]);
+      }
     } catch (error) {
       console.error('Error fetching network data:', error);
     } finally {
@@ -116,6 +125,37 @@ const Rede = () => {
       )}
 
       {/* Tabela de Inventário */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Eventos Recentes</h2>
+            <p className="text-sm text-slate-500 mt-1">Histórico de queda e retorno dos equipamentos</p>
+          </div>
+          <AlertTriangle size={20} className="text-slate-400" />
+        </div>
+        <div className="divide-y divide-slate-100">
+          {events.length > 0 ? events.slice(0, 10).map((event) => (
+            <div key={event.id} className="px-6 py-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${event.severity === 'critical' ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-900 truncate">{event.entity_name}</p>
+                  <p className="text-sm text-slate-500 truncate">{event.message}</p>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs font-medium text-slate-700">{event.previous_status || '-'} -&gt; {event.current_status}</p>
+                <p className="text-[11px] text-slate-400">{new Date(event.created_at).toLocaleString('pt-BR')}</p>
+              </div>
+            </div>
+          )) : (
+            <div className="px-6 py-10 text-center text-slate-400">
+              Nenhum evento registrado ainda. Assim que um equipamento cair ou voltar, o histórico aparecerá aqui.
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-800">Inventário de Equipamentos</h2>
