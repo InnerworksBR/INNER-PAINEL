@@ -1,6 +1,7 @@
 // src/services/glpi-service.ts
 import axios from 'axios';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { recordSyncError, recordSyncSuccess } from './integration-status-service';
 
 export async function syncTickets(supabase: SupabaseClient, company_id: string): Promise<{ message: string; count: number }> {
   try {
@@ -54,17 +55,26 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
        throw new Error(`Falha ao alterar Entidade no GLPI: ${e.response?.data ? JSON.stringify(e.response.data) : e.message}`);
     }
 
-    // 2. Buscar tickets
-    const response = await glpiApi.get('/Ticket', {
-      params: {
-        expand_dropdowns: true,
-        range: '0-200',
-        order: 'DESC',
-        sort: 'id',
-      },
-    });
+    // 2. Buscar tickets com paginação por range.
+    const pageSize = 200;
+    const maxTickets = 5000;
+    const tickets: any[] = [];
 
-    const tickets = Array.isArray(response.data) ? response.data : [];
+    for (let start = 0; start < maxTickets; start += pageSize) {
+      const end = start + pageSize - 1;
+      const response = await glpiApi.get('/Ticket', {
+        params: {
+          expand_dropdowns: true,
+          range: `${start}-${end}`,
+          order: 'DESC',
+          sort: 'id',
+        },
+      });
+
+      const page = Array.isArray(response.data) ? response.data : [];
+      tickets.push(...page);
+      if (page.length < pageSize) break;
+    }
 
     // 3. Mapear e persistir
     const ticketsToUpsert = tickets.map((t: any) => ({
@@ -83,7 +93,7 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     if (ticketsToUpsert.length > 0) {
       const { error } = await supabase
         .from('glpi_tickets')
-        .upsert(ticketsToUpsert, { onConflict: 'glpi_id' });
+        .upsert(ticketsToUpsert, { onConflict: 'company_id,glpi_id' });
 
       if (error) throw error;
     }
@@ -93,6 +103,8 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
       await glpiApi.get('/killSession');
     } catch (_) { /* ignore */ }
 
+    await recordSyncSuccess(supabase, company_id, 'glpi', ticketsToUpsert.length);
+
     return {
       message: 'Sincronização GLPI concluída com sucesso',
       count: ticketsToUpsert.length,
@@ -101,6 +113,7 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     // Pegar detalhes do erro da API do GLPI, se existir
     const apiDetails = error.response?.data ? JSON.stringify(error.response.data) : '';
     console.error('Erro na sincronização do GLPI para a empresa', company_id, ':', error.message, apiDetails);
+    await recordSyncError(supabase, company_id, 'glpi', `${error.message}${apiDetails ? ` ${apiDetails}` : ''}`);
     throw new Error(`Falha na sincronização GLPI: ${error.message}. Detalhes: ${apiDetails}`);
   }
 }

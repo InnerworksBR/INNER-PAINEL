@@ -1,6 +1,8 @@
 // src/services/zabbix-service.ts
 import axios from 'axios';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { recordSyncError, recordSyncSuccess } from './integration-status-service';
+import { isDetailedLoggingEnabled } from './settings-service';
 
 async function getZabbixAuthToken(url: string, user: string, password: string): Promise<string> {
   const payload = {
@@ -69,7 +71,8 @@ export async function fetchZabbixMetrics(
     const serverHosts = hosts.filter((h: any) => !isNetworkHost(h));
 
     // 🔍 DEBUG: Mostra chaves de itens do primeiro servidor no terminal
-    if (serverHosts.length > 0) {
+    const detailedLogs = await isDetailedLoggingEnabled(supabase);
+    if (detailedLogs && serverHosts.length > 0) {
       const firstHost = serverHosts[0];
       const allKeys = (firstHost.items || []).map((i: any) => `  ${i.key_} = "${i.lastvalue}"`).join('\n');
       console.log(`\n[ZABBIX DEBUG] Servidor: ${firstHost.name}\n[ZABBIX DEBUG] Itens disponíveis:\n${allKeys}\n`);
@@ -150,9 +153,11 @@ export async function fetchZabbixMetrics(
       if (error) throw error;
     }
 
+    await recordSyncSuccess(supabase, company_id, 'zabbix', serversToUpsert.length);
     return { message: 'Métricas Zabbix sincronizadas', count: serversToUpsert.length };
   } catch (error: any) {
     console.error(`Erro na sincronização Zabbix (Company ${company_id}):`, error.message);
+    await recordSyncError(supabase, company_id, 'zabbix', error.message);
     throw new Error('Erro na sincronização Zabbix: ' + error.message);
   }
 }
@@ -197,7 +202,9 @@ export async function fetchZabbixNetworkDevices(
     // Filtrar apenas hosts que parecem ser equipamentos de rede
     const networkHosts = hosts.filter((h: any) => isNetworkHost(h));
 
-    console.log(`[Zabbix Network] Encontrados ${networkHosts.length} equipamentos de rede.`);
+    if (await isDetailedLoggingEnabled(supabase)) {
+      console.log(`[Zabbix Network] Encontrados ${networkHosts.length} equipamentos de rede.`);
+    }
 
     const devicesToUpsert = networkHosts.map((h: any) => {
       const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping' || i.key_ === 'agent.ping' || i.key_.includes('status'));
@@ -225,9 +232,11 @@ export async function fetchZabbixNetworkDevices(
       if (error) throw error;
     }
 
+    await recordSyncSuccess(supabase, company_id, 'zabbix_network', devicesToUpsert.length);
     return { message: 'Dispositivos de rede sincronizados', count: devicesToUpsert.length };
   } catch (error: any) {
     console.error(`Erro na sincronização de rede Zabbix (Company ${company_id}):`, error.message);
+    await recordSyncError(supabase, company_id, 'zabbix_network', error.message);
     throw new Error('Erro na sincronização de rede: ' + error.message);
   }
 }

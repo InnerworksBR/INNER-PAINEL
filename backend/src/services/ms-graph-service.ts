@@ -1,6 +1,7 @@
 // src/services/ms-graph-service.ts
 import axios from 'axios';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { recordSyncError, recordSyncSuccess } from './integration-status-service';
 
 async function getAccessToken(tenantId: string, clientId: string, clientSecret: string): Promise<string> {
   const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
@@ -64,9 +65,11 @@ export async function syncMS365Metrics(supabase: SupabaseClient, company_id: str
       if (error) throw error;
     }
 
+    await recordSyncSuccess(supabase, company_id, 'ms365', metricsToUpsert.length);
     return { message: 'Métricas MS365 sincronizadas', count: metricsToUpsert.length };
   } catch (error: any) {
     console.error(`Erro na sincronização MS365 (Company ${company_id}):`, error.message);
+    await recordSyncError(supabase, company_id, 'ms365', error.message);
     throw new Error('Erro na sincronização MS365: ' + error.message);
   }
 }

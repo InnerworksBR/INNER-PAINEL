@@ -1,6 +1,7 @@
 // src/routes/admin/settings-routes.ts
 import type { FastifyInstance } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
+import { clearSettingsCache } from '../../services/settings-service';
 
 export default async function adminSettingsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -27,7 +28,10 @@ export default async function adminSettingsRoutes(fastify: FastifyInstance): Pro
 
   // Salvar configurações (bulk upsert)
   fastify.post<{ Body: Record<string, string> }>('/', async (request, reply) => {
-    const settingsObj = request.body;
+    const allowedKeys = ['systemName', 'baseUrl', 'sessionTimeout', 'maintenanceMode', 'detailedLogs'];
+    const settingsObj = Object.fromEntries(
+      Object.entries(request.body).filter(([key]) => allowedKeys.includes(key))
+    );
 
     const rows = Object.entries(settingsObj).map(([key, value]) => ({
       key,
@@ -40,6 +44,7 @@ export default async function adminSettingsRoutes(fastify: FastifyInstance): Pro
       .upsert(rows, { onConflict: 'key' });
 
     if (error) return reply.code(500).send({ error: error.message });
+    clearSettingsCache();
     return { success: true };
   });
 }

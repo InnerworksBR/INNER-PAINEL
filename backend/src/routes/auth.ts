@@ -1,6 +1,7 @@
 // src/routes/auth.ts
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { UserProfile } from '../types';
+import { getSessionTimeoutSeconds } from '../services/settings-service';
 
 interface LoginBody {
   email: string;
@@ -52,7 +53,8 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
         company_name: profile.companies?.name,
       };
 
-      const token = fastify.jwt.sign({ user: userProfile });
+      const expiresIn = await getSessionTimeoutSeconds(supabaseAdmin);
+      const token = fastify.jwt.sign({ user: userProfile }, { expiresIn });
       return { token, profile: userProfile };
     }
 

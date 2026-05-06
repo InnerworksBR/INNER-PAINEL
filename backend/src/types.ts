@@ -16,6 +16,7 @@ export interface UserProfile {
   email: string;
   role: 'admin' | 'client';
   company_id: string | null;
+  company_name?: string;
 }
 
 export interface JWTPayload {
@@ -43,15 +44,25 @@ export interface Company {
 
 export interface CompanyIntegration {
   company_id: string;
-  glpi_api_url?: string;
-  glpi_api_token?: string;
-  glpi_user_token?: string;
+  glpi_entity_id?: number | null;
   zabbix_api_url?: string;
   zabbix_user?: string;
   zabbix_password?: string;
   ms_graph_tenant_id?: string;
   ms_graph_client_id?: string;
   ms_graph_client_secret?: string;
+  ms365_last_sync_at?: string | null;
+  ms365_last_sync_error?: string | null;
+  ms365_last_sync_count?: number;
+  zabbix_last_sync_at?: string | null;
+  zabbix_last_sync_error?: string | null;
+  zabbix_last_sync_count?: number;
+  zabbix_network_last_sync_at?: string | null;
+  zabbix_network_last_sync_error?: string | null;
+  zabbix_network_last_sync_count?: number;
+  glpi_last_sync_at?: string | null;
+  glpi_last_sync_error?: string | null;
+  glpi_last_sync_count?: number;
   updated_at: string;
 }
 
@@ -81,6 +92,10 @@ export interface Server {
   cpu_usage: number;
   memory_usage: number;
   disk_usage: number;
+  memory_total: number;
+  memory_used: number;
+  disk_total: number;
+  disk_used: number;
   status: string;
   last_updated: string;
 }

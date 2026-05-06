@@ -11,11 +11,13 @@ import corsPlugin from './plugins/cors';
 import jwtPlugin from './plugins/jwt';
 import supabasePlugin from './plugins/supabase';
 import multipartPlugin from './plugins/multipart';
+import maintenancePlugin from './plugins/maintenance';
 
 fastify.register(corsPlugin);
 fastify.register(jwtPlugin);
 fastify.register(supabasePlugin);
 fastify.register(multipartPlugin);
+fastify.register(maintenancePlugin);
 
 // Auth Routes
 import authRoutes from './routes/auth';
