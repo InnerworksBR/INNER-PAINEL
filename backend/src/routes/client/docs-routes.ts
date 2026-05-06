@@ -16,7 +16,11 @@ export default async function clientDocsRoutes(fastify: FastifyInstance): Promis
       return reply.code(403).send({ error: 'Usuário sem empresa associada' });
     }
 
-    let query = supabaseAdmin.from('documents').select('*');
+    let query = supabaseAdmin
+      .from('documents')
+      .select('*')
+      .not('file_url', 'is', null)
+      .neq('file_url', 'storage_pendente');
 
     if (user.role !== 'admin') {
       query = query.eq('company_id', user.company_id!);

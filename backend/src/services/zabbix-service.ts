@@ -4,6 +4,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { recordSyncError, recordSyncSuccess } from './integration-status-service';
 import { isDetailedLoggingEnabled } from './settings-service';
 import { insertMonitoringEvents } from './monitoring-events-service';
+import { decryptSecret } from './crypto-service';
+import { insertNetworkStatusHistory, insertServerMetricHistory } from './history-service';
 
 async function getZabbixAuthToken(url: string, user: string, password: string): Promise<string> {
   const payload = {
@@ -41,7 +43,11 @@ export async function fetchZabbixMetrics(
       throw new Error('Credenciais do Zabbix não configuradas para esta empresa.');
     }
 
-    const { zabbix_api_url, zabbix_user, zabbix_password } = integrations;
+    const { zabbix_api_url, zabbix_user } = integrations;
+    const zabbix_password = decryptSecret(integrations.zabbix_password);
+    if (!zabbix_user || !zabbix_password) {
+      throw new Error('Usuário ou senha do Zabbix não configurados para esta empresa.');
+    }
     const token = await getZabbixAuthToken(zabbix_api_url, zabbix_user, zabbix_password);
 
     // 2. Buscar hosts e seus dados
@@ -163,6 +169,7 @@ export async function fetchZabbixMetrics(
         .upsert(serversToUpsert, { onConflict: 'company_id,hostname' });
 
       if (error) throw error;
+      await insertServerMetricHistory(supabase, serversToUpsert);
     }
 
     await recordSyncSuccess(supabase, company_id, 'zabbix', serversToUpsert.length);
@@ -189,7 +196,11 @@ export async function fetchZabbixNetworkDevices(
       throw new Error('Credenciais do Zabbix não configuradas para esta empresa.');
     }
 
-    const { zabbix_api_url, zabbix_user, zabbix_password } = integrations;
+    const { zabbix_api_url, zabbix_user } = integrations;
+    const zabbix_password = decryptSecret(integrations.zabbix_password);
+    if (!zabbix_user || !zabbix_password) {
+      throw new Error('Usuário ou senha do Zabbix não configurados para esta empresa.');
+    }
     const token = await getZabbixAuthToken(zabbix_api_url, zabbix_user, zabbix_password);
 
     // Buscar templates de rede (switches, routers, firewalls)
@@ -256,6 +267,7 @@ export async function fetchZabbixNetworkDevices(
         .upsert(devicesToUpsert, { onConflict: 'company_id,device_name' });
 
       if (error) throw error;
+      await insertNetworkStatusHistory(supabase, devicesToUpsert);
     }
 
     await recordSyncSuccess(supabase, company_id, 'zabbix_network', devicesToUpsert.length);

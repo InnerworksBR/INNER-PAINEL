@@ -17,6 +17,7 @@ export interface UserProfile {
   role: 'admin' | 'client';
   company_id: string | null;
   company_name?: string;
+  status?: string;
 }
 
 export interface JWTPayload {
@@ -71,6 +72,9 @@ export interface Profile {
   full_name: string;
   role: 'admin' | 'client';
   company_id: string | null;
+  status?: string;
+  last_login_at?: string | null;
+  created_at?: string;
   updated_at: string;
   companies?: { name: string };
 }

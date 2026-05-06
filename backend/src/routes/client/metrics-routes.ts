@@ -3,6 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { syncMS365Metrics } from '../../services/ms-graph-service';
 import { fetchZabbixMetrics } from '../../services/zabbix-service';
 import type { JWTPayload } from '../../types';
+import { decryptSecret } from '../../services/crypto-service';
+import { writeAdminAuditLog } from '../../services/audit-service';
 
 export default async function clientMetricsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -61,6 +63,33 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
     return data;
   });
 
+  fastify.get<{ Params: { id: string } }>('/servers/:id/history', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+    const { id } = request.params;
+
+    const { data: server, error: serverError } = await supabaseAdmin
+      .from('servers')
+      .select('id, company_id, hostname')
+      .eq('id', id)
+      .single();
+
+    if (serverError || !server) return reply.code(404).send({ error: 'Servidor não encontrado' });
+    if (user.role !== 'admin' && server.company_id !== user.company_id) {
+      return reply.code(403).send({ error: 'Sem permissão para acessar este servidor' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('server_metric_history')
+      .select('*')
+      .eq('company_id', server.company_id)
+      .eq('hostname', server.hostname)
+      .order('collected_at', { ascending: false })
+      .limit(100);
+
+    if (error) return reply.code(500).send({ error: error.message });
+    return (data || []).reverse();
+  });
+
   // Forçar sincronização — FIX B2: usar supabaseAdmin em vez de supabase
   fastify.post<{ Params: { type: string }; Body: { company_id?: string; host_ids?: string[] } }>('/sync/:type', async (request, reply) => {
     const { user } = request.user as JWTPayload;
@@ -78,19 +107,43 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
 
     try {
       if (type === 'ms365') {
-        return await syncMS365Metrics(supabaseAdmin, targetCompanyId);
+        const result = await syncMS365Metrics(supabaseAdmin, targetCompanyId);
+        await writeAdminAuditLog(supabaseAdmin, request, {
+          action: 'sync.manual',
+          entityType: 'ms365',
+          companyId: targetCompanyId,
+          summary: 'Sync manual MS365 executado',
+          metadata: result,
+        });
+        return result;
       } else if (type === 'zabbix') {
         const { fetchZabbixMetrics, fetchZabbixNetworkDevices } = await import('../../services/zabbix-service');
         const srvResult = await fetchZabbixMetrics(supabaseAdmin, targetCompanyId, host_ids);
         const netResult = await fetchZabbixNetworkDevices(supabaseAdmin, targetCompanyId);
-        return { 
+        const result = { 
           message: 'Sincronização Zabbix concluída (Servidores e Rede)', 
           servers: srvResult.count,
           network: netResult.count
         };
+        await writeAdminAuditLog(supabaseAdmin, request, {
+          action: 'sync.manual',
+          entityType: 'zabbix',
+          companyId: targetCompanyId,
+          summary: 'Sync manual Zabbix executado',
+          metadata: result,
+        });
+        return result;
       } else if (type === 'glpi') {
         const { syncTickets } = await import('../../services/glpi-service');
-        return await syncTickets(supabaseAdmin, targetCompanyId);
+        const result = await syncTickets(supabaseAdmin, targetCompanyId);
+        await writeAdminAuditLog(supabaseAdmin, request, {
+          action: 'sync.manual',
+          entityType: 'glpi',
+          companyId: targetCompanyId,
+          summary: 'Sync manual GLPI executado',
+          metadata: result,
+        });
+        return result;
       }
       return reply.code(400).send({ error: 'Tipo de sincronização inválido. Use: ms365, zabbix ou glpi' });
     } catch (error: any) {
@@ -117,7 +170,11 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
     }
 
     const axiosModule = await import('axios');
-    const { zabbix_api_url, zabbix_user, zabbix_password } = integrations;
+    const { zabbix_api_url, zabbix_user } = integrations;
+    const zabbix_password = decryptSecret(integrations.zabbix_password);
+    if (!zabbix_password) {
+      return reply.code(400).send({ error: 'Senha Zabbix não configurada' });
+    }
 
     const loginRes = await axiosModule.default.post(zabbix_api_url, {
       jsonrpc: '2.0', method: 'user.login',

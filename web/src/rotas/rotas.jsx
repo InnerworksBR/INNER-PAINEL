@@ -16,6 +16,7 @@ import EmpresasAdmin from "../pages/paginasAdmin/empresasAdmin/empresasAdmin";
 import DocAdmin from "../pages/paginasAdmin/docAdmin/docAdmin";
 import UsuariosAdmin from "../pages/paginasAdmin/usuariosAdmin/usuariosAdmin";
 import ConfigAdmin from "../pages/paginasAdmin/configAdmin/configAdmin";
+import AuditAdmin from "../pages/paginasAdmin/auditAdmin/auditAdmin";
 
 // Route Protection
 import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       { path: "empresasAdmin", element: <EmpresasAdmin /> },
       { path: "docAdmin", element: <DocAdmin /> },
       { path: "usuariosAdmin", element: <UsuariosAdmin /> },
+      { path: "auditAdmin", element: <AuditAdmin /> },
       { path: "configAdmin", element: <ConfigAdmin /> },
     ],
   },

@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { verifyAdmin } from '../../hooks/auth-hook';
 import { uploadFile, getSignedUrl, deleteFile } from '../../services/storage-service';
+import { writeAdminAuditLog } from '../../services/audit-service';
 
 interface DocBody {
   company_id: string;
@@ -46,8 +47,6 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
         // Usa o método toBuffer() nativo do fastify-multipart
         const fileBuffer = await file.toBuffer();
         
-        console.log(`[Upload] Arquivo recebido em multipart: ${file.filename}, Tamanho: ${fileBuffer.length} bytes`);
-
         if (fileBuffer.length > 0) {
            pendingFiles.push({
              filename: file.filename,
@@ -98,6 +97,14 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
       }
     }
 
+    await writeAdminAuditLog(supabaseAdmin, request, {
+      action: 'document.upload',
+      entityType: 'document',
+      companyId,
+      summary: `${uploadedFiles.length} documento(s) enviado(s)`,
+      metadata: { files: uploadedFiles.map((f) => f.title), category },
+    });
+
     return {
       message: `${uploadedFiles.length} arquivo(s) enviado(s) com sucesso`,
       count: uploadedFiles.length,
@@ -111,7 +118,7 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
 
     const { data: doc, error } = await supabaseAdmin
       .from('documents')
-      .select('file_url, title')
+      .select('file_url, title, company_id')
       .eq('id', id)
       .single();
 
@@ -125,6 +132,13 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
 
     try {
       const signedUrl = await getSignedUrl(supabaseAdmin, doc.file_url);
+      await writeAdminAuditLog(supabaseAdmin, request, {
+        action: 'document.download',
+        entityType: 'document',
+        entityId: id,
+        companyId: doc.company_id,
+        summary: `Download administrativo: ${doc.title}`,
+      });
       return { url: signedUrl, title: doc.title };
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
@@ -140,6 +154,14 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
       .select();
 
     if (error) return reply.code(500).send({ error: error.message });
+    await writeAdminAuditLog(supabaseAdmin, request, {
+      action: 'document.register',
+      entityType: 'document',
+      entityId: data![0].id,
+      companyId: company_id,
+      summary: `Documento pendente registrado: ${title}`,
+      metadata: { category },
+    });
     return data![0];
   });
 
@@ -155,6 +177,14 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
       .select();
 
     if (error) return reply.code(500).send({ error: error.message });
+    await writeAdminAuditLog(supabaseAdmin, request, {
+      action: 'document.update',
+      entityType: 'document',
+      entityId: id,
+      companyId: data![0]?.company_id,
+      summary: `Documento atualizado: ${data![0]?.title || id}`,
+      metadata: updates,
+    });
     return data![0];
   });
 
@@ -165,7 +195,7 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
     // Buscar file_url para deletar do Storage
     const { data: doc } = await supabaseAdmin
       .from('documents')
-      .select('file_url')
+      .select('file_url, title, company_id')
       .eq('id', id)
       .single();
 
@@ -175,6 +205,13 @@ export default async function adminDocsRoutes(fastify: FastifyInstance): Promise
 
     const { error } = await supabaseAdmin.from('documents').delete().eq('id', id);
     if (error) return reply.code(500).send({ error: error.message });
+    await writeAdminAuditLog(supabaseAdmin, request, {
+      action: 'document.delete',
+      entityType: 'document',
+      entityId: id,
+      companyId: doc?.company_id,
+      summary: `Documento excluído: ${doc?.title || id}`,
+    });
     return { success: true };
   });
 }

@@ -12,7 +12,13 @@ import {
   PieChart as RechartsPieChart,
   Pie,
   Cell,
-  ResponsiveContainer
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip
 } from 'recharts';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 
@@ -24,6 +30,11 @@ const Servidores = () => {
 
   const effectiveActiveServerId = activeServerId || servers[0]?.id || null;
   const activeServer = servers.find(s => s.id === effectiveActiveServerId) || null;
+  const { data: history } = useRealtimeData(
+    activeServer ? `/client/metrics/servers/${activeServer.id}/history` : '/client/metrics/servers',
+    `server_history_${activeServer?.id || 'none'}`,
+    { enabled: Boolean(activeServer), intervalMs: 30000 }
+  );
 
   // Dados dos gráficos baseados no servidor ativo
   const cpuData = activeServer ? [
@@ -191,6 +202,32 @@ const Servidores = () => {
                  <div className="mt-4 text-[10px] text-gray-400 flex justify-between">
                     <span>Atualizado: {new Date(activeServer.last_updated).toLocaleString()}</span>
                  </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+              <div className="p-5 border-b border-gray-100">
+                <h2 className="text-lg font-bold text-gray-800">Tendência Recente</h2>
+                <p className="text-xs text-gray-500 mt-1">Histórico salvo a cada sincronização Zabbix para o servidor selecionado</p>
+              </div>
+              <div className="h-72 p-5">
+                {history.length > 1 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={history.map((row) => ({ ...row, time: new Date(row.collected_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                      <XAxis dataKey="time" tick={{ fontSize: 11 }} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="cpu_usage" name="CPU" stroke="#3b82f6" dot={false} />
+                      <Line type="monotone" dataKey="memory_usage" name="Memória" stroke="#8b5cf6" dot={false} />
+                      <Line type="monotone" dataKey="disk_usage" name="Disco" stroke="#6366f1" dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-gray-400 text-center">
+                    Ainda não há histórico suficiente. Execute pelo menos duas sincronizações para ver tendência.
+                  </div>
+                )}
               </div>
             </div>
 

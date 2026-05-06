@@ -42,12 +42,14 @@ import adminCompaniesRoutes from './routes/admin/companies-routes';
 import adminDocsRoutes from './routes/admin/docs-routes';
 import adminDashboardRoutes from './routes/admin/dashboard-routes';
 import adminSettingsRoutes from './routes/admin/settings-routes';
+import adminAuditRoutes from './routes/admin/audit-routes';
 
 fastify.register(adminUserRoutes, { prefix: '/api/admin/users' });
 fastify.register(adminCompaniesRoutes, { prefix: '/api/admin/companies' });
 fastify.register(adminDocsRoutes, { prefix: '/api/admin/docs' });
 fastify.register(adminDashboardRoutes, { prefix: '/api/admin/dashboard' });
 fastify.register(adminSettingsRoutes, { prefix: '/api/admin/settings' });
+fastify.register(adminAuditRoutes, { prefix: '/api/admin/audit-logs' });
 
 // Health check
 fastify.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));

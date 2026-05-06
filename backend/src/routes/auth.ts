@@ -1,7 +1,7 @@
-// src/routes/auth.ts
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { UserProfile } from '../types';
 import { getSessionTimeoutSeconds } from '../services/settings-service';
+import { writeAdminAuditLog } from '../services/audit-service';
 
 interface LoginBody {
   email: string;
@@ -34,34 +34,53 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       return reply.code(401).send({ error: 'Credenciais inválidas' });
     }
 
-    if (data.user) {
-      const { data: profile, error: profileError } = await supabaseAdmin
-        .from('profiles')
-        .select('*, companies(name)')
-        .eq('id', data.user.id)
-        .single();
-
-      if (profileError || !profile) {
-        return reply.code(401).send({ error: 'Perfil não encontrado' });
-      }
-
-      const userProfile: UserProfile & { company_name?: string } = {
-        id: data.user.id,
-        email: data.user.email!,
-        role: profile.role,
-        company_id: profile.company_id,
-        company_name: profile.companies?.name,
-      };
-
-      const expiresIn = await getSessionTimeoutSeconds(supabaseAdmin);
-      const token = fastify.jwt.sign({ user: userProfile }, { expiresIn });
-      return { token, profile: userProfile };
+    if (!data.user) {
+      return reply.code(500).send({ error: 'Erro inesperado no login' });
     }
 
-    return reply.code(500).send({ error: 'Erro inesperado no login' });
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('*, companies(name)')
+      .eq('id', data.user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return reply.code(401).send({ error: 'Perfil não encontrado' });
+    }
+
+    if (profile.status === 'blocked') {
+      return reply.code(403).send({ error: 'Usuário bloqueado. Fale com o administrador.' });
+    }
+
+    await supabaseAdmin
+      .from('profiles')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', data.user.id);
+
+    const userProfile: UserProfile & { company_name?: string } = {
+      id: data.user.id,
+      email: data.user.email!,
+      role: profile.role,
+      company_id: profile.company_id,
+      company_name: profile.companies?.name,
+      status: profile.status || 'active',
+    };
+
+    const expiresIn = await getSessionTimeoutSeconds(supabaseAdmin);
+    const token = fastify.jwt.sign({ user: userProfile }, { expiresIn });
+
+    if (profile.role === 'admin') {
+      await writeAdminAuditLog(supabaseAdmin, request, {
+        action: 'auth.admin_login',
+        entityType: 'profile',
+        entityId: data.user.id,
+        summary: `Login administrativo: ${data.user.email}`,
+      });
+    }
+
+    return { token, profile: userProfile };
   });
 
-  // Validar token (usado pelo frontend ao montar)
   fastify.get('/validate', {
     preHandler: [fastify.authenticate],
   }, async (request, _reply) => {

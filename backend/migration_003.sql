@@ -120,6 +120,11 @@ VALUES
   ('detailedLogs', 'false')
 ON CONFLICT (key) DO NOTHING;
 
+-- Usuários: controle operacional básico.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
 -- Integrações: entidade GLPI e observabilidade de sync.
 ALTER TABLE company_integrations ADD COLUMN IF NOT EXISTS glpi_entity_id INTEGER;
 ALTER TABLE company_integrations ADD COLUMN IF NOT EXISTS ms365_last_sync_at TIMESTAMP WITH TIME ZONE;
@@ -173,6 +178,134 @@ BEGIN
       AND policyname = 'Clients view own monitoring events'
   ) THEN
     CREATE POLICY "Clients view own monitoring events" ON monitoring_events FOR SELECT USING (
+      company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
+    );
+  END IF;
+END $$;
+
+-- Auditoria administrativa.
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  admin_user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  admin_email TEXT,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
+  summary TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS admin_audit_logs_created_idx
+  ON admin_audit_logs (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS admin_audit_logs_filters_idx
+  ON admin_audit_logs (action, entity_type, company_id, created_at DESC);
+
+ALTER TABLE admin_audit_logs ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'admin_audit_logs'
+      AND policyname = 'Admins can view audit logs'
+  ) THEN
+    CREATE POLICY "Admins can view audit logs" ON admin_audit_logs FOR SELECT USING (
+      EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'admin_audit_logs'
+      AND policyname = 'Admins can insert audit logs'
+  ) THEN
+    CREATE POLICY "Admins can insert audit logs" ON admin_audit_logs FOR INSERT WITH CHECK (
+      EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+  END IF;
+END $$;
+
+-- Histórico simples de monitoramento.
+CREATE TABLE IF NOT EXISTS server_metric_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  server_id UUID REFERENCES servers(id) ON DELETE SET NULL,
+  hostname TEXT NOT NULL,
+  cpu_usage FLOAT DEFAULT 0,
+  memory_usage FLOAT DEFAULT 0,
+  disk_usage FLOAT DEFAULT 0,
+  memory_total FLOAT DEFAULT 0,
+  memory_used FLOAT DEFAULT 0,
+  disk_total FLOAT DEFAULT 0,
+  disk_used FLOAT DEFAULT 0,
+  status TEXT DEFAULT 'Online',
+  collected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS server_metric_history_lookup_idx
+  ON server_metric_history (company_id, hostname, collected_at DESC);
+
+ALTER TABLE server_metric_history ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS network_status_history (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+  network_device_id UUID REFERENCES network_devices(id) ON DELETE SET NULL,
+  device_name TEXT NOT NULL,
+  device_type TEXT,
+  ip_address TEXT,
+  status TEXT DEFAULT 'Online',
+  collected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS network_status_history_lookup_idx
+  ON network_status_history (company_id, device_name, collected_at DESC);
+
+ALTER TABLE network_status_history ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'server_metric_history'
+      AND policyname = 'Admins can do everything on server history'
+  ) THEN
+    CREATE POLICY "Admins can do everything on server history" ON server_metric_history FOR ALL USING (
+      EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'server_metric_history'
+      AND policyname = 'Clients view own server history'
+  ) THEN
+    CREATE POLICY "Clients view own server history" ON server_metric_history FOR SELECT USING (
+      company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
+    );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'network_status_history'
+      AND policyname = 'Admins can do everything on network history'
+  ) THEN
+    CREATE POLICY "Admins can do everything on network history" ON network_status_history FOR ALL USING (
+      EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'network_status_history'
+      AND policyname = 'Clients view own network history'
+  ) THEN
+    CREATE POLICY "Clients view own network history" ON network_status_history FOR SELECT USING (
       company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid())
     );
   END IF;

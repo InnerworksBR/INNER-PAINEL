@@ -2,6 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import { fetchZabbixNetworkDevices } from '../../services/zabbix-service';
 import type { JWTPayload } from '../../types';
+import { writeAdminAuditLog } from '../../services/audit-service';
 
 export default async function clientNetworkRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -80,6 +81,33 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
     return data;
   });
 
+  fastify.get<{ Params: { id: string } }>('/devices/:id/history', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+    const { id } = request.params;
+
+    const { data: device, error: deviceError } = await supabaseAdmin
+      .from('network_devices')
+      .select('id, company_id, device_name')
+      .eq('id', id)
+      .single();
+
+    if (deviceError || !device) return reply.code(404).send({ error: 'Equipamento não encontrado' });
+    if (user.role !== 'admin' && device.company_id !== user.company_id) {
+      return reply.code(403).send({ error: 'Sem permissão para acessar este equipamento' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('network_status_history')
+      .select('*')
+      .eq('company_id', device.company_id)
+      .eq('device_name', device.device_name)
+      .order('collected_at', { ascending: false })
+      .limit(100);
+
+    if (error) return reply.code(500).send({ error: error.message });
+    return (data || []).reverse();
+  });
+
   fastify.post<{ Body: { company_id?: string } }>('/sync', async (request, reply) => {
     const { user } = request.user as JWTPayload;
     if (user.role !== 'admin') {
@@ -93,6 +121,13 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
 
     try {
       const result = await fetchZabbixNetworkDevices(supabaseAdmin, company_id);
+      await writeAdminAuditLog(supabaseAdmin, request, {
+        action: 'sync.manual',
+        entityType: 'network',
+        companyId: company_id,
+        summary: 'Sync manual de rede executado',
+        metadata: result,
+      });
       return result;
     } catch (error: any) {
       return reply.code(500).send({ error: error.message });

@@ -2,6 +2,7 @@
 import axios from 'axios';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { recordSyncError, recordSyncSuccess } from './integration-status-service';
+import { decryptSecret } from './crypto-service';
 
 async function getAccessToken(tenantId: string, clientId: string, clientSecret: string): Promise<string> {
   const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
@@ -34,7 +35,11 @@ export async function syncMS365Metrics(supabase: SupabaseClient, company_id: str
       throw new Error('Credenciais do MS365 não configuradas para esta empresa.');
     }
 
-    const { ms_graph_tenant_id, ms_graph_client_id, ms_graph_client_secret } = integrations;
+    const { ms_graph_tenant_id, ms_graph_client_id } = integrations;
+    const ms_graph_client_secret = decryptSecret(integrations.ms_graph_client_secret);
+    if (!ms_graph_client_id || !ms_graph_client_secret) {
+      throw new Error('Client ID ou Client Secret do MS365 não configurados para esta empresa.');
+    }
 
     const token = await getAccessToken(ms_graph_tenant_id, ms_graph_client_id, ms_graph_client_secret);
 
