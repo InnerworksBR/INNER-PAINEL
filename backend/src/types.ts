@@ -101,6 +101,10 @@ export interface Server {
   disk_total: number;
   disk_used: number;
   status: string;
+  zabbix_host_id?: string | null;
+  zabbix_last_data_at?: string | null;
+  zabbix_agent_available?: boolean | null;
+  zabbix_sync_warning?: string | null;
   last_updated: string;
 }
 

@@ -53,7 +53,6 @@ export async function fetchZabbixMetrics(
     // 2. Buscar hosts e seus dados
     const hostParams: any = {
       selectInterfaces: ['ip'],
-      selectItems: ['key_', 'lastvalue', 'units'],
       selectGroups: ['name'],
       filter: { status: '0' },
       output: ['hostid', 'name', 'status', 'available', 'snmp_available', 'ipmi_available', 'jmx_available'],
@@ -77,6 +76,10 @@ export async function fetchZabbixMetrics(
     if (!hosts) throw new Error('Falha ao buscar hosts no Zabbix');
 
     const serverHosts = hosts.filter((h: any) => !isNetworkHost(h));
+    const itemsByHostId = await getItemsByHostId(zabbix_api_url, token, serverHosts.map((h: any) => h.hostid));
+    serverHosts.forEach((host: any) => {
+      host.items = itemsByHostId.get(String(host.hostid)) || [];
+    });
 
     // 🔍 DEBUG: Mostra chaves de itens do primeiro servidor no terminal
     const detailedLogs = await isDetailedLoggingEnabled(supabase);
@@ -87,10 +90,13 @@ export async function fetchZabbixMetrics(
     }
 
     const previousServerStatuses = await getPreviousStatuses(supabase, 'servers', company_id, 'hostname');
+    const previousServers = await getPreviousServers(supabase, company_id);
 
     const serversToUpsert = serverHosts.map((h: any) => {
+      const items = h.items || [];
+      const previousServer = previousServers.get(h.name);
       // Items de CPU - Busca por chave exata ou padrão comum
-      const cpuItem = h.items?.find((i: any) => 
+      const cpuItem = items.find((i: any) => 
         i.key_ === 'system.cpu.util' || 
         i.key_ === 'system.cpu.utilization' ||
         i.key_.toLowerCase().includes('processor time') ||
@@ -98,11 +104,11 @@ export async function fetchZabbixMetrics(
       );
       
       // Items de Memória (%)
-      const memPavailItem = h.items?.find((i: any) => 
+      const memPavailItem = items.find((i: any) => 
         i.key_ === 'vm.memory.size[pavailable]' || 
         i.key_.toLowerCase().includes('memory.pavailable')
       );
-      const memUtilItem = h.items?.find((i: any) => 
+      const memUtilItem = items.find((i: any) => 
         i.key_ === 'vm.memory.util' || 
         i.key_ === 'vm.memory.utilization' || 
         i.key_.toLowerCase().includes('memory.util') ||
@@ -110,67 +116,84 @@ export async function fetchZabbixMetrics(
       );
       
       // Items de Memória (Absolutos em Bytes)
-      const memTotalItem = h.items?.find((i: any) => 
+      const memTotalItem = items.find((i: any) => 
         i.key_ === 'vm.memory.size[total]' || 
         i.key_.toLowerCase().includes('memory.total') ||
         i.key_.toLowerCase().includes('physical.memory')
       );
-      const memAvailItem = h.items?.find((i: any) => 
+      const memAvailItem = items.find((i: any) => 
         i.key_ === 'vm.memory.size[available]' || 
         i.key_.toLowerCase().includes('memory.available')
       );
-      const memUsedItem = h.items?.find((i: any) => 
+      const memUsedItem = items.find((i: any) => 
         i.key_ === 'vm.memory.size[used]' || 
         i.key_.toLowerCase().includes('memory.used')
       );
 
-      const disk = getDiskMetrics(h.items || []);
+      const disk = getDiskMetrics(items);
 
-      const pingItem = h.items?.find((i: any) => i.key_ === 'icmpping' || i.key_ === 'agent.ping');
+      const pingItem = items.find((i: any) => i.key_ === 'icmpping' || i.key_ === 'agent.ping');
 
       // Conversão para GB (Bytes -> GB)
       const toGB = (bytes: any) => bytes ? parseFloat((parseFloat(bytes) / 1024 / 1024 / 1024).toFixed(2)) : 0;
 
-      const cpuVal = cpuItem ? parseFloat(cpuItem.lastvalue) : 0;
+      const cpuVal = hasCollectedNumericValue(cpuItem) ? parseFloat(cpuItem.lastvalue) : 0;
 
       // Cálculo de memória
-      const memTotal = toGB(memTotalItem?.lastvalue);
+      let memTotal = hasCollectedNumericValue(memTotalItem, { requirePositive: true }) ? toGB(memTotalItem?.lastvalue) : 0;
       let memUsed = 0;
-      if (memUsedItem && memUsedItem.lastvalue && memUsedItem.lastvalue !== '0') {
+      if (hasCollectedNumericValue(memUsedItem, { requirePositive: true })) {
         memUsed = toGB(memUsedItem.lastvalue);
-      } else if (memAvailItem && memTotal > 0) {
+      } else if (hasCollectedNumericValue(memAvailItem) && memTotal > 0) {
         memUsed = parseFloat((memTotal - toGB(memAvailItem.lastvalue)).toFixed(2));
       }
 
       let memPercent = 0;
-      if (memUtilItem) {
+      if (hasCollectedNumericValue(memUtilItem)) {
         memPercent = parseFloat(memUtilItem.lastvalue);
-      } else if (memPavailItem) {
+      } else if (hasCollectedNumericValue(memPavailItem)) {
         memPercent = 100 - parseFloat(memPavailItem.lastvalue);
       } else if (memTotal > 0 && memUsed > 0) {
         memPercent = (memUsed / memTotal) * 100;
       }
       memPercent = parseFloat(memPercent.toFixed(2));
 
-      const diskPercent = disk.percent;
-      const diskTotal = disk.totalGb;
-      const diskUsed = disk.usedGb;
+      const hasMemoryAbsolute = memTotal > 0 || memUsed > 0;
+      const hasDiskData = disk.hasData;
 
-      const pingVal = pingItem ? parseFloat(pingItem.lastvalue) : 0;
+      if (!hasMemoryAbsolute && previousServer) {
+        memTotal = previousServer.memory_total || 0;
+        memUsed = previousServer.memory_used || 0;
+      }
+
+      const diskPercent = hasDiskData ? disk.percent : previousServer?.disk_usage || 0;
+      const diskTotal = hasDiskData ? disk.totalGb : previousServer?.disk_total || 0;
+      const diskUsed = hasDiskData ? disk.usedGb : previousServer?.disk_used || 0;
+
+      const pingVal = hasCollectedNumericValue(pingItem) ? parseFloat(pingItem.lastvalue) : 0;
 
       // Status: prioridade para os campos de availability do Zabbix
       let status = 'Offline';
       const isAvailable = h.available === '1' || h.snmp_available === '1' || h.ipmi_available === '1' || h.jmx_available === '1';
+      const hasRecentMetrics = [cpuItem, memUtilItem, memPavailItem, memTotalItem, memUsedItem, memAvailItem, disk.lastItem]
+        .some((item: any) => hasCollectedNumericValue(item));
+      const warnings = [];
       
-      if (isAvailable) {
+      if (isAvailable || pingVal === 1) {
         status = 'Online';
-      } else if (pingVal === 1 || cpuVal > 0 || memPercent > 0) {
+      } else if (hasRecentMetrics) {
         // Fallback: se o Zabbix não reporta availability mas temos dados recentes ou ping
-        status = 'Online';
+        status = 'Atencao';
       }
+
+      if (pingItem && pingVal !== 1) warnings.push('Agente Zabbix sem resposta');
+      if (!hasCollectedNumericValue(cpuItem)) warnings.push('CPU sem coleta recente');
+      if (!hasMemoryAbsolute) warnings.push('Memoria total/usada sem coleta recente');
+      if (!hasDiskData) warnings.push('Disco sem coleta recente');
 
       return {
         company_id,
+        zabbix_host_id: String(h.hostid),
         hostname: h.name,
         cpu_usage: parseFloat(cpuVal.toFixed(2)),
         memory_usage: parseFloat(memPercent.toFixed(2)),
@@ -180,6 +203,9 @@ export async function fetchZabbixMetrics(
         disk_total: diskTotal,
         disk_used: diskUsed,
         status,
+        zabbix_last_data_at: getLatestItemDate(items),
+        zabbix_agent_available: isAvailable || pingVal === 1,
+        zabbix_sync_warning: warnings.length > 0 ? warnings.join('; ') : null,
         last_updated: new Date().toISOString(),
       };
     });
@@ -319,6 +345,84 @@ export async function fetchZabbixNetworkDevices(
   }
 }
 
+async function getItemsByHostId(
+  zabbixApiUrl: string,
+  token: string,
+  hostIds: string[]
+): Promise<Map<string, any[]>> {
+  if (hostIds.length === 0) return new Map();
+
+  const response = await axios.post(zabbixApiUrl, {
+    jsonrpc: '2.0',
+    method: 'item.get',
+    params: {
+      hostids: hostIds,
+      output: ['itemid', 'hostid', 'key_', 'name', 'lastvalue', 'units', 'lastclock', 'state', 'status', 'error'],
+    },
+    id: 20,
+    auth: token,
+  });
+
+  if (response.data.error) {
+    throw new Error(response.data.error.data || response.data.error.message || 'Falha ao buscar itens do Zabbix');
+  }
+
+  const byHost = new Map<string, any[]>();
+  (response.data.result || []).forEach((item: any) => {
+    const hostId = String(item.hostid);
+    const current = byHost.get(hostId) || [];
+    current.push(item);
+    byHost.set(hostId, current);
+  });
+
+  return byHost;
+}
+
+function hasCollectedNumericValue(
+  item: any,
+  options: { requirePositive?: boolean } = {}
+): boolean {
+  if (!item) return false;
+  if (String(item.status) === '1' || String(item.state) === '1') return false;
+
+  const value = Number.parseFloat(item.lastvalue);
+  if (!Number.isFinite(value)) return false;
+  if (options.requirePositive && value <= 0) return false;
+
+  const lastClock = Number.parseInt(item.lastclock || '0', 10);
+  if (value === 0 && lastClock <= 0) return false;
+
+  return true;
+}
+
+function getLatestItemDate(items: any[]): string | null {
+  const latestClock = Math.max(
+    0,
+    ...items
+      .map((item) => Number.parseInt(item.lastclock || '0', 10))
+      .filter((clock) => Number.isFinite(clock))
+  );
+
+  return latestClock > 0 ? new Date(latestClock * 1000).toISOString() : null;
+}
+
+async function getPreviousServers(
+  supabase: SupabaseClient,
+  companyId: string
+): Promise<Map<string, any>> {
+  const { data, error } = await supabase
+    .from('servers')
+    .select('hostname, memory_total, memory_used, disk_usage, disk_total, disk_used')
+    .eq('company_id', companyId);
+
+  if (error) {
+    console.error('Erro ao buscar dados anteriores dos servidores:', error.message);
+    return new Map();
+  }
+
+  return new Map((data || []).map((row: any) => [row.hostname, row]));
+}
+
 function guessDeviceType(host: any): string {
   const name = (host.name || '').toLowerCase();
   const groups = (host.groups || []).map((g: any) => g.name.toLowerCase()).join(' ');
@@ -331,8 +435,8 @@ function guessDeviceType(host: any): string {
   return 'Outro';
 }
 
-function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedGb: number; mount?: string } {
-  const entries = new Map<string, { total?: number; used?: number; pused?: number }>();
+function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedGb: number; hasData: boolean; mount?: string; lastItem?: any } {
+  const entries = new Map<string, { total?: number; used?: number; pused?: number; lastItem?: any }>();
 
   items.forEach((item: any) => {
     // 1. Tentar padrão vfs.fs.size[...] ou vfs.fs.dependent.size[...]
@@ -343,12 +447,26 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
       if (isIgnoredFilesystem(mount)) return;
 
       const metric = match[2] as 'total' | 'used' | 'pused';
+      if (!hasCollectedNumericValue(item, { requirePositive: metric === 'total' })) return;
       const value = Number.parseFloat(item.lastvalue);
-      if (!Number.isFinite(value)) return;
 
       const current = entries.get(mount) || {};
       current[metric] = value;
+      current.lastItem = newerItem(current.lastItem, item);
       entries.set(mount, current);
+      return;
+    }
+
+    if (String(item.key_ || '').startsWith('vfs.fs.') && String(item.key_ || '').includes(',data]')) {
+      const data = parseFilesystemData(item);
+      if (!data || isIgnoredFilesystem(data.mount)) return;
+
+      const current = entries.get(data.mount) || {};
+      if (data.total !== undefined) current.total = data.total;
+      if (data.used !== undefined) current.used = data.used;
+      if (data.pused !== undefined) current.pused = data.pused;
+      current.lastItem = newerItem(current.lastItem, item);
+      entries.set(data.mount, current);
       return;
     }
 
@@ -359,11 +477,12 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
       if (isIgnoredFilesystem(mount)) return;
 
       const metric = item.key_.includes('total') ? 'total' : 'used';
+      if (!hasCollectedNumericValue(item, { requirePositive: metric === 'total' })) return;
       const value = Number.parseFloat(item.lastvalue);
-      if (!Number.isFinite(value)) return;
 
       const current = entries.get(mount) || {};
       current[metric] = value;
+      current.lastItem = newerItem(current.lastItem, item);
       entries.set(mount, current);
     }
   });
@@ -381,8 +500,8 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
       
       if (!metric) return;
 
+      if (!hasCollectedNumericValue(item, { requirePositive: true })) return;
       const value = Number.parseFloat(item.lastvalue);
-      if (!Number.isFinite(value) || value <= 0) return;
 
       // Tentar extrair o nome do disco (ex: C:, /, etc)
       const mountMatch = k.match(/\[(.+?)\]/);
@@ -391,6 +510,7 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
       const current = entries.get(mount) || {};
       if (current[metric] === undefined || current[metric] === 0) {
         current[metric] = value;
+        current.lastItem = newerItem(current.lastItem, item);
         entries.set(mount, current);
       }
     });
@@ -405,7 +525,7 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
     });
 
   const [mount, selected] = candidates[0] || [];
-  if (!selected) return { percent: 0, totalGb: 0, usedGb: 0 };
+  if (!selected) return { percent: 0, totalGb: 0, usedGb: 0, hasData: false };
 
   const totalGb = bytesToGb(selected.total);
   const usedGb = bytesToGb(selected.used);
@@ -415,7 +535,33 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
       ? Number(((selected.used / selected.total) * 100).toFixed(2))
       : 0;
 
-  return { percent, totalGb, usedGb, mount };
+  return { percent, totalGb, usedGb, hasData: true, mount, lastItem: selected.lastItem };
+}
+
+function parseFilesystemData(item: any): { mount: string; total?: number; used?: number; pused?: number } | null {
+  if (!item?.lastvalue || Number.parseInt(item.lastclock || '0', 10) <= 0) return null;
+
+  try {
+    const parsed = JSON.parse(item.lastvalue);
+    const bytes = parsed?.bytes;
+    const mount = normalizeMount(parsed?.fsname || String(item.key_ || '').match(/\[(.+?),/)?.[1] || '');
+    if (!mount || !bytes) return null;
+
+    return {
+      mount,
+      total: Number.isFinite(Number(bytes.total)) ? Number(bytes.total) : undefined,
+      used: Number.isFinite(Number(bytes.used)) ? Number(bytes.used) : undefined,
+      pused: Number.isFinite(Number(bytes.pused)) ? Number(bytes.pused) : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function newerItem(current: any, next: any): any {
+  const currentClock = Number.parseInt(current?.lastclock || '0', 10);
+  const nextClock = Number.parseInt(next?.lastclock || '0', 10);
+  return nextClock >= currentClock ? next : current;
 }
 
 function normalizeMount(mount: string): string {
@@ -476,7 +622,8 @@ function buildStatusChangeEvents({
       const previousStatus = previousStatuses.get(row.name);
       if (!previousStatus || previousStatus === row.status) return null;
 
-      const wentOffline = row.status !== 'Online';
+      const wentOffline = row.status === 'Offline';
+      const hasWarning = row.status === 'Atencao';
       const sourceLabel = source === 'server' ? 'Servidor' : 'Equipamento de rede';
       return {
         companyId,
@@ -485,10 +632,12 @@ function buildStatusChangeEvents({
         entityType: row.type,
         previousStatus,
         currentStatus: row.status,
-        severity: wentOffline ? 'critical' as const : 'info' as const,
+        severity: wentOffline ? 'critical' as const : hasWarning ? 'warning' as const : 'info' as const,
         message: wentOffline
-          ? `${sourceLabel} ${row.name} caiu ou ficou indisponível.`
-          : `${sourceLabel} ${row.name} voltou a ficar online.`,
+          ? `${sourceLabel} ${row.name} caiu ou ficou indisponivel.`
+          : hasWarning
+            ? `${sourceLabel} ${row.name} esta com coleta parcial no Zabbix.`
+            : `${sourceLabel} ${row.name} voltou a ficar online.`,
         metadata: row.metadata,
       };
     })
@@ -499,7 +648,7 @@ function buildStatusChangeEvents({
       entityType: string;
       previousStatus: string;
       currentStatus: string;
-      severity: 'info' | 'critical';
+      severity: 'info' | 'warning' | 'critical';
       message: string;
       metadata?: Record<string, unknown>;
     }>;

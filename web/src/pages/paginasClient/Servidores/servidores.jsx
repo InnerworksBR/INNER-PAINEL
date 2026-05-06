@@ -36,15 +36,17 @@ const Servidores = () => {
     { enabled: Boolean(activeServer), intervalMs: 30000 }
   );
 
+  const clampPercent = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+
   // Dados dos gráficos baseados no servidor ativo
   const cpuData = activeServer ? [
-    { name: 'Em Uso', value: activeServer.cpu_usage, color: '#3b82f6' },
-    { name: 'Livre', value: 100 - activeServer.cpu_usage, color: '#e5e7eb' },
+    { name: 'Em Uso', value: clampPercent(activeServer.cpu_usage), color: '#3b82f6' },
+    { name: 'Livre', value: 100 - clampPercent(activeServer.cpu_usage), color: '#e5e7eb' },
   ] : [];
 
   const memData = activeServer ? [
-    { name: 'Em Uso', value: activeServer.memory_usage, color: '#8b5cf6' },
-    { name: 'Livre', value: 100 - activeServer.memory_usage, color: '#e5e7eb' },
+    { name: 'Em Uso', value: clampPercent(activeServer.memory_usage), color: '#8b5cf6' },
+    { name: 'Livre', value: 100 - clampPercent(activeServer.memory_usage), color: '#e5e7eb' },
   ] : [];
 
   const filteredServers = servers.filter(s => 
@@ -60,10 +62,27 @@ const Servidores = () => {
     switch (status?.toLowerCase()) {
       case 'online': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
       case 'offline': return 'bg-red-50 text-red-600 border-red-100';
+      case 'atencao': return 'bg-amber-50 text-amber-700 border-amber-100';
       default: return 'bg-gray-50 text-gray-600 border-gray-100';
     }
   };
 
+  const getStatusDotColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'online': return 'bg-emerald-500';
+      case 'offline': return 'bg-red-500';
+      case 'atencao': return 'bg-amber-500';
+      default: return 'bg-gray-400';
+    }
+  };
+
+  const displayStatus = (status) => status === 'Atencao' ? 'Atencao' : status;
+  const hasGbData = (used, total) => Number(used) > 0 || Number(total) > 0;
+  const formatGbPair = (used, total) => hasGbData(used, total) ? `${used || 0} GB / ${total || 0} GB` : '--';
+  const formatZabbixTime = (server) => {
+    const value = server?.zabbix_last_data_at || server?.last_updated;
+    return value ? new Date(value).toLocaleString('pt-BR') : '--';
+  };
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[400px]">
@@ -105,18 +124,21 @@ const Servidores = () => {
                   <Server className={`w-4 h-4 ${effectiveActiveServerId === server.id ? 'text-blue-600' : 'text-gray-500'}`} />
                   <div>
                     <h3 className="font-semibold text-sm text-gray-800">{server.hostname}</h3>
-                    <p className="text-[10px] text-gray-500">Última atualização: {new Date(server.last_updated).toLocaleTimeString()}</p>
+                    <p className="text-[10px] text-gray-500">Coleta Zabbix: {formatZabbixTime(server)}</p>
                   </div>
                 </div>
-                <div className={`w-2 h-2 rounded-full ${server.status === 'Online' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${getStatusDotColor(server.status)}`}></div>
               </div>
+              {server.zabbix_sync_warning && (
+                <p className="text-[10px] text-amber-700 mb-2">{server.zabbix_sync_warning}</p>
+              )}
               <div className="mt-2">
                 <div className="flex justify-between text-[10px] mb-1">
                   <span className="text-gray-500">CPU: {server.cpu_usage}%</span>
                   <span className="text-gray-500">MEM: {server.memory_usage}%</span>
                 </div>
                 <div className="w-full bg-gray-100 h-1 rounded-full overflow-hidden">
-                   <div className="bg-blue-500 h-full" style={{ width: `${server.cpu_usage}%` }}></div>
+                   <div className="bg-blue-500 h-full" style={{ width: `${clampPercent(server.cpu_usage)}%` }}></div>
                 </div>
               </div>
             </div>
@@ -156,8 +178,11 @@ const Servidores = () => {
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex items-center justify-center font-bold text-lg">{activeServer.cpu_usage}%</div>
                    </div>
-                   <div className="text-sm text-gray-500">Status: <span className="text-emerald-600 font-semibold">{activeServer.status}</span></div>
+                   <div className="text-sm text-gray-500">Status: <span className={`font-semibold ${activeServer.status === 'Online' ? 'text-emerald-600' : activeServer.status === 'Offline' ? 'text-red-600' : 'text-amber-700'}`}>{displayStatus(activeServer.status)}</span></div>
                 </div>
+                {activeServer.zabbix_sync_warning && (
+                  <p className="mt-4 text-xs text-amber-700">{activeServer.zabbix_sync_warning}</p>
+                )}
               </div>
 
               {/* Memory Card */}
@@ -178,9 +203,9 @@ const Servidores = () => {
                    </div>
                    <div className="text-sm text-gray-500 text-center">
                       <div className="font-semibold text-gray-800">
-                        {activeServer.memory_used || 0} GB / {activeServer.memory_total || 0} GB
+                        {formatGbPair(activeServer.memory_used, activeServer.memory_total)}
                       </div>
-                      <div className="text-[10px]">Utilização de RAM</div>
+                      <div className="text-[10px]">{hasGbData(activeServer.memory_used, activeServer.memory_total) ? 'Utilizacao de RAM' : 'Dados parciais'}</div>
                    </div>
                 </div>
               </div>
@@ -191,16 +216,16 @@ const Servidores = () => {
                   <HardDrive className="w-5 h-5 text-indigo-500" /> Armazenamento
                 </h3>
                  <div className="text-xs font-semibold text-indigo-600 mb-2">
-                    {activeServer.disk_used || 0} GB usados de {activeServer.disk_total || 0} GB
+                    {hasGbData(activeServer.disk_used, activeServer.disk_total) ? `${activeServer.disk_used || 0} GB usados de ${activeServer.disk_total || 0} GB` : 'Dados parciais'}
                  </div>
                  <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mb-4">
-                    <div className="bg-indigo-500 h-full" style={{ width: `${activeServer.disk_usage}%` }}></div>
+                    <div className="bg-indigo-500 h-full" style={{ width: `${clampPercent(activeServer.disk_usage)}%` }}></div>
                  </div>
                  <div className="text-xs text-gray-400 mt-2">
-                    Capacidade Total: {activeServer.disk_total || 0} GB
+                    Capacidade Total: {hasGbData(activeServer.disk_used, activeServer.disk_total) ? `${activeServer.disk_total || 0} GB` : '--'}
                  </div>
                  <div className="mt-4 text-[10px] text-gray-400 flex justify-between">
-                    <span>Atualizado: {new Date(activeServer.last_updated).toLocaleString()}</span>
+                    <span>Coleta Zabbix: {formatZabbixTime(activeServer)}</span>
                  </div>
               </div>
             </div>
@@ -285,18 +310,21 @@ const Servidores = () => {
                          <td className="px-6 py-4">{s.cpu_usage}%</td>
                          <td className="px-6 py-4 flex flex-col">
                             <span className="text-sm font-medium">{s.memory_usage}%</span>
-                            <span className="text-[10px] text-gray-500">{s.memory_used}GB / {s.memory_total}GB</span>
+                            <span className="text-[10px] text-gray-500">{formatGbPair(s.memory_used, s.memory_total)}</span>
                          </td>
                          <td className="px-6 py-4">
                             <div className="flex flex-col">
                                <span className="text-sm font-medium">{s.disk_usage}%</span>
-                               <span className="text-[10px] text-gray-500">{s.disk_used}GB / {s.disk_total}GB</span>
+                               <span className="text-[10px] text-gray-500">{formatGbPair(s.disk_used, s.disk_total)}</span>
                             </div>
                          </td>
                         <td className="px-6 py-4">
                           <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${getStatusColor(s.status)}`}>
-                            {s.status}
+                            {displayStatus(s.status)}
                           </span>
+                          {s.zabbix_sync_warning && (
+                            <p className="mt-1 text-[10px] text-amber-700 max-w-48">{s.zabbix_sync_warning}</p>
+                          )}
                         </td>
                       </tr>
                     ))}
