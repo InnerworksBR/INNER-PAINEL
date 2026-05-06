@@ -1,42 +1,30 @@
-// src/jobs/sync-scheduler.ts
 import type { SupabaseClient } from '@supabase/supabase-js';
 import cron from 'node-cron';
 import { syncTickets } from '../services/glpi-service';
 import { syncMS365Metrics } from '../services/ms-graph-service';
 import { fetchZabbixMetrics, fetchZabbixNetworkDevices } from '../services/zabbix-service';
+import { isDetailedLoggingEnabled } from '../services/settings-service';
 
 export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
-  console.log('🕐 Iniciando scheduler de sincronização automática...');
+  console.log('Iniciando scheduler de sincronizacao automatica...');
 
-  // Sync Zabbix (servidores) — a cada 30 segundos
   cron.schedule('*/30 * * * * *', async () => {
-    console.log('[CRON] Iniciando sync Zabbix (servidores)...');
     await syncAllCompanies(supabaseAdmin, 'zabbix');
   });
 
-  // Sync Zabbix (rede) — a cada 1 minuto
   cron.schedule('* * * * *', async () => {
-    console.log('[CRON] Iniciando sync Zabbix (rede)...');
     await syncAllCompanies(supabaseAdmin, 'zabbix-network');
   });
 
-  // Sync GLPI — a cada 30 minutos
   cron.schedule('*/30 * * * *', async () => {
-    console.log('[CRON] Iniciando sync GLPI...');
     await syncAllCompanies(supabaseAdmin, 'glpi');
   });
 
-  // Sync MS365 — a cada 6 horas
   cron.schedule('0 */6 * * *', async () => {
-    console.log('[CRON] Iniciando sync MS365...');
     await syncAllCompanies(supabaseAdmin, 'ms365');
   });
 
-  console.log('✅ Scheduler configurado:');
-  console.log('   - Zabbix (servidores): a cada 30 seg');
-  console.log('   - Zabbix (rede): a cada 60 seg');
-  console.log('   - GLPI: a cada 30 min');
-  console.log('   - MS365: a cada 6 horas');
+  console.log('Scheduler configurado: Zabbix 30s, rede 60s, GLPI 30min, MS365 6h');
 }
 
 async function syncAllCompanies(
@@ -44,7 +32,7 @@ async function syncAllCompanies(
   syncType: 'zabbix' | 'zabbix-network' | 'glpi' | 'ms365'
 ): Promise<void> {
   try {
-    // Buscar todas as empresas com integrações configuradas
+    const detailedLogs = await isDetailedLoggingEnabled(supabaseAdmin);
     const { data: integrations, error } = await supabaseAdmin
       .from('company_integrations')
       .select('company_id');
@@ -72,13 +60,15 @@ async function syncAllCompanies(
             await syncMS365Metrics(supabaseAdmin, companyId);
             break;
         }
-        console.log(`[CRON] ${syncType} sync OK para empresa ${companyId}`);
+
+        if (detailedLogs) {
+          console.log(`[CRON] ${syncType} sync OK para empresa ${companyId}`);
+        }
       } catch (err: any) {
-        // Log the error but continue with other companies
         console.error(`[CRON] ${syncType} sync FALHOU para empresa ${companyId}:`, err.message);
       }
     }
   } catch (err: any) {
-    console.error(`[CRON] Erro geral na sincronização ${syncType}:`, err.message);
+    console.error(`[CRON] Erro geral na sincronizacao ${syncType}:`, err.message);
   }
 }

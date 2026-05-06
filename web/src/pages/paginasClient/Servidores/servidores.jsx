@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Server,
   Search,
@@ -25,22 +25,15 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
-import api from '../../../services/api';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 
 const Servidores = () => {
-  const { data: servers, loading } = useRealtimeData('/client/metrics/servers', 'servers');
+  const { data: servers, loading, refresh } = useRealtimeData('/client/metrics/servers', 'servers', { intervalMs: 30000 });
   const [activeServerId, setActiveServerId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Selecionar primeiro servidor quando dados chegam
-  useEffect(() => {
-    if (servers.length > 0 && !activeServerId) {
-      setActiveServerId(servers[0].id);
-    }
-  }, [servers, activeServerId]);
-
-  const activeServer = servers.find(s => s.id === activeServerId) || null;
+  const effectiveActiveServerId = activeServerId || servers[0]?.id || null;
+  const activeServer = servers.find(s => s.id === effectiveActiveServerId) || null;
 
   // Dados dos gráficos baseados no servidor ativo
   const cpuData = activeServer ? [
@@ -96,14 +89,14 @@ const Servidores = () => {
             <div
               key={server.id}
               onClick={() => setActiveServerId(server.id)}
-              className={`p-3 rounded-lg cursor-pointer transition-all border ${activeServerId === server.id
+              className={`p-3 rounded-lg cursor-pointer transition-all border ${effectiveActiveServerId === server.id
                 ? 'bg-blue-50 border-blue-100 shadow-sm'
                 : 'bg-white border-transparent hover:bg-gray-50'
                 }`}
             >
               <div className="flex justify-between items-start mb-2">
                 <div className="flex items-center gap-2">
-                  <Server className={`w-4 h-4 ${activeServerId === server.id ? 'text-blue-600' : 'text-gray-500'}`} />
+                  <Server className={`w-4 h-4 ${effectiveActiveServerId === server.id ? 'text-blue-600' : 'text-gray-500'}`} />
                   <div>
                     <h3 className="font-semibold text-sm text-gray-800">{server.hostname}</h3>
                     <p className="text-[10px] text-gray-500">Última atualização: {new Date(server.last_updated).toLocaleTimeString()}</p>
@@ -129,10 +122,13 @@ const Servidores = () => {
       <div className="flex-1 overflow-y-auto p-6 md:p-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-2xl font-bold text-gray-800">Monitoramento de Servidores</h1>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-full">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-xs font-medium text-emerald-700">Live via Zabbix</span>
-          </div>
+          <button
+            onClick={refresh}
+            className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-full hover:bg-emerald-100 transition-colors"
+          >
+            <RefreshCw size={14} className="text-emerald-700" />
+            <span className="text-xs font-medium text-emerald-700">Atualizar Zabbix</span>
+          </button>
         </div>
 
         {activeServer ? (

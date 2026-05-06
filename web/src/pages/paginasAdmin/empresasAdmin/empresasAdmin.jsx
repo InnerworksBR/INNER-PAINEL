@@ -26,6 +26,9 @@ const EmpresasAdmin = () => {
 
     const handleOpenIntegrationsModal = (company) => {
         setIntegrationsCompany(company);
+        setSaveError('');
+        setSaveSuccess('');
+        setSyncStatus({ loading: false, result: null });
         const ints = Array.isArray(company.company_integrations)
             ? (company.company_integrations[0] || {})
             : (company.company_integrations || {});
@@ -40,10 +43,12 @@ const EmpresasAdmin = () => {
 
     const [syncStatus, setSyncStatus] = useState({ loading: false, result: null });
     const [saveError, setSaveError] = useState('');
+    const [saveSuccess, setSaveSuccess] = useState('');
 
     const handleIntegrationsSubmit = async (e) => {
         e.preventDefault();
         setSaveError('');
+        setSaveSuccess('');
         try {
             const payload = { ...integrationValues };
             if (payload.glpi_entity_id === '') {
@@ -54,8 +59,8 @@ const EmpresasAdmin = () => {
 
             const result = await updateIntegrations(integrationsCompany.id, payload);
             if (result?.success) {
-                alert('Integrações salvas com sucesso!');
-                setIsIntegrationsModalOpen(false);
+                setSaveSuccess('Integrações salvas com sucesso.');
+                setIntegrationsCompany(prev => ({ ...prev, company_integrations: result.data }));
             } else {
                 setSaveError(result?.error || 'Erro desconhecido ao salvar integrações');
             }
@@ -72,6 +77,16 @@ const EmpresasAdmin = () => {
                 company_id: integrationsCompany.id,
             });
             setSyncStatus({ loading: false, result: { success: true, data: res.data } });
+            const fieldPrefix = type === 'ms365' ? 'ms365' : type;
+            setIntegrationsCompany(prev => ({
+                ...prev,
+                company_integrations: {
+                    ...(Array.isArray(prev.company_integrations) ? (prev.company_integrations[0] || {}) : (prev.company_integrations || {})),
+                    [`${fieldPrefix}_last_sync_at`]: res.data?.lastUpdated || new Date().toISOString(),
+                    [`${fieldPrefix}_last_sync_error`]: null,
+                    [`${fieldPrefix}_last_sync_count`]: res.data?.count ?? 0,
+                },
+            }));
         } catch (error) {
             setSyncStatus({
                 loading: false,
@@ -113,6 +128,45 @@ const EmpresasAdmin = () => {
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.cnpj.includes(searchTerm)
     );
+
+    const currentIntegrations = integrationsCompany
+        ? (Array.isArray(integrationsCompany.company_integrations)
+            ? (integrationsCompany.company_integrations[0] || {})
+            : (integrationsCompany.company_integrations || {}))
+        : {};
+
+    const integrationStatuses = [
+        {
+            name: 'GLPI',
+            configured: Boolean(currentIntegrations.glpi_entity_id),
+            lastSync: currentIntegrations.glpi_last_sync_at,
+            lastError: currentIntegrations.glpi_last_sync_error,
+            count: currentIntegrations.glpi_last_sync_count,
+        },
+        {
+            name: 'MS365',
+            configured: Boolean(currentIntegrations.ms_graph_tenant_id && currentIntegrations.ms_graph_client_id),
+            lastSync: currentIntegrations.ms365_last_sync_at,
+            lastError: currentIntegrations.ms365_last_sync_error,
+            count: currentIntegrations.ms365_last_sync_count,
+        },
+        {
+            name: 'Zabbix Servidores',
+            configured: Boolean(currentIntegrations.zabbix_api_url && currentIntegrations.zabbix_user),
+            lastSync: currentIntegrations.zabbix_last_sync_at,
+            lastError: currentIntegrations.zabbix_last_sync_error,
+            count: currentIntegrations.zabbix_last_sync_count,
+        },
+        {
+            name: 'Zabbix Rede',
+            configured: Boolean(currentIntegrations.zabbix_api_url && currentIntegrations.zabbix_user),
+            lastSync: currentIntegrations.zabbix_network_last_sync_at,
+            lastError: currentIntegrations.zabbix_network_last_sync_error,
+            count: currentIntegrations.zabbix_network_last_sync_count,
+        },
+    ];
+
+    const formatSyncDate = (value) => value ? new Date(value).toLocaleString('pt-BR') : 'Nunca';
 
     return (
         <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500 font-admin">
@@ -328,6 +382,35 @@ const EmpresasAdmin = () => {
                                     </div>
                                 </div>
                             )}
+
+                            {saveSuccess && (
+                                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-start gap-2">
+                                    <CheckCircle size={18} className="text-emerald-600 mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="font-semibold text-sm">Salvo</p>
+                                        <p className="text-xs mt-1">{saveSuccess}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="p-4 border border-slate-200 rounded-2xl bg-slate-50">
+                                <h3 className="font-semibold text-slate-800 mb-3">Status das sincronizaÃ§Ãµes</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {integrationStatuses.map((item) => (
+                                        <div key={item.name} className="bg-white border border-slate-200 rounded-xl p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-sm font-semibold text-slate-800">{item.name}</span>
+                                                <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${item.configured ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                    {item.configured ? 'Configurada' : 'Pendente'}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 mt-2">Ãšltima sync: {formatSyncDate(item.lastSync)}</p>
+                                            <p className="text-xs text-slate-500">Contagem: {item.count ?? 0}</p>
+                                            {item.lastError && <p className="text-xs text-red-600 mt-1 truncate" title={item.lastError}>Erro: {item.lastError}</p>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
 
                             {/* GLPI */}
                             <div className="p-4 border border-slate-200 rounded-2xl bg-white shadow-sm">

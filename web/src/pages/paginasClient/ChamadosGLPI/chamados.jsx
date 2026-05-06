@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Filter, Ticket, AlertCircle, CheckCircle2, TrendingUp, Clock, ChevronDown, RefreshCw } from 'lucide-react';
+import { Filter, Ticket, AlertCircle, CheckCircle2, TrendingUp, ChevronDown, RefreshCw } from 'lucide-react';
 import api from '../../../services/api';
 
 const DropdownFiltro = ({ icone: Icon, valorAtual, opcoes, aoSelecionar, aberto, aoAlternar, largura = 'w-44' }) => {
@@ -38,6 +38,8 @@ const ChamadosGLPI = () => {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(fetchData, 120000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {
@@ -111,6 +113,10 @@ const ChamadosGLPI = () => {
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard de Chamados GLPI</h1>
           <p className="text-slate-500 text-lg">Indicadores consolidados de suporte técnico</p>
         </div>
+        <button onClick={fetchData} className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <RefreshCw size={16} />
+          Atualizar
+        </button>
       </div>
 
       {/* Barra de Filtros */}

@@ -1,27 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Activity, Clock, Server, AlertTriangle, Monitor, Cloud, Network, FileText, Info, CheckCircle, Ticket } from 'lucide-react';
+import React from 'react';
+import { Users, Activity, Clock, Server, AlertTriangle, Monitor, Cloud, Network, FileText, CheckCircle, Ticket, RefreshCw } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-import api from '../../../services/api';
+import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 
 const DashboardGeral = () => {
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const response = await api.get('/client/dashboard/summary');
-        setData(response.data);
-      } catch (error) {
-        console.error('Error fetching dashboard:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDashboard();
-  }, []);
+  const { data, loading, refresh } = useRealtimeData('/client/dashboard/summary', 'dashboard_summary', { intervalMs: 60000 });
 
   if (loading) {
     return (
@@ -44,14 +29,21 @@ const DashboardGeral = () => {
     { name: 'Crítico', value: 0, color: '#EF4444' },
   ];
 
-  const ms365Status = data?.ms365?.totalLicenses > 0 ? 'Operacional' : 'Sem dados';
+  const ms365Status = data?.ms365?.hasData ? 'Operacional' : 'Sem dados';
   const utilizationRate = data?.ms365?.utilizationRate || 0;
+  const assignedLicenses = data?.ms365?.assignedLicenses ?? data?.ms365?.activeUsers ?? 0;
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Visão Geral do Ambiente</h1>
-        <p className="text-slate-500 text-lg">Resumo executivo dos contratos e infraestrutura de TI</p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Visão Geral do Ambiente</h1>
+          <p className="text-slate-500 text-lg">Resumo executivo dos contratos e infraestrutura de TI</p>
+        </div>
+        <button onClick={refresh} className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <RefreshCw size={16} />
+          Atualizar
+        </button>
       </div>
 
       {/* Cards Principais */}
@@ -74,8 +66,8 @@ const DashboardGeral = () => {
             </div>
             <div className="space-y-4 mt-6">
               <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
-                <span className="text-slate-600 flex items-center gap-2"><Users size={16} /> Usuários Ativos</span>
-                <span className="font-semibold text-slate-900">{data?.ms365?.activeUsers || 0}</span>
+                <span className="text-slate-600 flex items-center gap-2"><Users size={16} /> Licenças Atribuídas</span>
+                <span className="font-semibold text-slate-900">{assignedLicenses}</span>
               </div>
               <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
                 <span className="text-slate-600 flex items-center gap-2"><Activity size={16} /> Taxa de Utilização</span>
@@ -169,7 +161,7 @@ const DashboardGeral = () => {
           {[
             { title: 'Microsoft 365', desc: 'Licenças e serviços', icon: Cloud, path: '/app/ms365', stat: `${data?.ms365?.totalLicenses || 0} licenças`, color: 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white' },
             { title: 'Servidores', desc: 'Monitoramento', icon: Server, path: '/app/servidores', stat: `${data?.servers?.total || 0} monitorados`, color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
-            { title: 'Rede', desc: 'Infraestrutura', icon: Network, path: '/app/rede', stat: 'Equipamentos ativos', color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
+            { title: 'Rede', desc: 'Infraestrutura', icon: Network, path: '/app/rede', stat: data?.network?.hasData ? `${data.network.total || 0} equipamentos` : 'Sem dados', color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
             { title: 'Documentação', desc: 'Contratos e docs', icon: FileText, path: '/app/documentacao', stat: `${data?.documents?.total || 0} arquivos`, color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
             { title: 'Chamados', desc: 'GLPI tickets', icon: Ticket, path: '/app/chamados', stat: `${data?.tickets?.open || 0} abertos`, color: 'bg-orange-50 text-orange-600 group-hover:bg-orange-600 group-hover:text-white' },
           ].map((mod, i) => (

@@ -26,7 +26,6 @@ import {
   YAxis,
   CartesianGrid
 } from 'recharts';
-import api from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 
@@ -88,7 +87,11 @@ function getFriendlyName(skuPartNumber) {
 
 const Microsoft365 = () => {
   const { user } = useAuth();
-  const { data: metricsData, loading } = useRealtimeData('/client/metrics/ms365', 'ms365_metrics');
+  const { data: metricsData, loading, refresh, lastUpdated } = useRealtimeData(
+    '/client/metrics/ms365',
+    'ms365_metrics',
+    { intervalMs: 300000 }
+  );
 
   // Chaves de armazenamento no localStorage para persistir as escolhas (por empresa)
   const STORAGE_KEY_HIDDEN = `ms365_hidden_${user?.company_id || 'default'}`;
@@ -166,10 +169,10 @@ const Microsoft365 = () => {
   ];
 
   const metrics = [
-    { title: 'Usuários Ativos', value: totalUsado.toString(), subtitle: 'Licenças atribuídas', icon: Users, color: 'bg-blue-50 text-blue-600', status: 'Ativo' },
+    { title: 'Licenças Atribuídas', value: totalUsado.toString(), subtitle: 'Assentos em uso no tenant', icon: Users, color: 'bg-blue-50 text-blue-600', status: metricsData.length > 0 ? 'Ativo' : 'Sem dados' },
     { title: 'Total de Licenças', value: totalLicenças.toString(), subtitle: 'Licenças contratadas', icon: PieChart, color: 'bg-indigo-50 text-indigo-600' },
     { title: 'Taxa de Utilização', value: `${taxaUtilizacao}%`, subValue: `Livre: ${totalDisponivel}`, subtitle: 'Eficiência de consumo', icon: Activity, color: 'bg-purple-50 text-purple-600' },
-    { title: 'Atualização', value: metricsData.length > 0 ? new Date(metricsData[0].last_updated).toLocaleDateString() : '--', subtitle: 'Última sincronização', icon: Clock, color: 'bg-orange-50 text-orange-600' },
+    { title: 'Atualização', value: metricsData.length > 0 ? new Date(metricsData[0].last_updated).toLocaleDateString() : '--', subtitle: lastUpdated ? `Tela atualizada ${lastUpdated.toLocaleTimeString('pt-BR')}` : 'Última sincronização', icon: Clock, color: 'bg-orange-50 text-orange-600' },
   ];
 
   const licenciasData = [
@@ -216,6 +219,13 @@ const Microsoft365 = () => {
               {showAllLicenses ? `Todas (${metricsData.length})` : `Relevantes (${relevantLicenses.length})`}
             </button>
           )}
+          <button
+            onClick={refresh}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+          >
+            <RefreshCw size={14} />
+            Atualizar
+          </button>
           <button
             onClick={() => setFilterOpen(!filterOpen)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${filterOpen ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}

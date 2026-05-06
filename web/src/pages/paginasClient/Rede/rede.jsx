@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, CheckCircle, Clock, Server, AlertTriangle, RefreshCw, Wifi } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { CheckCircle, Server, AlertTriangle, RefreshCw, Wifi } from "lucide-react";
 import api from '../../../services/api';
 
 const Rede = () => {
@@ -10,6 +9,8 @@ const Rede = () => {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(fetchData, 120000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {
@@ -46,9 +47,15 @@ const Rede = () => {
 
   return (
     <div className="p-8 pb-16 min-h-screen">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-800">Rede</h1>
-        <p className="text-slate-500 mt-2">Gerenciamento de infraestrutura de rede</p>
+      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">Rede</h1>
+          <p className="text-slate-500 mt-2">Inventário e status de infraestrutura de rede</p>
+        </div>
+        <button onClick={fetchData} className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          <RefreshCw size={16} />
+          Atualizar
+        </button>
       </div>
 
       {/* Metric Cards */}

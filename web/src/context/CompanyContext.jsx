@@ -46,7 +46,7 @@ export const CompanyProvider = ({ children }) => {
             const { id, ...data } = updatedCompany;
             const response = await api.put(`/admin/companies/${id}`, data);
             setCompanies(prev => prev.map(c => c.id === id ? response.data : c));
-            return { success: true };
+            return { success: true, data: response.data };
         } catch (error) {
             console.error('Error updating company:', error);
             return { success: false, error: error.response?.data?.error || error.message };
@@ -73,7 +73,7 @@ export const CompanyProvider = ({ children }) => {
                 }
                 return c;
             }));
-            return { success: true };
+            return { success: true, data: response.data };
         } catch (error) {
             console.error('Error updating company integrations:', error);
             return { success: false, error: error.response?.data?.error || error.message };
