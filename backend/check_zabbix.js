@@ -39,6 +39,7 @@ async function run() {
       method: 'host.get',
       params: {
           selectGroups: ['name'],
+          selectItems: ['key_', 'lastvalue'],
           output: ['host', 'name']
       },
       id: 2,
@@ -51,17 +52,22 @@ async function run() {
   }
 
   const hosts = hostsRes.data.result || [];
-  const groupStats = {};
   
-  hosts.forEach(h => {
-     (h.groups || []).forEach(g => {
-         groupStats[g.name] = (groupStats[g.name] || 0) + 1;
-     });
-  });
-
-  console.log("--- GRUPOS ENCONTRADOS E QUANTIDADE DE HOSTS ---");
-  console.log(groupStats);
-
+  const targetHosts = hosts.filter(h => h.name === 'SRVBCK01' || h.name === 'Zabbix server' || h.name === 'SRVDB01');
+  if (targetHosts.length > 0) {
+      targetHosts.forEach(targetHost => {
+          if (targetHost.items) {
+              console.log(`\nItems for ${targetHost.name}:`);
+              targetHost.items.forEach(i => {
+                  if (i.key_.includes('vfs.fs') || i.key_.includes('memory') || i.key_.includes('cpu') || i.key_.includes('swap') || i.key_.includes('uptime') || i.key_.includes('os') || i.key_.includes('uname')) {
+                      console.log(`${i.key_} = ${i.lastvalue}`);
+                  }
+              });
+          }
+      });
+  } else {
+      console.log("Host not found or no items.");
+  }
 }
 
 run().catch(console.error);

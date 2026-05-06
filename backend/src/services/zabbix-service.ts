@@ -92,13 +92,13 @@ export async function fetchZabbixMetrics(
       const cpuItem = h.items?.find((i: any) => i.key_ === 'system.cpu.util');
       
       // Items de Memória (%)
-      const memPavailItem = h.items?.find((i: any) =>
-        i.key_ === 'vm.memory.size[pavailable]' || i.key_ === 'vm.memory.util'
-      );
+      const memPavailItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[pavailable]');
+      const memUtilItem = h.items?.find((i: any) => i.key_ === 'vm.memory.util' || i.key_ === 'vm.memory.utilization');
       
       // Items de Memória (Absolutos em Bytes)
       const memTotalItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[total]');
       const memAvailItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[available]');
+      const memUsedItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[used]');
 
       const disk = getDiskMetrics(h.items || []);
 
@@ -109,13 +109,24 @@ export async function fetchZabbixMetrics(
 
       const cpuVal = cpuItem ? parseFloat(cpuItem.lastvalue) : 0;
 
-      // Percentual de memória: se tiver pavailable, calcula pused = 100 - pavailable
-      const memPavailVal = memPavailItem ? parseFloat(memPavailItem.lastvalue) : null;
-      const memPercent = memPavailVal !== null ? parseFloat((100 - memPavailVal).toFixed(2)) : 0;
-
+      // Cálculo de memória
       const memTotal = toGB(memTotalItem?.lastvalue);
-      const memAvailable = toGB(memAvailItem?.lastvalue);
-      const memUsed = memTotal > 0 ? parseFloat((memTotal - memAvailable).toFixed(2)) : 0;
+      let memUsed = 0;
+      if (memUsedItem && memUsedItem.lastvalue !== '0') {
+        memUsed = toGB(memUsedItem.lastvalue);
+      } else if (memAvailItem && memTotal > 0) {
+        memUsed = parseFloat((memTotal - toGB(memAvailItem.lastvalue)).toFixed(2));
+      }
+
+      let memPercent = 0;
+      if (memUtilItem) {
+        memPercent = parseFloat(memUtilItem.lastvalue);
+      } else if (memPavailItem) {
+        memPercent = 100 - parseFloat(memPavailItem.lastvalue);
+      } else if (memTotal > 0 && memUsed > 0) {
+        memPercent = (memUsed / memTotal) * 100;
+      }
+      memPercent = parseFloat(memPercent.toFixed(2));
 
       const diskPercent = disk.percent;
       const diskTotal = disk.totalGb;
@@ -295,7 +306,7 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
   const entries = new Map<string, { total?: number; used?: number; pused?: number }>();
 
   items.forEach((item: any) => {
-    const match = String(item.key_ || '').match(/^vfs\.fs\.size\[(.+),\s*(total|used|pused)\]$/);
+    const match = String(item.key_ || '').match(/^vfs\.fs\.(?:dependent\.)?size\[(.+),\s*(total|used|pused)\]$/);
     if (!match) return;
 
     const mount = normalizeMount(match[1]);
