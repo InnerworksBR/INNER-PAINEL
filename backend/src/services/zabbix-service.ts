@@ -89,28 +89,40 @@ export async function fetchZabbixMetrics(
     const previousServerStatuses = await getPreviousStatuses(supabase, 'servers', company_id, 'hostname');
 
     const serversToUpsert = serverHosts.map((h: any) => {
-      // Items de CPU
+      // Items de CPU - Busca por chave exata ou padrão comum
       const cpuItem = h.items?.find((i: any) => 
         i.key_ === 'system.cpu.util' || 
         i.key_ === 'system.cpu.utilization' ||
-        i.key_.startsWith('perf_counter_en["\\Processor Information(_total)\\% Processor Time"')
+        i.key_.toLowerCase().includes('processor time') ||
+        i.key_.toLowerCase().includes('cpu.util')
       );
       
       // Items de Memória (%)
       const memPavailItem = h.items?.find((i: any) => 
         i.key_ === 'vm.memory.size[pavailable]' || 
-        i.key_ === 'vm.memory.pavailable'
+        i.key_.toLowerCase().includes('memory.pavailable')
       );
       const memUtilItem = h.items?.find((i: any) => 
         i.key_ === 'vm.memory.util' || 
         i.key_ === 'vm.memory.utilization' || 
-        i.key_ === 'vm.memory.size[pused]'
+        i.key_.toLowerCase().includes('memory.util') ||
+        i.key_.toLowerCase().includes('memory.pused')
       );
       
       // Items de Memória (Absolutos em Bytes)
-      const memTotalItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[total]');
-      const memAvailItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[available]');
-      const memUsedItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[used]');
+      const memTotalItem = h.items?.find((i: any) => 
+        i.key_ === 'vm.memory.size[total]' || 
+        i.key_.toLowerCase().includes('memory.total') ||
+        i.key_.toLowerCase().includes('physical.memory')
+      );
+      const memAvailItem = h.items?.find((i: any) => 
+        i.key_ === 'vm.memory.size[available]' || 
+        i.key_.toLowerCase().includes('memory.available')
+      );
+      const memUsedItem = h.items?.find((i: any) => 
+        i.key_ === 'vm.memory.size[used]' || 
+        i.key_.toLowerCase().includes('memory.used')
+      );
 
       const disk = getDiskMetrics(h.items || []);
 
@@ -355,6 +367,34 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
       entries.set(mount, current);
     }
   });
+
+  // 3. Fallback fuzzy: buscar qualquer item que contenha disco/fs e total/used
+  if (entries.size === 0) {
+    items.forEach((item: any) => {
+      const k = String(item.key_ || '').toLowerCase();
+      if (!k.includes('vfs.fs') && !k.includes('disk')) return;
+
+      let metric: 'total' | 'used' | 'pused' | null = null;
+      if (k.includes('total')) metric = 'total';
+      else if (k.includes('pused') || k.includes('utilization')) metric = 'pused';
+      else if (k.includes('used')) metric = 'used';
+      
+      if (!metric) return;
+
+      const value = Number.parseFloat(item.lastvalue);
+      if (!Number.isFinite(value) || value <= 0) return;
+
+      // Tentar extrair o nome do disco (ex: C:, /, etc)
+      const mountMatch = k.match(/\[(.+?)\]/);
+      const mount = mountMatch ? normalizeMount(mountMatch[1]) : 'default';
+      
+      const current = entries.get(mount) || {};
+      if (current[metric] === undefined || current[metric] === 0) {
+        current[metric] = value;
+        entries.set(mount, current);
+      }
+    });
+  }
 
   const candidates = Array.from(entries.entries())
     .filter(([, value]) => (value.total || 0) > 0 || (value.used || 0) > 0 || (value.pused || 0) > 0)
