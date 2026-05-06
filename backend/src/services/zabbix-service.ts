@@ -56,6 +56,7 @@ export async function fetchZabbixMetrics(
       selectItems: ['key_', 'lastvalue', 'units'],
       selectGroups: ['name'],
       filter: { status: '0' },
+      output: ['hostid', 'name', 'status', 'available', 'snmp_available', 'ipmi_available', 'jmx_available'],
     };
 
     if (host_ids && host_ids.length > 0) {
@@ -89,11 +90,22 @@ export async function fetchZabbixMetrics(
 
     const serversToUpsert = serverHosts.map((h: any) => {
       // Items de CPU
-      const cpuItem = h.items?.find((i: any) => i.key_ === 'system.cpu.util');
+      const cpuItem = h.items?.find((i: any) => 
+        i.key_ === 'system.cpu.util' || 
+        i.key_ === 'system.cpu.utilization' ||
+        i.key_.startsWith('perf_counter_en["\\Processor Information(_total)\\% Processor Time"')
+      );
       
       // Items de Memória (%)
-      const memPavailItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[pavailable]');
-      const memUtilItem = h.items?.find((i: any) => i.key_ === 'vm.memory.util' || i.key_ === 'vm.memory.utilization');
+      const memPavailItem = h.items?.find((i: any) => 
+        i.key_ === 'vm.memory.size[pavailable]' || 
+        i.key_ === 'vm.memory.pavailable'
+      );
+      const memUtilItem = h.items?.find((i: any) => 
+        i.key_ === 'vm.memory.util' || 
+        i.key_ === 'vm.memory.utilization' || 
+        i.key_ === 'vm.memory.size[pused]'
+      );
       
       // Items de Memória (Absolutos em Bytes)
       const memTotalItem = h.items?.find((i: any) => i.key_ === 'vm.memory.size[total]');
@@ -112,7 +124,7 @@ export async function fetchZabbixMetrics(
       // Cálculo de memória
       const memTotal = toGB(memTotalItem?.lastvalue);
       let memUsed = 0;
-      if (memUsedItem && memUsedItem.lastvalue !== '0') {
+      if (memUsedItem && memUsedItem.lastvalue && memUsedItem.lastvalue !== '0') {
         memUsed = toGB(memUsedItem.lastvalue);
       } else if (memAvailItem && memTotal > 0) {
         memUsed = parseFloat((memTotal - toGB(memAvailItem.lastvalue)).toFixed(2));
@@ -134,9 +146,14 @@ export async function fetchZabbixMetrics(
 
       const pingVal = pingItem ? parseFloat(pingItem.lastvalue) : 0;
 
-      // Se o ping for 1, ou se estivermos recebendo qualquer métrica de CPU/RAM, consideramos Online
+      // Status: prioridade para os campos de availability do Zabbix
       let status = 'Offline';
-      if (pingVal === 1 || cpuVal > 0 || memPercent > 0) {
+      const isAvailable = h.available === '1' || h.snmp_available === '1' || h.ipmi_available === '1' || h.jmx_available === '1';
+      
+      if (isAvailable) {
+        status = 'Online';
+      } else if (pingVal === 1 || cpuVal > 0 || memPercent > 0) {
+        // Fallback: se o Zabbix não reporta availability mas temos dados recentes ou ping
         status = 'Online';
       }
 
@@ -306,19 +323,37 @@ function getDiskMetrics(items: any[]): { percent: number; totalGb: number; usedG
   const entries = new Map<string, { total?: number; used?: number; pused?: number }>();
 
   items.forEach((item: any) => {
-    const match = String(item.key_ || '').match(/^vfs\.fs\.(?:dependent\.)?size\[(.+),\s*(total|used|pused)\]$/);
-    if (!match) return;
+    // 1. Tentar padrão vfs.fs.size[...] ou vfs.fs.dependent.size[...]
+    let match = String(item.key_ || '').match(/^vfs\.fs\.(?:dependent\.)?size\[(.+),\s*(total|used|pused)\]$/);
+    
+    if (match) {
+      const mount = normalizeMount(match[1]);
+      if (isIgnoredFilesystem(mount)) return;
 
-    const mount = normalizeMount(match[1]);
-    if (isIgnoredFilesystem(mount)) return;
+      const metric = match[2] as 'total' | 'used' | 'pused';
+      const value = Number.parseFloat(item.lastvalue);
+      if (!Number.isFinite(value)) return;
 
-    const metric = match[2] as 'total' | 'used' | 'pused';
-    const value = Number.parseFloat(item.lastvalue);
-    if (!Number.isFinite(value)) return;
+      const current = entries.get(mount) || {};
+      current[metric] = value;
+      entries.set(mount, current);
+      return;
+    }
 
-    const current = entries.get(mount) || {};
-    current[metric] = value;
-    entries.set(mount, current);
+    // 2. Tentar padrão vfs.fs.total[...] ou vfs.fs.used[...] (alguns templates customizados)
+    match = String(item.key_ || '').match(/^vfs\.fs\.(?:total|used)\[(.+)\]$/);
+    if (match) {
+      const mount = normalizeMount(match[1]);
+      if (isIgnoredFilesystem(mount)) return;
+
+      const metric = item.key_.includes('total') ? 'total' : 'used';
+      const value = Number.parseFloat(item.lastvalue);
+      if (!Number.isFinite(value)) return;
+
+      const current = entries.get(mount) || {};
+      current[metric] = value;
+      entries.set(mount, current);
+    }
   });
 
   const candidates = Array.from(entries.entries())
