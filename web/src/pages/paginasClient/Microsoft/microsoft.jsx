@@ -29,6 +29,7 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 import { useClientPreview } from '../../../context/ClientPreviewContext';
+import api from '../../../services/api';
 
 // Licenças relevantes pré-selecionadas (case-insensitive match parcial)
 const RELEVANT_KEYWORDS = [
@@ -116,6 +117,7 @@ const Microsoft365 = () => {
   });
   
   const [filterOpen, setFilterOpen] = useState(false);
+  const [savingLicenseId, setSavingLicenseId] = useState(null);
 
   // Persistir seleções no localStorage sempre que mudarem
   useEffect(() => {
@@ -156,6 +158,18 @@ const Microsoft365 = () => {
       }
       return next;
     });
+  };
+
+  const toggleDashboardInclusion = async (item) => {
+    setSavingLicenseId(item.id);
+    try {
+      await api.patch(`/admin/ms365/licenses/${item.id}/dashboard-inclusion`, {
+        include_in_dashboard: !item.include_in_dashboard,
+      });
+      await refresh();
+    } finally {
+      setSavingLicenseId(null);
+    }
   };
 
   // Métricas agregadas (apenas das visíveis)
@@ -273,6 +287,34 @@ const Microsoft365 = () => {
               {otherLicenses.length} licença(s) oculta(s) — clique em "Todas" para visualizar
             </p>
           )}
+        </div>
+      )}
+
+      {user?.role === 'admin' && (
+        <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-5">
+          <div className="flex justify-between items-center mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700">Licenças contabilizadas no dashboard</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Selecione apenas os SKUs que devem compor os totais executivos.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {metricsData.map((item) => (
+              <button
+                key={`dashboard-${item.id}`}
+                onClick={() => toggleDashboardInclusion(item)}
+                disabled={savingLicenseId === item.id}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all disabled:opacity-60 ${
+                  item.include_in_dashboard
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-gray-50 text-gray-500 border-gray-200'
+                }`}
+              >
+                {getFriendlyName(item.license_name)}
+                <span className="ml-1.5 text-[10px] opacity-70">({item.used}/{item.total})</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

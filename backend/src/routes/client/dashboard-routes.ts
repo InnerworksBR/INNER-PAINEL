@@ -55,7 +55,7 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       const visibleServers = servers.filter((server: any) => visibleServerIds.has(server.id));
       const visibleNetwork = network.filter((device: any) => visibleNetworkDeviceIds.has(device.id));
 
-      const validMs365 = ms365.filter(isPaidLicenseForTotal);
+      const validMs365 = ms365.filter((metric: any) => metric.include_in_dashboard === true);
       const totalLicenses = validMs365.reduce((acc: number, m: any) => acc + (m.total || 0), 0);
       const assignedLicenses = validMs365.reduce((acc: number, m: any) => acc + (m.used || 0), 0);
       const utilizationRate = totalLicenses > 0 ? (assignedLicenses / totalLicenses) * 100 : 0;
@@ -109,18 +109,6 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       return reply.code(500).send({ error: err.message });
     }
   });
-}
-
-function isPaidLicenseForTotal(m: any): boolean {
-  if (!m.license_name) return false;
-  if (m.total > 10005) return false;
-
-  const n = m.license_name.toLowerCase();
-  const paidKeywords = ['business', 'exchange', 'power', 'premium', 'standard', 'enterprise', 'visio', 'project', 'e3', 'e5'];
-  const freeKeywords = ['free', 'exploratory', 'audit', 'compliance', 'security', 'defender', 'teams', 'virtual', 'stream'];
-
-  if (freeKeywords.some((kw) => n.includes(kw))) return false;
-  return paidKeywords.some((kw) => n.includes(kw));
 }
 
 function average(rows: any[], field: string): number {

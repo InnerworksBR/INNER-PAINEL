@@ -44,6 +44,7 @@ import adminDashboardRoutes from './routes/admin/dashboard-routes';
 import adminSettingsRoutes from './routes/admin/settings-routes';
 import adminAuditRoutes from './routes/admin/audit-routes';
 import adminInventoryRoutes from './routes/admin/inventory-routes';
+import adminMs365Routes from './routes/admin/ms365-routes';
 
 fastify.register(adminUserRoutes, { prefix: '/api/admin/users' });
 fastify.register(adminCompaniesRoutes, { prefix: '/api/admin/companies' });
@@ -52,6 +53,7 @@ fastify.register(adminDashboardRoutes, { prefix: '/api/admin/dashboard' });
 fastify.register(adminSettingsRoutes, { prefix: '/api/admin/settings' });
 fastify.register(adminAuditRoutes, { prefix: '/api/admin/audit-logs' });
 fastify.register(adminInventoryRoutes, { prefix: '/api/admin/inventory' });
+fastify.register(adminMs365Routes, { prefix: '/api/admin/ms365' });
 
 // Health check
 fastify.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));

@@ -86,6 +86,7 @@ export interface MS365Metric {
   total: number;
   used: number;
   available: number;
+  include_in_dashboard: boolean;
   last_updated: string;
 }
 
