@@ -23,13 +23,17 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
         return query;
       };
 
-      const [ms365Res, serversRes, ticketsRes, docsRes, networkRes, healthProfilesRes] = await Promise.all([
+      const [ms365Res, serversRes, ticketsRes, docsRes, networkRes, assetProfilesRes] = await Promise.all([
         filterByCompany(supabaseAdmin.from('ms365_metrics').select('*')),
         filterByCompany(supabaseAdmin.from('servers').select('*')),
         filterByCompany(supabaseAdmin.from('glpi_tickets').select('*')),
         filterByCompany(supabaseAdmin.from('documents').select('id, created_at')),
         filterByCompany(supabaseAdmin.from('network_devices').select('*')),
-        filterByCompany(supabaseAdmin.from('asset_profiles').select('source_type, source_id, include_in_health_score')),
+        filterByCompany(
+          supabaseAdmin
+            .from('asset_profiles')
+            .select('source_type, source_id, customer_visible, include_in_health_score')
+        ),
       ]);
 
       const ms365 = ms365Res.data || [];
@@ -37,17 +41,29 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       const tickets = ticketsRes.data || [];
       const docs = docsRes.data || [];
       const network = networkRes.data || [];
-      const healthProfiles = healthProfilesRes.data || [];
+      const assetProfiles = assetProfilesRes.data || [];
+      const visibleServerIds = new Set(
+        assetProfiles
+          .filter((profile: any) => profile.source_type === 'server' && profile.customer_visible === true)
+          .map((profile: any) => profile.source_id)
+      );
+      const visibleNetworkDeviceIds = new Set(
+        assetProfiles
+          .filter((profile: any) => profile.source_type === 'network_device' && profile.customer_visible === true)
+          .map((profile: any) => profile.source_id)
+      );
+      const visibleServers = servers.filter((server: any) => visibleServerIds.has(server.id));
+      const visibleNetwork = network.filter((device: any) => visibleNetworkDeviceIds.has(device.id));
 
       const validMs365 = ms365.filter(isPaidLicenseForTotal);
       const totalLicenses = validMs365.reduce((acc: number, m: any) => acc + (m.total || 0), 0);
       const assignedLicenses = validMs365.reduce((acc: number, m: any) => acc + (m.used || 0), 0);
       const utilizationRate = totalLicenses > 0 ? (assignedLicenses / totalLicenses) * 100 : 0;
 
-      const onlineServers = servers.filter((s: any) => s.status === 'Online').length;
+      const onlineServers = visibleServers.filter((s: any) => s.status === 'Online').length;
       const openTickets = tickets.filter((t: any) => !['Resolvido', 'Fechado', '5', '6'].includes(t.status)).length;
       const resolvedTickets = tickets.length - openTickets;
-      const onlineDevices = network.filter((d: any) => d.status === 'Online').length;
+      const onlineDevices = visibleNetwork.filter((d: any) => d.status === 'Online').length;
 
       return {
         ms365: {
@@ -59,12 +75,12 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           lastUpdated: getLatestDate(ms365, 'last_updated'),
         },
         servers: {
-          hasData: servers.length > 0,
-          total: servers.length,
+          hasData: visibleServers.length > 0,
+          total: visibleServers.length,
           online: onlineServers,
-          offline: servers.length - onlineServers,
-          avgCpu: average(servers, 'cpu_usage'),
-          lastUpdated: getLatestDate(servers, 'last_updated'),
+          offline: visibleServers.length - onlineServers,
+          avgCpu: average(visibleServers, 'cpu_usage'),
+          lastUpdated: getLatestDate(visibleServers, 'last_updated'),
         },
         tickets: {
           hasData: tickets.length > 0,
@@ -74,18 +90,18 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           lastUpdated: getLatestDate(tickets, 'created_at'),
         },
         network: {
-          hasData: network.length > 0,
-          total: network.length,
+          hasData: visibleNetwork.length > 0,
+          total: visibleNetwork.length,
           online: onlineDevices,
-          offline: network.length - onlineDevices,
-          lastUpdated: getLatestDate(network, 'last_updated'),
+          offline: visibleNetwork.length - onlineDevices,
+          lastUpdated: getLatestDate(visibleNetwork, 'last_updated'),
         },
         documents: {
           hasData: docs.length > 0,
           total: docs.length,
           lastUpdated: getLatestDate(docs, 'created_at'),
         },
-        health: calculateHealthScore({ servers, network, healthProfiles }),
+        health: calculateHealthScore({ servers: visibleServers, network: visibleNetwork, healthProfiles: assetProfiles }),
       };
     } catch (err: any) {
       const scopedError = sendCompanyScopeError(reply, err);
