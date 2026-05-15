@@ -153,6 +153,7 @@ export interface AssetProfile {
   asset_type: string;
   display_name?: string | null;
   customer_visible: boolean;
+  include_in_health_score: boolean;
   is_active: boolean;
   manufacturer?: string | null;
   model?: string | null;

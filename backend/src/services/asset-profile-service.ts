@@ -80,6 +80,7 @@ export async function upsertAssetProfileFromSource(
     source_id: sourceId,
     asset_type: existing?.asset_type || inferAssetType(sourceType, source),
     customer_visible: existing?.customer_visible ?? false,
+    include_in_health_score: existing?.include_in_health_score ?? true,
     is_active: true,
     display_name: existing?.display_name || (sourceType === 'server' ? source.hostname : source.device_name),
     ...mergedFields,
@@ -162,6 +163,10 @@ export function extractManualProfileUpdates(body: Record<string, any>) {
 
   if (Object.prototype.hasOwnProperty.call(body, 'customer_visible')) {
     updates.customer_visible = Boolean(body.customer_visible);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'include_in_health_score')) {
+    updates.include_in_health_score = Boolean(body.include_in_health_score);
   }
 
   return { updates, manualData, manualOverrideFields };

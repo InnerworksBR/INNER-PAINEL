@@ -23,12 +23,13 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
         return query;
       };
 
-      const [ms365Res, serversRes, ticketsRes, docsRes, networkRes] = await Promise.all([
+      const [ms365Res, serversRes, ticketsRes, docsRes, networkRes, healthProfilesRes] = await Promise.all([
         filterByCompany(supabaseAdmin.from('ms365_metrics').select('*')),
         filterByCompany(supabaseAdmin.from('servers').select('*')),
         filterByCompany(supabaseAdmin.from('glpi_tickets').select('*')),
         filterByCompany(supabaseAdmin.from('documents').select('id, created_at')),
         filterByCompany(supabaseAdmin.from('network_devices').select('*')),
+        filterByCompany(supabaseAdmin.from('asset_profiles').select('source_type, source_id, include_in_health_score')),
       ]);
 
       const ms365 = ms365Res.data || [];
@@ -36,6 +37,7 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       const tickets = ticketsRes.data || [];
       const docs = docsRes.data || [];
       const network = networkRes.data || [];
+      const healthProfiles = healthProfilesRes.data || [];
 
       const validMs365 = ms365.filter(isPaidLicenseForTotal);
       const totalLicenses = validMs365.reduce((acc: number, m: any) => acc + (m.total || 0), 0);
@@ -83,7 +85,7 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           total: docs.length,
           lastUpdated: getLatestDate(docs, 'created_at'),
         },
-        health: calculateHealthScore({ servers, network }),
+        health: calculateHealthScore({ servers, network, healthProfiles }),
       };
     } catch (err: any) {
       const scopedError = sendCompanyScopeError(reply, err);
@@ -124,16 +126,31 @@ function getLatestDate(rows: any[], field: string): string | null {
 function calculateHealthScore({
   servers,
   network,
+  healthProfiles,
 }: {
   servers: any[];
   network: any[];
+  healthProfiles: any[];
 }): { healthy: number; warning: number; critical: number } {
   let healthy = 0;
   let warning = 0;
   let critical = 0;
 
-  if (servers.length === 0) warning++;
-  servers.forEach((server: any) => {
+  const excludedServers = new Set(
+    healthProfiles
+      .filter((profile: any) => profile.source_type === 'server' && profile.include_in_health_score === false)
+      .map((profile: any) => profile.source_id)
+  );
+  const excludedNetworkDevices = new Set(
+    healthProfiles
+      .filter((profile: any) => profile.source_type === 'network_device' && profile.include_in_health_score === false)
+      .map((profile: any) => profile.source_id)
+  );
+  const includedServers = servers.filter((server: any) => !excludedServers.has(server.id));
+  const includedNetwork = network.filter((device: any) => !excludedNetworkDevices.has(device.id));
+
+  if (includedServers.length === 0) warning++;
+  includedServers.forEach((server: any) => {
     if (server.status !== 'Online' || server.cpu_usage > 90 || server.memory_usage > 90) {
       critical++;
     } else if (server.cpu_usage > 70 || server.memory_usage > 70) {
@@ -143,7 +160,7 @@ function calculateHealthScore({
     }
   });
 
-  if (network.some((device: any) => device.status !== 'Online')) warning++;
+  if (includedNetwork.some((device: any) => device.status !== 'Online')) warning++;
 
   const total = Math.max(healthy + warning + critical, 1);
   return {

@@ -8,6 +8,7 @@ interface InventoryQuery {
   source_type?: 'server' | 'network_device';
   asset_type?: string;
   customer_visible?: string;
+  include_in_health_score?: string;
   completeness_status?: string;
   search?: string;
 }
@@ -18,12 +19,15 @@ export default async function adminInventoryRoutes(fastify: FastifyInstance): Pr
   fastify.addHook('preHandler', verifyAdmin);
 
   fastify.get<{ Querystring: InventoryQuery }>('/profiles', async (request, reply) => {
-    const { company_id, source_type, asset_type, customer_visible, completeness_status, search } = request.query;
+    const { company_id, source_type, asset_type, customer_visible, include_in_health_score, completeness_status, search } = request.query;
     let query = supabaseAdmin.from('asset_profiles').select('*, companies(name)').order('updated_at', { ascending: false });
     if (company_id) query = query.eq('company_id', company_id);
     if (source_type) query = query.eq('source_type', source_type);
     if (asset_type) query = query.eq('asset_type', asset_type);
     if (customer_visible === 'true' || customer_visible === 'false') query = query.eq('customer_visible', customer_visible === 'true');
+    if (include_in_health_score === 'true' || include_in_health_score === 'false') {
+      query = query.eq('include_in_health_score', include_in_health_score === 'true');
+    }
     const { data, error } = await query;
     if (error) return reply.code(500).send({ error: error.message });
 

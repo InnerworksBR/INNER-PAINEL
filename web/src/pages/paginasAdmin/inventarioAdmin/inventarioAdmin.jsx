@@ -24,7 +24,7 @@ const emptyForm = {
 const InventarioAdmin = () => {
   const { companies } = useCompanies();
   const [profiles, setProfiles] = useState([]);
-  const [filters, setFilters] = useState({ company_id: '', source_type: '', customer_visible: '', completeness_status: '', search: '' });
+  const [filters, setFilters] = useState({ company_id: '', source_type: '', customer_visible: '', include_in_health_score: '', completeness_status: '', search: '' });
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
@@ -68,6 +68,13 @@ const InventarioAdmin = () => {
     await loadProfiles();
   };
 
+  const toggleHealthScore = async (profile) => {
+    await api.patch(`/admin/inventory/profiles/${profile.id}`, {
+      include_in_health_score: !profile.include_in_health_score,
+    });
+    await loadProfiles();
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
@@ -81,7 +88,7 @@ const InventarioAdmin = () => {
         </button>
       </header>
 
-      <section className="bg-white border border-slate-200 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+      <section className="bg-white border border-slate-200 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-6 gap-3">
         <select className="border rounded-xl px-3 py-2" value={filters.company_id} onChange={(e) => setFilters({ ...filters, company_id: e.target.value })}>
           <option value="">Todas as empresas</option>
           {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
@@ -95,6 +102,11 @@ const InventarioAdmin = () => {
           <option value="">Toda visibilidade</option>
           <option value="true">Visíveis</option>
           <option value="false">Ocultos</option>
+        </select>
+        <select className="border rounded-xl px-3 py-2" value={filters.include_in_health_score} onChange={(e) => setFilters({ ...filters, include_in_health_score: e.target.value })}>
+          <option value="">Toda estatística</option>
+          <option value="true">Conta na saúde</option>
+          <option value="false">Fora da saúde</option>
         </select>
         <select className="border rounded-xl px-3 py-2" value={filters.completeness_status} onChange={(e) => setFilters({ ...filters, completeness_status: e.target.value })}>
           <option value="">Toda completude</option>
@@ -127,6 +139,7 @@ const InventarioAdmin = () => {
                 <th className="text-left p-4">Tipo</th>
                 <th className="text-left p-4">Completude</th>
                 <th className="text-left p-4">Visibilidade</th>
+                <th className="text-left p-4">Saúde Geral</th>
                 <th className="text-right p-4">Ações</th>
               </tr>
             </thead>
@@ -139,10 +152,17 @@ const InventarioAdmin = () => {
                   <td className="p-4">{profile.asset_type}</td>
                   <td className="p-4">{formatCompleteness(profile.completeness_status)}</td>
                   <td className="p-4">{profile.customer_visible ? 'Visível' : 'Oculto'}</td>
+                  <td className="p-4">{profile.include_in_health_score ? 'Incluído' : 'Ignorado'}</td>
                   <td className="p-4">
                     <div className="flex justify-end gap-2">
                       <button onClick={() => toggleVisibility(profile)} className="p-2 rounded-lg hover:bg-slate-100">
                         {profile.customer_visible ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                      <button
+                        onClick={() => toggleHealthScore(profile)}
+                        className={`px-3 py-1.5 rounded-lg border ${profile.include_in_health_score ? 'border-amber-200 text-amber-700' : 'border-emerald-200 text-emerald-700'}`}
+                      >
+                        {profile.include_in_health_score ? 'Ignorar na saúde' : 'Contar na saúde'}
                       </button>
                       <button onClick={() => openProfile(profile)} className="px-3 py-1.5 rounded-lg bg-slate-900 text-white">Editar</button>
                     </div>
