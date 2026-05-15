@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, Server, AlertTriangle, RefreshCw, Wifi } from "lucide-react";
 import api from '../../../services/api';
+import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
 
 const Rede = () => {
   const [loading, setLoading] = useState(true);
   const [devices, setDevices] = useState([]);
   const [stats, setStats] = useState(null);
   const [events, setEvents] = useState([]);
+  const requestConfig = useClientRequestConfig();
 
   useEffect(() => {
     fetchData();
@@ -17,14 +19,14 @@ const Rede = () => {
   const fetchData = async () => {
     try {
       const [devicesRes, statsRes] = await Promise.all([
-        api.get('/client/network/devices'),
-        api.get('/client/network/stats'),
+        api.get('/client/network/devices', requestConfig),
+        api.get('/client/network/stats', requestConfig),
       ]);
       setDevices(devicesRes.data || []);
       setStats(statsRes.data || null);
 
       try {
-        const eventsRes = await api.get('/client/network/events');
+        const eventsRes = await api.get('/client/network/events', requestConfig);
         setEvents(eventsRes.data || []);
       } catch (eventsError) {
         console.warn('Network events unavailable:', eventsError);

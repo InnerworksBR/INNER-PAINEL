@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Folder, ChevronLeft, ChevronRight, FileText, RefreshCw, Download } from 'lucide-react';
 import api from '../../../services/api';
+import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
 
 const DocumentacaoTecnica = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [category, setCategory] = useState('Todas');
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const requestConfig = useClientRequestConfig();
 
   const categoriesList = [
     'Contratos', 'Diagramas', 'Inventários', 'SLAs', 'Políticas', 'Manuais', 'Procedimentos'
@@ -15,7 +17,7 @@ const DocumentacaoTecnica = () => {
   useEffect(() => {
     const fetchDocs = async () => {
       try {
-        const response = await api.get('/client/docs');
+        const response = await api.get('/client/docs', requestConfig);
         setDocuments(response.data);
       } catch (error) {
         console.error('Error fetching documents:', error);
@@ -24,7 +26,7 @@ const DocumentacaoTecnica = () => {
       }
     };
     fetchDocs();
-  }, []);
+  }, [requestConfig]);
 
   // Cálculo dinâmico de contagem por categoria
   const categoriesWithCounts = categoriesList.map(catName => ({
@@ -45,7 +47,7 @@ const DocumentacaoTecnica = () => {
       return;
     }
     try {
-      const res = await api.get(`/client/docs/${doc.id}/download`);
+      const res = await api.get(`/client/docs/${doc.id}/download`, requestConfig);
       window.open(res.data.url, '_blank');
     } catch (error) {
       console.error('Erro ao gerar link de download:', error);

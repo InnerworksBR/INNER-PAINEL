@@ -28,6 +28,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../../../context/AuthContext';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
+import { useClientPreview } from '../../../context/ClientPreviewContext';
 
 // Licenças relevantes pré-selecionadas (case-insensitive match parcial)
 const RELEVANT_KEYWORDS = [
@@ -87,6 +88,7 @@ function getFriendlyName(skuPartNumber) {
 
 const Microsoft365 = () => {
   const { user } = useAuth();
+  const preview = useClientPreview();
   const { data: metricsData, loading, refresh, lastUpdated } = useRealtimeData(
     '/client/metrics/ms365',
     'ms365_metrics',
@@ -94,8 +96,9 @@ const Microsoft365 = () => {
   );
 
   // Chaves de armazenamento no localStorage para persistir as escolhas (por empresa)
-  const STORAGE_KEY_HIDDEN = `ms365_hidden_${user?.company_id || 'default'}`;
-  const STORAGE_KEY_SHOW_ALL = `ms365_showall_${user?.company_id || 'default'}`;
+  const storageCompanyId = preview?.companyId || user?.company_id || 'default';
+  const STORAGE_KEY_HIDDEN = `ms365_hidden_${storageCompanyId}`;
+  const STORAGE_KEY_SHOW_ALL = `ms365_showall_${storageCompanyId}`;
 
   // Filtro de licenças - inicializa com os valores salvos no localStorage
   const [showAllLicenses, setShowAllLicenses] = useState(() => {

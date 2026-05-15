@@ -47,3 +47,13 @@ export const useClientPortalPath = () => {
   const basePath = preview?.basePath || '/app';
   return (segment = '') => `${basePath}${segment ? `/${segment}` : ''}`;
 };
+
+export const useClientRequestConfig = () => {
+  const preview = useClientPreview();
+  return useMemo(
+    () => preview?.companyId
+      ? { params: { company_id: preview.companyId } }
+      : {},
+    [preview?.companyId]
+  );
+};

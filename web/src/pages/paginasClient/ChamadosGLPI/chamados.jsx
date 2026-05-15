@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Filter, Ticket, AlertCircle, CheckCircle2, TrendingUp, ChevronDown, RefreshCw } from 'lucide-react';
 import api from '../../../services/api';
+import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
 
 const DropdownFiltro = ({ icone: Icon, valorAtual, opcoes, aoSelecionar, aberto, aoAlternar, largura = 'w-44' }) => {
   return (
@@ -35,6 +36,7 @@ const ChamadosGLPI = () => {
     status: 'Todos os status',
     prioridade: 'Todas as Prioridades',
   });
+  const requestConfig = useClientRequestConfig();
 
   useEffect(() => {
     fetchData();
@@ -46,8 +48,8 @@ const ChamadosGLPI = () => {
     setLoading(true);
     try {
       const [ticketsRes, statsRes] = await Promise.all([
-        api.get('/client/glpi/tickets'),
-        api.get('/client/glpi/stats'),
+        api.get('/client/glpi/tickets', requestConfig),
+        api.get('/client/glpi/stats', requestConfig),
       ]);
       setTickets(ticketsRes.data || []);
       setStats(statsRes.data || null);

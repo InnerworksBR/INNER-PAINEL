@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../services/api';
+import { useClientRequestConfig } from '../context/ClientPreviewContext';
 
 /**
  * Compatibility wrapper kept for existing imports.
@@ -20,13 +21,14 @@ export function useRealtimeSubscription() {
  */
 export function useRealtimeData(apiEndpoint, table, options = {}) {
   const { enabled = true, intervalMs = 60000 } = options;
+  const requestConfig = useClientRequestConfig();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await api.get(apiEndpoint);
+      const response = await api.get(apiEndpoint, requestConfig);
       setData(response.data || []);
       setLastUpdated(new Date());
     } catch (error) {
@@ -34,7 +36,7 @@ export function useRealtimeData(apiEndpoint, table, options = {}) {
     } finally {
       setLoading(false);
     }
-  }, [apiEndpoint]);
+  }, [apiEndpoint, requestConfig]);
 
   useEffect(() => {
     if (!enabled) return undefined;
