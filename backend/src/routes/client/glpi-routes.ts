@@ -2,6 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import { syncTickets } from '../../services/glpi-service';
 import type { JWTPayload } from '../../types';
+import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 
 export default async function clientGlpiRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -11,19 +12,16 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
   // Buscar tickets do GLPI (do banco de dados)
   fastify.get('/tickets', async (request, reply) => {
     const { user } = request.user as JWTPayload;
-
-    let query = supabaseAdmin.from('glpi_tickets').select('*').order('created_at', { ascending: false });
-
-    if (user.role !== 'admin') {
-      if (!user.company_id) {
-        return reply.code(403).send({ error: 'Usuário sem empresa associada' });
-      }
-      query = query.eq('company_id', user.company_id);
+    try {
+      const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
+      let query = supabaseAdmin.from('glpi_tickets').select('*').order('created_at', { ascending: false });
+      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
+      const { data, error } = await query;
+      if (error) return reply.code(500).send({ error: error.message });
+      return data;
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
     }
-
-    const { data, error } = await query;
-    if (error) return reply.code(500).send({ error: error.message });
-    return data;
   });
 
   // Estatísticas de chamados
@@ -31,12 +29,11 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
     const { user } = request.user as JWTPayload;
 
     let query = supabaseAdmin.from('glpi_tickets').select('*');
-
-    if (user.role !== 'admin') {
-      if (!user.company_id) {
-        return reply.code(403).send({ error: 'Usuário sem empresa associada' });
-      }
-      query = query.eq('company_id', user.company_id);
+    try {
+      const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
+      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
     }
 
     const { data: tickets, error } = await query;

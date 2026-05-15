@@ -5,6 +5,7 @@ import { fetchZabbixMetrics } from '../../services/zabbix-service';
 import type { JWTPayload } from '../../types';
 import { decryptSecret } from '../../services/crypto-service';
 import { writeAdminAuditLog } from '../../services/audit-service';
+import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 
 export default async function clientMetricsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -14,58 +15,61 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
   // Buscar métricas do Microsoft 365
   fastify.get('/ms365', async (request, reply) => {
     const { user } = request.user as JWTPayload;
-
-    let query = supabaseAdmin.from('ms365_metrics').select('*');
-
-    if (user.role !== 'admin') {
-      if (!user.company_id) return reply.code(403).send({ error: 'Usuário sem empresa associada' });
-      query = query.eq('company_id', user.company_id);
+    try {
+      const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
+      let query = supabaseAdmin.from('ms365_metrics').select('*');
+      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
+      const { data, error } = await query;
+      if (error) return reply.code(500).send({ error: error.message });
+      return data;
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
     }
-
-    const { data, error } = await query;
-    if (error) return reply.code(500).send({ error: error.message });
-    return data;
   });
 
   // Buscar métricas de Servidores
   fastify.get('/servers', async (request, reply) => {
     const { user } = request.user as JWTPayload;
-
-    let query = supabaseAdmin.from('servers').select('*');
-
-    if (user.role !== 'admin') {
-      if (!user.company_id) return reply.code(403).send({ error: 'Usuário sem empresa associada' });
-      query = query.eq('company_id', user.company_id);
+    try {
+      const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
+      let query = supabaseAdmin.from('servers').select('*');
+      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
+      const { data, error } = await query;
+      if (error) return reply.code(500).send({ error: error.message });
+      return data;
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
     }
-
-    const { data, error } = await query;
-    if (error) return reply.code(500).send({ error: error.message });
-    return data;
   });
 
   fastify.get('/servers/events', async (request, reply) => {
     const { user } = request.user as JWTPayload;
-
-    let query = supabaseAdmin
-      .from('monitoring_events')
-      .select('*')
-      .eq('source', 'server')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (user.role !== 'admin') {
-      if (!user.company_id) return reply.code(403).send({ error: 'UsuÃ¡rio sem empresa associada' });
-      query = query.eq('company_id', user.company_id);
+    try {
+      const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
+      let query = supabaseAdmin
+        .from('monitoring_events')
+        .select('*')
+        .eq('source', 'server')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
+      const { data, error } = await query;
+      if (error) return reply.code(500).send({ error: error.message });
+      return data;
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
     }
-
-    const { data, error } = await query;
-    if (error) return reply.code(500).send({ error: error.message });
-    return data;
   });
 
   fastify.get<{ Params: { id: string } }>('/servers/:id/history', async (request, reply) => {
     const { user } = request.user as JWTPayload;
     const { id } = request.params;
+    let targetCompanyId: string | null = null;
+    try {
+      ({ targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id));
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
+    }
 
     const { data: server, error: serverError } = await supabaseAdmin
       .from('servers')
@@ -74,7 +78,7 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
       .single();
 
     if (serverError || !server) return reply.code(404).send({ error: 'Servidor não encontrado' });
-    if (user.role !== 'admin' && server.company_id !== user.company_id) {
+    if (targetCompanyId && server.company_id !== targetCompanyId) {
       return reply.code(403).send({ error: 'Sem permissão para acessar este servidor' });
     }
 

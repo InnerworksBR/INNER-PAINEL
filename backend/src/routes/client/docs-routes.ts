@@ -2,6 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { JWTPayload } from '../../types';
 import { getSignedUrl } from '../../services/storage-service';
+import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 
 export default async function clientDocsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -11,30 +12,32 @@ export default async function clientDocsRoutes(fastify: FastifyInstance): Promis
   // Listar documentos da empresa do usuário
   fastify.get('/', async (request, reply) => {
     const { user } = request.user as JWTPayload;
-
-    if (user.role !== 'admin' && !user.company_id) {
-      return reply.code(403).send({ error: 'Usuário sem empresa associada' });
+    try {
+      const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
+      let query = supabaseAdmin
+        .from('documents')
+        .select('*')
+        .not('file_url', 'is', null)
+        .neq('file_url', 'storage_pendente');
+      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
+      const { data, error } = await query.order('created_at', { ascending: false });
+      if (error) return reply.code(500).send({ error: error.message });
+      return data;
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
     }
-
-    let query = supabaseAdmin
-      .from('documents')
-      .select('*')
-      .not('file_url', 'is', null)
-      .neq('file_url', 'storage_pendente');
-
-    if (user.role !== 'admin') {
-      query = query.eq('company_id', user.company_id!);
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: false });
-    if (error) return reply.code(500).send({ error: error.message });
-    return data;
   });
 
   // Gerar URL de download assinada para o cliente
   fastify.get<{ Params: { id: string } }>('/:id/download', async (request, reply) => {
     const { id } = request.params;
     const { user } = request.user as JWTPayload;
+    let targetCompanyId: string | null = null;
+    try {
+      ({ targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id));
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
+    }
 
     const { data: doc, error } = await supabaseAdmin
       .from('documents')
@@ -47,7 +50,7 @@ export default async function clientDocsRoutes(fastify: FastifyInstance): Promis
     }
     
     // Verificar se o usuário tem permissão para esta empresa
-    if (user.role !== 'admin' && doc.company_id !== user.company_id) {
+    if (targetCompanyId && doc.company_id !== targetCompanyId) {
         return reply.code(403).send({ error: 'Sem permissão para baixar este documento' });
     }
 

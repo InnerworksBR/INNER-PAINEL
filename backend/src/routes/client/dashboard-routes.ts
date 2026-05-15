@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { JWTPayload } from '../../types';
+import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 
 export default async function clientDashboardRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -8,16 +9,16 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
 
   fastify.get('/summary', async (request, reply) => {
     const { user } = request.user as JWTPayload;
-    const companyId = user.company_id;
-
-    if (user.role !== 'admin' && !companyId) {
-      return reply.code(403).send({ error: 'Usuário sem empresa associada' });
-    }
 
     try {
+      const { targetCompanyId } = await resolveCompanyScope(
+        supabaseAdmin,
+        user,
+        (request.query as any)?.company_id
+      );
       const filterByCompany = (query: any) => {
-        if (user.role !== 'admin' && companyId) {
-          return query.eq('company_id', companyId);
+        if (targetCompanyId) {
+          return query.eq('company_id', targetCompanyId);
         }
         return query;
       };
@@ -82,9 +83,11 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           total: docs.length,
           lastUpdated: getLatestDate(docs, 'created_at'),
         },
-        health: calculateHealthScore({ servers, ms365, tickets, network }),
+        health: calculateHealthScore({ servers, network }),
       };
     } catch (err: any) {
+      const scopedError = sendCompanyScopeError(reply, err);
+      if (scopedError) return scopedError;
       return reply.code(500).send({ error: err.message });
     }
   });
@@ -120,13 +123,9 @@ function getLatestDate(rows: any[], field: string): string | null {
 
 function calculateHealthScore({
   servers,
-  ms365,
-  tickets,
   network,
 }: {
   servers: any[];
-  ms365: any[];
-  tickets: any[];
   network: any[];
 }): { healthy: number; warning: number; critical: number } {
   let healthy = 0;
@@ -144,8 +143,6 @@ function calculateHealthScore({
     }
   });
 
-  if (ms365.length === 0) warning++;
-  if (tickets.some((ticket: any) => !['Resolvido', 'Fechado', '5', '6'].includes(ticket.status))) warning++;
   if (network.some((device: any) => device.status !== 'Online')) warning++;
 
   const total = Math.max(healthy + warning + critical, 1);

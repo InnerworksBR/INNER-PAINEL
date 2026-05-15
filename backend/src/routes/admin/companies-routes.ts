@@ -107,9 +107,10 @@ export default async function adminCompaniesRoutes(fastify: FastifyInstance): Pr
       .from('companies')
       .select('*, company_integrations(*)')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) return reply.code(500).send({ error: error.message });
+    if (!data) return reply.code(404).send({ error: 'Empresa não encontrada' });
     return sanitizeCompanyIntegrations(data);
   });
 
