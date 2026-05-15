@@ -148,6 +148,11 @@ const Microsoft365 = () => {
     return base.filter(item => !hiddenLicenses.has(item.license_name));
   }, [metricsData, relevantLicenses, showAllLicenses, hiddenLicenses]);
 
+  const dashboardLicenses = useMemo(
+    () => metricsData.filter((item) => item.include_in_dashboard === true),
+    [metricsData]
+  );
+
   const toggleLicense = (licenseName) => {
     setHiddenLicenses(prev => {
       const next = new Set(prev);
@@ -172,10 +177,10 @@ const Microsoft365 = () => {
     }
   };
 
-  // Métricas agregadas (apenas das visíveis)
-  const totalLicenças = visibleLicenses.reduce((acc, curr) => acc + curr.total, 0);
-  const totalUsado = visibleLicenses.reduce((acc, curr) => acc + curr.used, 0);
-  const totalDisponivel = visibleLicenses.reduce((acc, curr) => acc + curr.available, 0);
+  // Métricas executivas: usam exatamente a mesma seleção do dashboard geral.
+  const totalLicenças = dashboardLicenses.reduce((acc, curr) => acc + curr.total, 0);
+  const totalUsado = dashboardLicenses.reduce((acc, curr) => acc + curr.used, 0);
+  const totalDisponivel = dashboardLicenses.reduce((acc, curr) => acc + curr.available, 0);
   const taxaUtilizacao = totalLicenças > 0 ? ((totalUsado / totalLicenças) * 100).toFixed(1) : '0';
 
   const tenantInfo = [
@@ -198,7 +203,7 @@ const Microsoft365 = () => {
   ];
 
   // Dados para o gráfico de barras por licença
-  const barChartData = visibleLicenses.map(item => ({
+  const barChartData = dashboardLicenses.map(item => ({
     name: getFriendlyName(item.license_name).length > 20
       ? getFriendlyName(item.license_name).substring(0, 20) + '...'
       : getFriendlyName(item.license_name),
@@ -412,6 +417,7 @@ const Microsoft365 = () => {
             <h2 className="text-lg font-semibold text-gray-800">Planos e SKUs Detalhados</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               Exibindo {visibleLicenses.length} de {metricsData.length} licença(s)
+              {' '}· {dashboardLicenses.length} contabilizada(s) nos indicadores
             </p>
           </div>
         </div>
