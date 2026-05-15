@@ -21,11 +21,13 @@ import {
   Tooltip
 } from 'recharts';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
+import AssetDetailDrawer from '../../../components/AssetDetailDrawer';
 
 const Servidores = () => {
   const { data: servers, loading, refresh } = useRealtimeData('/client/metrics/servers', 'servers', { intervalMs: 30000 });
   const { data: events, refresh: refreshEvents } = useRealtimeData('/client/metrics/servers/events', 'server_events', { intervalMs: 30000 });
   const [activeServerId, setActiveServerId] = useState(null);
+  const [detailServer, setDetailServer] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const effectiveActiveServerId = activeServerId || servers[0]?.id || null;
@@ -123,7 +125,16 @@ const Servidores = () => {
                 <div className="flex items-center gap-2">
                   <Server className={`w-4 h-4 ${effectiveActiveServerId === server.id ? 'text-blue-600' : 'text-gray-500'}`} />
                   <div>
-                    <h3 className="font-semibold text-sm text-gray-800">{server.hostname}</h3>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDetailServer(server);
+                      }}
+                      className="font-semibold text-sm text-gray-800 hover:text-blue-600 text-left"
+                    >
+                      {server.hostname}
+                    </button>
                     <p className="text-[10px] text-gray-500">Coleta Zabbix: {formatZabbixTime(server)}</p>
                   </div>
                 </div>
@@ -306,7 +317,11 @@ const Servidores = () => {
                   <tbody className="divide-y divide-gray-100">
                     {servers.map((s) => (
                       <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-semibold">{s.hostname}</td>
+                        <td className="px-6 py-4 font-semibold">
+                          <button type="button" onClick={() => setDetailServer(s)} className="hover:text-blue-600">
+                            {s.hostname}
+                          </button>
+                        </td>
                          <td className="px-6 py-4">{s.cpu_usage}%</td>
                          <td className="px-6 py-4 flex flex-col">
                             <span className="text-sm font-medium">{s.memory_usage}%</span>
@@ -339,6 +354,7 @@ const Servidores = () => {
           </div>
         )}
       </div>
+      <AssetDetailDrawer open={Boolean(detailServer)} asset={detailServer} sourceType="server" onClose={() => setDetailServer(null)} />
     </div>
   );
 };

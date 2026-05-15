@@ -6,6 +6,7 @@ import type { JWTPayload } from '../../types';
 import { decryptSecret } from '../../services/crypto-service';
 import { writeAdminAuditLog } from '../../services/audit-service';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
+import { buildAssetDetail } from '../../services/asset-profile-service';
 
 export default async function clientMetricsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -32,7 +33,18 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
     const { user } = request.user as JWTPayload;
     try {
       const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
-      let query = supabaseAdmin.from('servers').select('*');
+      let visibleProfiles = supabaseAdmin
+        .from('asset_profiles')
+        .select('source_id')
+        .eq('source_type', 'server')
+        .eq('customer_visible', true);
+      if (targetCompanyId) visibleProfiles = visibleProfiles.eq('company_id', targetCompanyId);
+      const { data: profiles, error: profilesError } = await visibleProfiles;
+      if (profilesError) return reply.code(500).send({ error: profilesError.message });
+      const visibleIds = (profiles || []).map((profile: any) => profile.source_id);
+      if (visibleIds.length === 0) return [];
+
+      let query = supabaseAdmin.from('servers').select('*').in('id', visibleIds);
       if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
       const { data, error } = await query;
       if (error) return reply.code(500).send({ error: error.message });
@@ -92,6 +104,23 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
 
     if (error) return reply.code(500).send({ error: error.message });
     return (data || []).reverse();
+  });
+
+  fastify.get<{ Params: { id: string } }>('/servers/:id/details', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+    const { id } = request.params;
+    let targetCompanyId: string | null = null;
+    try {
+      ({ targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id));
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
+    }
+    if (!targetCompanyId) return reply.code(400).send({ error: 'company_id é obrigatório' });
+
+    const detail = await buildAssetDetail(supabaseAdmin, 'server', id, targetCompanyId);
+    if (!detail) return reply.code(404).send({ error: 'Servidor não encontrado' });
+    if (!detail.customer_visible) return reply.code(404).send({ error: 'Servidor não encontrado' });
+    return detail;
   });
 
   // Forçar sincronização — FIX B2: usar supabaseAdmin em vez de supabase

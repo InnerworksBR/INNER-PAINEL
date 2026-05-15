@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -52,6 +52,11 @@ const SidebarAdmin = () => {
                 <NavLink to="/admin/auditAdmin" className={getActiveClass}>
                     <FileSearch size={18} />
                     Auditoria
+                </NavLink>
+
+                <NavLink to="/admin/inventarioAdmin" className={getActiveClass}>
+                    <Boxes size={18} />
+                    Inventário
                 </NavLink>
 
                 <NavLink to="/admin/configAdmin" className={getActiveClass}>

@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle, Server, AlertTriangle, RefreshCw, Wifi } from "lucide-react";
 import api from '../../../services/api';
 import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
+import AssetDetailDrawer from '../../../components/AssetDetailDrawer';
 
 const Rede = () => {
   const [loading, setLoading] = useState(true);
   const [devices, setDevices] = useState([]);
   const [stats, setStats] = useState(null);
   const [events, setEvents] = useState([]);
+  const [detailDevice, setDetailDevice] = useState(null);
   const requestConfig = useClientRequestConfig();
 
   useEffect(() => {
@@ -178,7 +180,11 @@ const Rede = () => {
             <tbody className="text-sm text-slate-700 divide-y divide-slate-100">
               {devices.length > 0 ? devices.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">{item.device_name}</td>
+                  <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">
+                    <button type="button" onClick={() => setDetailDevice(item)} className="hover:text-blue-600">
+                      {item.device_name}
+                    </button>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">{item.device_type}</td>
                   <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{item.ip_address || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{item.location || '-'}</td>
@@ -200,6 +206,7 @@ const Rede = () => {
           </table>
         </div>
       </div>
+      <AssetDetailDrawer open={Boolean(detailDevice)} asset={detailDevice} sourceType="network_device" onClose={() => setDetailDevice(null)} />
     </div>
   );
 };

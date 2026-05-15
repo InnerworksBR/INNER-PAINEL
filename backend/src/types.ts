@@ -145,6 +145,38 @@ export interface NetworkDevice {
   last_updated: string;
 }
 
+export interface AssetProfile {
+  id: string;
+  company_id: string;
+  source_type: 'server' | 'network_device';
+  source_id: string;
+  asset_type: string;
+  display_name?: string | null;
+  customer_visible: boolean;
+  is_active: boolean;
+  manufacturer?: string | null;
+  model?: string | null;
+  serial_number?: string | null;
+  operating_system?: string | null;
+  operating_system_version?: string | null;
+  firmware_version?: string | null;
+  physical_or_virtual?: string | null;
+  business_purpose?: string | null;
+  technical_purpose?: string | null;
+  environment?: string | null;
+  criticality?: string | null;
+  location?: string | null;
+  notes_for_customer?: string | null;
+  auto_data: Record<string, unknown>;
+  manual_data: Record<string, unknown>;
+  manual_override_fields: string[];
+  last_synced_at?: string | null;
+  last_reviewed_at?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SystemSetting {
   key: string;
   value: string;

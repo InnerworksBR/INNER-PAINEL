@@ -6,6 +6,7 @@ import { isDetailedLoggingEnabled } from './settings-service';
 import { insertMonitoringEvents } from './monitoring-events-service';
 import { decryptSecret } from './crypto-service';
 import { insertNetworkStatusHistory, insertServerMetricHistory } from './history-service';
+import { upsertAssetProfileFromSource } from './asset-profile-service';
 
 async function getZabbixAuthToken(url: string, user: string, password: string): Promise<string> {
   const payload = {
@@ -236,6 +237,18 @@ export async function fetchZabbixMetrics(
 
       if (error) throw error;
       await insertServerMetricHistory(supabase, serversToUpsert);
+
+      const { data: syncedServers, error: syncedServersError } = await supabase
+        .from('servers')
+        .select('*')
+        .eq('company_id', company_id)
+        .in('hostname', serversToUpsert.map((server: any) => server.hostname));
+      if (syncedServersError) throw syncedServersError;
+      const serverHostMap = new Map<string, any>(serverHosts.map((host: any) => [host.name, host]));
+      for (const server of syncedServers || []) {
+        const host = serverHostMap.get(server.hostname);
+        await upsertAssetProfileFromSource(supabase, 'server', server, extractServerProfileFields(host?.items || []));
+      }
     }
 
     await recordSyncSuccess(supabase, company_id, 'zabbix', serversToUpsert.length);
@@ -334,6 +347,18 @@ export async function fetchZabbixNetworkDevices(
 
       if (error) throw error;
       await insertNetworkStatusHistory(supabase, devicesToUpsert);
+
+      const { data: syncedDevices, error: syncedDevicesError } = await supabase
+        .from('network_devices')
+        .select('*')
+        .eq('company_id', company_id)
+        .in('device_name', devicesToUpsert.map((device: any) => device.device_name));
+      if (syncedDevicesError) throw syncedDevicesError;
+      const networkHostMap = new Map<string, any>(networkHosts.map((host: any) => [host.name, host]));
+      for (const device of syncedDevices || []) {
+        const host = networkHostMap.get(device.device_name);
+        await upsertAssetProfileFromSource(supabase, 'network_device', device, extractNetworkProfileFields(host?.items || []));
+      }
     }
 
     await recordSyncSuccess(supabase, company_id, 'zabbix_network', devicesToUpsert.length);
@@ -669,4 +694,42 @@ function isNetworkHost(host: any): boolean {
   if (name.includes('sensor')) return true;
 
   return networkKeywords.some((g: string) => combined.includes(g));
+}
+
+function extractServerProfileFields(items: any[]) {
+  const valueByKeys = (...patterns: string[]) => findItemValue(items, patterns);
+  const systemDescription = valueByKeys('system.uname', 'system.sw.os', 'system.sw.os.get');
+  const osMatch = systemDescription?.match(/^(Windows|Linux|Ubuntu|Debian|CentOS|Red Hat|Rocky|AlmaLinux|macOS)[^0-9]*/i);
+  return compact({
+    operating_system: valueByKeys('system.sw.os', 'system.sw.os.get') || osMatch?.[1],
+    operating_system_version: valueByKeys('system.sw.os.version', 'system.sw.os.release'),
+    manufacturer: valueByKeys('system.hw.chassis[manufacturer]', 'system.hw.vendor'),
+    model: valueByKeys('system.hw.chassis[model]', 'system.hw.model'),
+    serial_number: valueByKeys('system.hw.chassis[serial]', 'system.hw.serialnumber'),
+    physical_or_virtual: inferVirtualization(valueByKeys('system.hw.chassis[type]', 'system.sw.arch', 'system.uname')),
+  });
+}
+
+function extractNetworkProfileFields(items: any[]) {
+  return compact({
+    manufacturer: findItemValue(items, ['system.vendor', 'device.vendor', 'snmp.sysdescr']),
+    model: findItemValue(items, ['system.hw.model', 'device.model', 'snmp.sysdescr']),
+    firmware_version: findItemValue(items, ['system.sw.version', 'device.firmware', 'snmp.sysdescr']),
+  });
+}
+
+function findItemValue(items: any[], patterns: string[]) {
+  const item = items.find((entry: any) => patterns.some((pattern) => String(entry.key_ || '').toLowerCase().includes(pattern.toLowerCase())));
+  return item?.lastvalue || undefined;
+}
+
+function inferVirtualization(value?: string) {
+  const normalized = String(value || '').toLowerCase();
+  if (!normalized) return undefined;
+  if (['vmware', 'virtual', 'hyper-v', 'kvm', 'xen'].some((token) => normalized.includes(token))) return 'virtual';
+  return 'fisico';
+}
+
+function compact<T extends Record<string, any>>(value: T): Partial<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined && entry !== null && entry !== '')) as Partial<T>;
 }

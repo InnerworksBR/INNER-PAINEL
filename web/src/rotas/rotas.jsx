@@ -18,6 +18,7 @@ import DocAdmin from "../pages/paginasAdmin/docAdmin/docAdmin";
 import UsuariosAdmin from "../pages/paginasAdmin/usuariosAdmin/usuariosAdmin";
 import ConfigAdmin from "../pages/paginasAdmin/configAdmin/configAdmin";
 import AuditAdmin from "../pages/paginasAdmin/auditAdmin/auditAdmin";
+import InventarioAdmin from "../pages/paginasAdmin/inventarioAdmin/inventarioAdmin";
 
 // Route Protection
 import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
@@ -58,6 +59,7 @@ export const router = createBrowserRouter([
       { path: "docAdmin", element: <DocAdmin /> },
       { path: "usuariosAdmin", element: <UsuariosAdmin /> },
       { path: "auditAdmin", element: <AuditAdmin /> },
+      { path: "inventarioAdmin", element: <InventarioAdmin /> },
       { path: "configAdmin", element: <ConfigAdmin /> },
     ],
   },
