@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle, Eye } from 'lucide-react';
 import { useCompanies } from '../../../context/CompanyContext';
 import api from '../../../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const EmpresasAdmin = () => {
     const { companies, addCompany, updateCompany, deleteCompany, updateIntegrations } = useCompanies();
+    const navigate = useNavigate();
 
     // Estados para o modal e formulário
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -230,6 +232,14 @@ const EmpresasAdmin = () => {
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-2">
+                                            <button
+                                                onClick={() => navigate(`/admin/empresas/${empresa.id}/preview`)}
+                                                className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                                                title="Visualizar portal"
+                                                aria-label={`Visualizar portal de ${empresa.name}`}
+                                            >
+                                                <Eye size={16} />
+                                            </button>
                                             <button
                                                 onClick={() => handleOpenIntegrationsModal(empresa)}
                                                 className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"

@@ -3,9 +3,11 @@ import { Users, Activity, Clock, Server, AlertTriangle, Monitor, Cloud, Network,
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
+import { useClientPortalPath } from '../../../context/ClientPreviewContext';
 
 const DashboardGeral = () => {
   const navigate = useNavigate();
+  const portalPath = useClientPortalPath();
   const { data, loading, refresh } = useRealtimeData('/client/dashboard/summary', 'dashboard_summary', { intervalMs: 60000 });
 
   if (loading) {
@@ -159,11 +161,11 @@ const DashboardGeral = () => {
         <h2 className="text-xl font-bold text-slate-800 mb-4">Acesso Rápido aos Módulos</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {[
-            { title: 'Microsoft 365', desc: 'Licenças e serviços', icon: Cloud, path: '/app/ms365', stat: `${data?.ms365?.totalLicenses || 0} licenças`, color: 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white' },
-            { title: 'Servidores', desc: 'Monitoramento', icon: Server, path: '/app/servidores', stat: `${data?.servers?.total || 0} monitorados`, color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
-            { title: 'Rede', desc: 'Infraestrutura', icon: Network, path: '/app/rede', stat: data?.network?.hasData ? `${data.network.total || 0} equipamentos` : 'Sem dados', color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
-            { title: 'Documentação', desc: 'Contratos e docs', icon: FileText, path: '/app/documentacao', stat: `${data?.documents?.total || 0} arquivos`, color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
-            { title: 'Chamados', desc: 'GLPI tickets', icon: Ticket, path: '/app/chamados', stat: `${data?.tickets?.open || 0} abertos`, color: 'bg-orange-50 text-orange-600 group-hover:bg-orange-600 group-hover:text-white' },
+            { title: 'Microsoft 365', desc: 'Licenças e serviços', icon: Cloud, path: portalPath('ms365'), stat: `${data?.ms365?.totalLicenses || 0} licenças`, color: 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white' },
+            { title: 'Servidores', desc: 'Monitoramento', icon: Server, path: portalPath('servidores'), stat: `${data?.servers?.total || 0} monitorados`, color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
+            { title: 'Rede', desc: 'Infraestrutura', icon: Network, path: portalPath('rede'), stat: data?.network?.hasData ? `${data.network.total || 0} equipamentos` : 'Sem dados', color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
+            { title: 'Documentação', desc: 'Contratos e docs', icon: FileText, path: portalPath('documentacao'), stat: `${data?.documents?.total || 0} arquivos`, color: 'bg-slate-100 text-slate-600 group-hover:bg-slate-800 group-hover:text-white' },
+            { title: 'Chamados', desc: 'GLPI tickets', icon: Ticket, path: portalPath('chamados'), stat: `${data?.tickets?.open || 0} abertos`, color: 'bg-orange-50 text-orange-600 group-hover:bg-orange-600 group-hover:text-white' },
           ].map((mod, i) => (
             <button key={i} onClick={() => navigate(mod.path)} className="flex flex-col bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all group text-left">
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 transition-colors ${mod.color}`}>

@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 
 import Layout from "../layouts/layout";
 import AdminLayout from "../layouts/AdminLayout";
+import ClientPreviewLayout from "../layouts/ClientPreviewLayout";
 import DashboardGeral from "../pages/paginasClient/Dashboard/dashboard";
 import Microsoft365 from "../pages/paginasClient/Microsoft/microsoft";
 import Servidores from "../pages/paginasClient/Servidores/servidores";
@@ -25,6 +26,23 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: <Login />,
+  },
+  {
+    path: "/admin/empresas/:companyId/preview",
+    element: (
+      <AdminRoute>
+        <ClientPreviewLayout />
+      </AdminRoute>
+    ),
+    children: [
+      { index: true, element: <DashboardGeral /> },
+      { path: "dashboard", element: <DashboardGeral /> },
+      { path: "ms365", element: <Microsoft365 /> },
+      { path: "servidores", element: <Servidores /> },
+      { path: "rede", element: <Rede /> },
+      { path: "documentacao", element: <DocumentacaoTecnica /> },
+      { path: "chamados", element: <ChamadosGLPI /> },
+    ],
   },
   {
     path: "/admin",

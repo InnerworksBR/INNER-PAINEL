@@ -1,10 +1,12 @@
 import { LayoutDashboard, Cloud, Server, Network, FileText, Ticket, LogOut } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useClientPortalPath } from "../context/ClientPreviewContext";
 
 const Sidebar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const portalPath = useClientPortalPath();
 
   const navItemClass = "flex items-center gap-3 p-3 rounded-lg transition-colors";
 
@@ -31,32 +33,32 @@ const Sidebar = () => {
 
       <nav className="flex flex-col gap-2 flex-1">
 
-        <NavLink to="/app/dashboard" className={getActiveClass}>
+        <NavLink to={portalPath('dashboard')} className={getActiveClass}>
           <LayoutDashboard size={18} />
           Dashboard Geral
         </NavLink>
 
-        <NavLink to="/app/ms365" className={getActiveClass}>
+        <NavLink to={portalPath('ms365')} className={getActiveClass}>
           <Cloud size={18} />
           Microsoft 365
         </NavLink>
 
-        <NavLink to="/app/servidores" className={getActiveClass}>
+        <NavLink to={portalPath('servidores')} className={getActiveClass}>
           <Server size={18} />
           Servidores
         </NavLink>
 
-        <NavLink to="/app/rede" className={getActiveClass}>
+        <NavLink to={portalPath('rede')} className={getActiveClass}>
           <Network size={18} />
           Rede
         </NavLink>
 
-        <NavLink to="/app/documentacao" className={getActiveClass}>
+        <NavLink to={portalPath('documentacao')} className={getActiveClass}>
           <FileText size={18} />
           Documentação Técnica
         </NavLink>
 
-        <NavLink to="/app/chamados" className={getActiveClass}>
+        <NavLink to={portalPath('chamados')} className={getActiveClass}>
           <Ticket size={18} />
           Chamados GLPI
         </NavLink>

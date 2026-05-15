@@ -10,6 +10,12 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  const previewMatch = window.location.pathname.match(/^\/admin\/empresas\/([^/]+)\/preview(?:\/|$)/);
+  if (previewMatch && config.url?.startsWith('/client/')) {
+    config.params = { ...(config.params || {}) };
+    if (!config.params.company_id) config.params.company_id = previewMatch[1];
+  }
   return config;
 });
 
