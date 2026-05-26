@@ -16,8 +16,10 @@ export const AuthProvider = ({ children }) => {
             if (storedUser && token) {
                 try {
                     // Testar se o token ainda é válido fazendo um request leve
-                    await api.get('/auth/validate');
-                    setUser(JSON.parse(storedUser));
+                    const response = await api.get('/auth/validate');
+                    const validatedUser = response.data?.user || JSON.parse(storedUser);
+                    localStorage.setItem('user', JSON.stringify(validatedUser));
+                    setUser(validatedUser);
                 } catch {
                     // Token expirado ou inválido
                     console.warn('Sessão expirada, fazendo logout');

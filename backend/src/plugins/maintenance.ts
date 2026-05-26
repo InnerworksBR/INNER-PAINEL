@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { JWTPayload } from '../types';
 import { isMaintenanceModeEnabled } from '../services/settings-service';
+import { loadLiveUser } from './jwt';
 
 const BYPASS_PREFIXES = ['/api/auth/login', '/api/health'];
 
@@ -17,13 +18,17 @@ export default fp(async function maintenancePlugin(fastify: FastifyInstance) {
     try {
       await request.jwtVerify();
       const payload = request.user as JWTPayload;
-      if (payload?.user?.role === 'admin') return;
+      const liveUser = await loadLiveUser(fastify, payload?.user);
+      if (liveUser?.status !== 'blocked' && liveUser?.role === 'admin') {
+        payload.user = liveUser;
+        return;
+      }
     } catch (_) {
       // Visitors and clients are blocked while maintenance is enabled.
     }
 
     return reply.code(503).send({
-      error: 'Portal em manutenção. Tente novamente mais tarde.',
+      error: 'Portal em manutencao. Tente novamente mais tarde.',
       maintenanceMode: true,
     });
   });

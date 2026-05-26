@@ -14,10 +14,11 @@ declare module 'fastify' {
 export interface UserProfile {
   id: string;
   email: string;
+  full_name?: string;
   role: 'admin' | 'client';
   company_id: string | null;
   company_name?: string;
-  status?: string;
+  status: string;
 }
 
 export interface JWTPayload {

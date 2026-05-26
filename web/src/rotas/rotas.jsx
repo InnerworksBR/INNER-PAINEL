@@ -9,6 +9,7 @@ import Servidores from "../pages/paginasClient/Servidores/servidores";
 import Rede from "../pages/paginasClient/Rede/rede";
 import DocumentacaoTecnica from "../pages/paginasClient/Documentação/documentacao";
 import ChamadosGLPI from "../pages/paginasClient/ChamadosGLPI/chamados";
+import Conta from "../pages/paginasClient/Conta/conta";
 import Login from "../pages/Login/login";
 
 // Admin Pages
@@ -78,6 +79,7 @@ export const router = createBrowserRouter([
       { path: "rede", element: <Rede /> },
       { path: "documentacao", element: <DocumentacaoTecnica /> },
       { path: "chamados", element: <ChamadosGLPI /> },
+      { path: "conta", element: <Conta /> },
     ],
   },
 ]);

@@ -65,7 +65,7 @@ const DashAdmin = () => {
 
     return (
         <div className="space-y-8">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="flex flex-col gap-1">
                     <h1 className="text-3xl font-bold text-slate-800">Painel Administrativo</h1>
                     <p className="text-slate-500 text-lg">Visão operacional real do portal</p>

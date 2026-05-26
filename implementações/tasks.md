@@ -1,208 +1,226 @@
-﻿# Tasks — Implementação da Visualização do Cliente dentro do Admin
+﻿# Tasks - Batidao de prontidao do Portal Inner
 
-## Fase 1 — Levantamento e desenho técnico
+## Ordem de ataque
 
-1. **Inventariar o fluxo atual de autenticação e autorização**
-   1.1. Confirmar como `user.role` e `user.company_id` chegam no frontend e backend.  
-   1.2. Registrar quais rotas já aceitam admin e quais dependem exclusivamente de `user.company_id`.  
-   1.3. Identificar se existe alguma rota de cliente que, para admin, hoje retorna dados globais sem filtro.
+Priorizar nesta ordem:
 
-2. **Mapear todas as páginas do portal do cliente e suas dependências de API**
-   2.1. Listar as páginas de cliente existentes: Dashboard, MS365, Servidores, Rede, Documentação e Chamados.  
-   2.2. Para cada página, identificar os endpoints consumidos.  
-   2.3. Para cada endpoint, registrar se ele já suporta filtro por empresa e como isso acontece.  
-   2.4. Marcar endpoints que precisarão receber `company_id` em modo preview.
+1. proteger a base de autenticacao e dependencias;
+2. entregar conta/troca de senha para o usuario final;
+3. deixar preview e isolamento prontos para apresentacao;
+4. endurecer HTTP, uploads e testes;
+5. limpar qualidade e performance.
 
-3. **Definir o contrato único de escopo por empresa**
-   3.1. Escolher o formato oficial para o preview admin enviar o contexto da empresa, preferencialmente `company_id` em query string ou parâmetro de rota conforme o endpoint.  
-   3.2. Definir a regra de prioridade:
-   - cliente comum → sempre usa `user.company_id` do token;
-   - admin em preview → usa `company_id` explícito;
-   - admin fora do preview → manter comportamento atual apenas onde a visão global for realmente desejada.  
-   3.3. Documentar quais endpoints devem rejeitar admin sem `company_id` quando usados em contexto de preview.
+## Fase 0 - Preparar baseline e evidencia
 
-4. **Definir a arquitetura frontend do preview**
-   4.1. Decidir a rota final, por exemplo `/admin/empresas/:companyId/preview`.  
-   4.2. Decidir se haverá um novo `ClientPreviewLayout` ou uma composição controlada do layout atual do cliente.  
-   4.3. Definir como o `companyId` será disponibilizado às páginas reutilizadas:
-   - context dedicado;
-   - hook dedicado;
-   - ou parâmetro propagado por loader/rota.  
-   4.4. Garantir que a solução minimize lógica duplicada dentro das páginas de cliente.
+1. **Registrar o estado atual da rodada**
+   1.1. Preservar a saida dos comandos ja executados em 22/05/2026.
+   1.2. Anotar que `web` build passou com warning de chunk grande.
+   1.3. Anotar que `web` lint falhou em hooks/contexto de preview.
+   1.4. Anotar que backend TypeScript passou.
+   1.5. Anotar que backend e web `npm audit --omit=dev --audit-level=high` falharam.
 
-## Fase 2 — Backend e segurança de dados
+2. **Definir criterio da apresentacao**
+   2.1. Escolher quais empresas/dados serao demonstrados.
+   2.2. Validar preview de cada empresa que sera aberta ao vivo.
+   2.3. Evitar demonstrar fluxos que ainda tenham acao admin misturada ao conteudo do cliente.
+   2.4. Preparar plano de fallback para modulos sem dados sincronizados.
 
-5. **Criar uma função/helper central de resolução de escopo de empresa**
-   5.1. Implementar um helper reutilizável para determinar o `targetCompanyId`.  
-   5.2. O helper deve:
-   - usar `user.company_id` para usuários não-admin;
-   - aceitar `company_id` explícito para admins;
-   - validar ausência de escopo quando necessário;
-   - retornar erro consistente quando o contexto for inválido.  
-   5.3. Preferir reaproveitar o helper em todas as rotas de cliente relevantes para evitar regras divergentes.
+## Fase 1 - P0 seguranca de autenticacao e supply chain
 
-6. **Adaptar as rotas de dashboard do cliente**
-   6.1. Atualizar `GET /client/dashboard/summary` para aceitar escopo explícito em preview admin.  
-   6.2. Garantir que todas as tabelas consultadas sejam filtradas pelo `targetCompanyId` quando aplicável.  
-   6.3. Preservar o comportamento atual do cliente comum.
+3. **Atualizar dependencias vulneraveis do backend**
+   3.1. Atualizar `axios`, `fastify`, dependencias transitivas corrigidas e `@fastify/jwt` conforme compatibilidade do projeto.
+   3.2. Ler notas de upgrade do JWT antes de aplicar major version.
+   3.3. Rodar login, `/auth/validate`, rotas admin e rotas client apos o upgrade.
+   3.4. Rodar `npm audit --omit=dev --audit-level=high` novamente em `backend`.
+   3.5. Documentar qualquer alerta que permanecer com justificativa e versao alvo.
 
-7. **Adaptar as rotas de métricas do cliente**
-   7.1. Atualizar `GET /client/metrics/ms365`.  
-   7.2. Atualizar `GET /client/metrics/servers`.  
-   7.3. Atualizar `GET /client/metrics/servers/events`.  
-   7.4. Revisar `GET /client/metrics/servers/:id/history` para confirmar que o isolamento já está correto e ajustar se necessário.  
-   7.5. Garantir consistência da regra entre todos os endpoints.
+4. **Atualizar dependencias vulneraveis do frontend**
+   4.1. Atualizar `axios` e transitivas corrigiveis em `web`.
+   4.2. Rodar build e lint apos lockfile mudar.
+   4.3. Rodar `npm audit --omit=dev --audit-level=high` novamente em `web`.
 
-8. **Adaptar as rotas de documentação**
-   8.1. Revisar os endpoints em `client/docs-routes.ts`.  
-   8.2. Adicionar suporte a `company_id` para admin preview onde hoje só há leitura implícita por usuário.  
-   8.3. Confirmar que documentos de outras empresas nunca apareçam no preview.
+5. **Corrigir revogacao de role e escopo no middleware JWT**
+   5.1. Alterar `backend/src/plugins/jwt.ts` para carregar o perfil atual minimo.
+   5.2. Validar perfil inexistente, `status`, `role` e `company_id`.
+   5.3. Nao confiar em `role` e `company_id` antigos do token para autorizacao final.
+   5.4. Atualizar o objeto de usuario disponivel no request com o perfil atual, ou criar helper unico equivalente.
+   5.5. Garantir que `verifyAdmin` use esse estado atualizado.
+   5.6. Definir estrategia de cache/revogacao se a consulta por request for otimizada.
 
-9. **Adaptar as rotas de GLPI e rede**
-   9.1. Revisar `client/glpi-routes.ts`.  
-   9.2. Revisar `client/network-routes.ts`.  
-   9.3. Aplicar o mesmo contrato de escopo por empresa.  
-   9.4. Garantir que filtros, agregações e resumos respeitem a empresa escolhida.
+6. **Testar revogacao**
+   6.1. Emitir token de admin.
+   6.2. Alterar o perfil para client e provar que rota `/api/admin/*` passa a falhar.
+   6.3. Bloquear usuario com token valido e provar que rotas autenticadas falham.
+   6.4. Alterar `company_id` de cliente e provar que leituras seguintes usam o escopo novo.
+   6.5. Cobrir o caso de perfil removido/inexistente.
 
-10. **Validar existência da empresa solicitada**
-   10.1. Ao entrar em preview ou consultar dados preview, confirmar que o `company_id` existe.  
-   10.2. Definir resposta padronizada para empresa inexistente (`404`) e escopo inválido (`400` ou `403`, conforme o caso).  
-   10.3. Evitar respostas silenciosas que pareçam “sem dados” quando na verdade a empresa não existe.
+7. **Remover senha bootstrap literal**
+   7.1. Refatorar `backend/create_users.js` para nao conter senha fixa.
+   7.2. Preferir senha passada por env/CLI ou geracao de credencial temporaria unica.
+   7.3. Evitar imprimir senha em log permanente.
+   7.4. Inventariar ambientes onde o script foi executado.
+   7.5. Rotacionar as contas bootstrap afetadas.
 
-11. **Cobrir segurança com testes de backend**
-   11.1. Testar cliente comum acessando apenas seus próprios dados.  
-   11.2. Testar admin com `company_id` explícito vendo apenas a empresa escolhida.  
-   11.3. Testar admin alternando entre duas empresas e recebendo resultados distintos.  
-   11.4. Testar empresa inexistente.  
-   11.5. Testar ausência de `company_id` nos endpoints que exigirem preview escopado.  
-   11.6. Testar tentativa de acesso cruzado em endpoints por ID, como histórico de servidor.
+## Fase 2 - Conta do usuario final
 
-## Fase 3 — Frontend do preview
+8. **Definir UX minima da area de conta**
+   8.1. Criar rota do cliente, por exemplo `/app/conta`.
+   8.2. Adicionar entrada acessivel na sidebar/menu do portal.
+   8.3. Mostrar nome, e-mail, empresa e papel.
+   8.4. Criar formulario de troca de senha com:
+   - senha atual;
+   - nova senha;
+   - confirmacao;
+   - mostrar/ocultar senha;
+   - validacao e feedback de sucesso/erro.
+   8.5. Decidir se nome completo sera editavel nesta primeira entrega.
 
-12. **Adicionar ação de visualização na tabela de empresas**
-   12.1. Inserir um novo botão/ícone por linha em `EmpresasAdmin`.  
-   12.2. Usar uma ação clara, como `Visualizar portal`.  
-   12.3. Navegar para a rota de preview com o ID da empresa selecionada.  
-   12.4. Adicionar `title`, rótulo acessível e estilo consistente com os botões existentes.
+9. **Criar API de conta**
+   9.1. Criar endpoint `me` para retornar apenas dados seguros do usuario autenticado, se o frontend nao puder usar o perfil atual com seguranca suficiente.
+   9.2. Criar endpoint de troca de senha derivando o usuario do request autenticado.
+   9.3. Nao aceitar `userId` no body para trocar senha.
+   9.4. Revalidar senha atual antes da troca conforme o fluxo Supabase adotado.
+   9.5. Aplicar a mesma politica minima de senha da criacao/reset admin, revisando se 8 caracteres ainda e suficiente para o produto.
+   9.6. Tratar sessao expirada e erro de credencial sem vazar detalhe sensivel.
 
-13. **Criar a rota de preview no roteador**
-   13.1. Registrar a nova rota sob `/admin`.  
-   13.2. Garantir proteção com `AdminRoute`.  
-   13.3. Definir rotas filhas para os módulos do cliente dentro do preview, se necessário.  
-   13.4. Manter URLs previsíveis para permitir compartilhamento interno e retorno direto.
+10. **Criar tela de conta no frontend**
+   10.1. Criar pagina de conta no namespace de paginas client.
+   10.2. Registrar rota protegida em `web/src/rotas/rotas.jsx`.
+   10.3. Adicionar navegacao a partir de `web/src/components/Sidebar.jsx`.
+   10.4. Implementar estados loading, erro, submit em andamento e sucesso.
+   10.5. Limpar campos de senha apos sucesso.
+   10.6. Revisar texto para o cliente entender o que mudou.
 
-14. **Criar o layout de visualização administrativa**
-   14.1. Implementar um layout que reaproveite a experiência do cliente sem esconder que o usuário é admin.  
-   14.2. Exibir:
-   - nome da empresa;
-   - indicação de “modo administrativo”;
-   - botão de retorno ao painel admin.  
-   14.3. Decidir se a sidebar deve ser a do cliente, a do admin, ou uma composição híbrida.  
-   14.4. Priorizar fidelidade visual ao portal do cliente, preservando ao mesmo tempo a orientação do operador.
+11. **Cobrir troca de senha**
+   11.1. Testar cliente trocando a propria senha.
+   11.2. Testar senha atual invalida.
+   11.3. Testar nova senha curta e confirmacao divergente.
+   11.4. Testar que outro usuario nao pode ser alvo da rota.
+   11.5. Testar comportamento da sessao apos a troca.
 
-15. **Criar o contexto/hook de empresa em preview**
-   15.1. Ler o `companyId` da rota.  
-   15.2. Buscar os metadados da empresa necessários para o cabeçalho.  
-   15.3. Expor o `previewCompanyId` para as páginas reaproveitadas.  
-   15.4. Fornecer estados de carregamento, erro e empresa não encontrada.
+12. **Criar backlog explicito da conta**
+   12.1. Recuperacao de senha fora de sessao.
+   12.2. Primeiro acesso com troca obrigatoria de senha temporaria.
+   12.3. Encerrar outras sessoes.
+   12.4. MFA, se aprovado para o produto.
 
-16. **Adaptar a camada de chamadas de API do frontend**
-   16.1. Definir uma forma consistente de anexar `company_id` nas requisições feitas durante o preview.  
-   16.2. Avaliar se isso deve ficar:
-   - num helper específico para consultas de cliente;
-   - num wrapper de API;
-   - ou dentro de hooks de dados por módulo.  
-   16.3. Evitar espalhar manualmente `company_id` em dezenas de pontos sem abstração.  
-   16.4. Garantir que fora do preview as páginas de cliente continuem funcionando como antes.
+## Fase 3 - Isolamento e preview pronto para demonstracao
 
-17. **Reaproveitar as páginas atuais do cliente no preview**
-   17.1. Renderizar Dashboard no preview.  
-   17.2. Renderizar MS365 no preview.  
-   17.3. Renderizar Servidores no preview.  
-   17.4. Renderizar Rede no preview.  
-   17.5. Renderizar Documentação no preview.  
-   17.6. Renderizar Chamados no preview.  
-   17.7. Corrigir qualquer dependência implícita de `user.company_id` no frontend que impeça o reuso.
+13. **Fechar contrato das rotas de cliente para admin**
+   13.1. Revisar `backend/src/services/company-scope-service.ts`.
+   13.2. Tornar explicito quais endpoints `/api/client/*` exigem `company_id` para admin.
+   13.3. Retornar erro para admin sem escopo nas rotas de experiencia do cliente.
+   13.4. Manter visoes globais somente em endpoints `/api/admin/*`.
+   13.5. Garantir que endpoint por ID confirme o recurso pertence ao escopo resolvido.
 
-18. **Tratar estados de UX do preview**
-   18.1. Loading inicial do contexto da empresa.  
-   18.2. Empresa não encontrada.  
-   18.3. Empresa sem dados em determinado módulo.  
-   18.4. Erro de carregamento de dados.  
-   18.5. Ausência de permissão ou escopo inválido.
+14. **Cobrir isolamento multi-tenant**
+   14.1. Criar fixture com duas empresas e dados distintos.
+   14.2. Testar Dashboard, MS365, Servidores, Rede, Documentos e GLPI por cliente comum.
+   14.3. Testar admin preview com `company_id` da empresa A e B.
+   14.4. Testar admin sem escopo recebendo erro onde aplicavel.
+   14.5. Testar downloads de documentos e historicos por ID fora do escopo.
+   14.6. Testar detalhes de asset invisivel ao cliente.
 
-19. **Preservar navegação e retorno**
-   19.1. Garantir ida fácil de Empresas → Preview.  
-   19.2. Garantir retorno fácil de Preview → Empresas/Admin.  
-   19.3. Verificar que refresh da página mantém o contexto correto pela URL.  
-   19.4. Verificar que deep links internos do preview continuam dentro do preview, e não escapam para `/app`.
+15. **Remover controles admin do preview**
+   15.1. Em `web/src/pages/paginasClient/Microsoft/microsoft.jsx`, esconder a selecao de licencas admin quando `useClientPreview()` indicar modo preview.
+   15.2. Nao mostrar perfil `Administrador` como informacao do cliente no conteudo preview.
+   15.3. Usar empresa do preview em rotulos de tenant quando disponivel.
+   15.4. Revisar outras paginas reutilizadas para mutacoes admin-only.
+   15.5. Decidir se preview tera um modo futuro "operar como admin" separado do modo de demonstracao.
 
-## Fase 4 — Qualidade, consistência e testes
+16. **Corrigir estado do preview e polling**
+   16.1. Corrigir memoizacao de `useClientRequestConfig` em `web/src/context/ClientPreviewContext.jsx`.
+   16.2. Corrigir dependencias de `useEffect`/callbacks em `Rede`.
+   16.3. Corrigir dependencias de `useEffect`/callbacks em `ChamadosGLPI`.
+   16.4. Revisar troca de empresa no preview sem refresh completo.
+   16.5. Rodar `npm run lint` ate zerar erro e warnings relevantes.
 
-20. **Revisar acessibilidade e clareza visual**
-   20.1. O botão de visualização deve ter rótulo acessível.  
-   20.2. O banner de preview deve ser legível e persistente.  
-   20.3. A navegação precisa indicar claramente onde o usuário está.  
-   20.4. Confirmar contraste e responsividade mínima.
+17. **Executar roteiro manual de apresentacao**
+   17.1. Login como admin.
+   17.2. Abrir Empresas e entrar no preview da empresa demonstrada.
+   17.3. Validar Dashboard, MS365, Servidores, Rede, Documentacao e Chamados.
+   17.4. Confirmar que dados e rotulos pertencem a empresa escolhida.
+   17.5. Confirmar que preview nao permite alterar licencas por acidente.
+   17.6. Login como cliente e abrir a nova area de conta.
 
-21. **Executar testes manuais ponta a ponta**
-   21.1. Entrar como admin.  
-   21.2. Abrir preview da empresa A.  
-   21.3. Validar todos os módulos.  
-   21.4. Voltar e abrir preview da empresa B.  
-   21.5. Confirmar que os dados mudaram conforme a empresa.  
-   21.6. Entrar como cliente comum e confirmar ausência de regressão.
+## Fase 4 - Endurecimento HTTP e rotas de alto custo
 
-22. **Adicionar testes automatizados de frontend, se a base do projeto suportar**
-   22.1. Testar renderização do botão de preview.  
-   22.2. Testar roteamento com `companyId`.  
-   22.3. Testar exibição do banner de modo preview.  
-   22.4. Testar anexação do `company_id` nas chamadas enquanto o preview está ativo.  
-   22.5. Testar que chamadas fora do preview não recebem esse escopo extra indevidamente.
+18. **Adicionar defesa de taxa**
+   18.1. Registrar plugin de rate limit no Fastify.
+   18.2. Aplicar limite mais restritivo em `/api/auth/login`.
+   18.3. Avaliar limites para upload, sync manual e endpoints de debug.
+   18.4. Definir resposta e logging sem expor existencia de usuario.
 
-23. **Revisar logs e auditoria**
-   23.1. Avaliar se a abertura de preview deve gerar evento de auditoria.  
-   23.2. Se sim, definir ação, entidade, empresa e metadados mínimos.  
-   23.3. Garantir que ações de simples visualização não se confundam com ações de alteração.
+19. **Fechar CORS por ambiente**
+   19.1. Remover fallback permissivo em producao.
+   19.2. Permitir origins esperadas por config explicita.
+   19.3. Validar dev local sem tornar producao wildcard.
+   19.4. Documentar variaveis obrigatorias de deploy.
 
-24. **Atualizar documentação técnica interna**
-   24.1. Documentar a nova rota de preview.  
-   24.2. Documentar a regra de escopo para admins em endpoints de cliente.  
-   24.3. Registrar o fluxo para futuros mantenedores adicionarem novos módulos ao preview sem quebrar o isolamento.
+20. **Adicionar security headers**
+   20.1. Registrar plugin equivalente a Helmet no backend ou na camada HTTP que serve o app.
+   20.2. Definir CSP compatvel com Vite build, APIs, imagens e downloads assinados.
+   20.3. Avaliar frame policy, referrer policy e HSTS no ambiente HTTPS.
+   20.4. Validar login e downloads apos headers entrarem.
 
-## Fase 5 — Validação de aceite
+21. **Planejar migracao de sessao**
+   21.1. Escolher entre cookie HttpOnly no backend ou manter Bearer em storage com risco formalmente aceito e mitigacoes fortes.
+   21.2. Se migrar para cookie, revisar CSRF, CORS, refresh/logout e expiracao.
+   21.3. Remover token persistido em `localStorage` quando a nova estrategia entrar.
+   21.4. Testar logout, expiracao, refresh de tela e preview.
 
-25. **Validar critérios de aceite funcionais**
-   25.1. Ação de preview disponível por empresa.  
-   25.2. Visualização fiel dos módulos do cliente.  
-   25.3. Retorno simples ao admin.  
-   25.4. Empresa atual sempre identificável.
+22. **Endurecer upload de documentos**
+   22.1. Validar MIME e extensao na rota admin.
+   22.2. Confirmar limite por arquivo, quantidade e tamanho total de request.
+   22.3. Evitar buffering desnecessario quando houver caminho simples de streaming.
+   22.4. Remover do storage arquivos ja enviados se o insert em `documents` falhar.
+   22.5. Testar arquivo valido, tipo bloqueado, arquivo acima do limite e falha parcial.
 
-26. **Validar critérios de aceite de segurança**
-   26.1. Nenhum dado cruzado entre empresas.  
-   26.2. Admin em preview vê somente a empresa escolhida.  
-   26.3. Cliente comum continua isolado por JWT.  
-   26.4. Endpoints por ID continuam protegidos.
+## Fase 5 - Testes e observabilidade
 
-27. **Validar critérios de aceite de manutenção**
-   27.1. As telas do cliente foram reaproveitadas em vez de duplicadas.  
-   27.2. A lógica de escopo ficou centralizada.  
-   27.3. A solução permite adicionar novos módulos no futuro com baixo atrito.
+23. **Criar base automatizada de testes do backend**
+   23.1. Adicionar script de teste no `backend/package.json`.
+   23.2. Cobrir auth middleware, `verifyAdmin`, resolve company scope e change password.
+   23.3. Cobrir leitura/download de documentos por escopo.
+   23.4. Cobrir sync/manual endpoints com permissao admin.
+   23.5. Evitar testes que precisem de credenciais reais de integracao.
 
-## Ordem recomendada de execução
+24. **Criar testes do frontend para fluxos criticos**
+   24.1. Proteger rota de conta.
+   24.2. Validar formulario de troca de senha.
+   24.3. Validar preview com banner e sem controles admin internos.
+   24.4. Validar logout e redirect em 401.
+   24.5. Cobrir hooks de request config/polling ao mudar company preview.
 
-1. Tasks 1–4 para fechar arquitetura.  
-2. Tasks 5–11 para resolver segurança e contrato de dados primeiro.  
-3. Tasks 12–19 para construir a experiência visual.  
-4. Tasks 20–24 para endurecer qualidade.  
-5. Tasks 25–27 para aceite final.
+25. **Revisar auditoria**
+   25.1. Manter logs administrativos de reset de senha, sync, empresa, documentos e inventario.
+   25.2. Definir evento para troca de senha do proprio usuario sem guardar segredo.
+   25.3. Avaliar log de bloqueio por rate limit.
+   25.4. Garantir que erros de integracao nao retornem secrets.
 
-## Definição de pronto
+## Fase 6 - Acabamento posterior
 
-A implementação só deve ser considerada concluída quando:
+26. **Otimizar frontend**
+   26.1. Code split de paginas admin/client e graficos pesados.
+   26.2. Otimizar imagens grandes usadas no login e logos.
+   26.3. Medir bundle depois da mudanca.
 
-- o admin conseguir abrir o preview por empresa;
-- todos os módulos reutilizados carregarem com escopo correto;
-- o preview estiver claramente identificado;
-- clientes comuns não sofrerem regressão;
-- houver cobertura de testes suficiente para impedir vazamento multi-tenant acidental.
+27. **Melhorar operacao do portal**
+   27.1. Trocar `alert`/`confirm` restantes por feedback consistente onde fizer sentido.
+   27.2. Revisar estados vazios e erros dos modulos de cliente.
+   27.3. Revisar encoding/textos exibidos no build final.
+   27.4. Documentar fluxo de bootstrap sem credencial fixa.
+
+## Checklist de pronto
+
+- [ ] Dependencias de producao altas/criticas corrigidas ou excecao documentada.
+- [ ] Senha literal removida de `backend/create_users.js`.
+- [ ] Middleware nao deixa role/admin antigo sobreviver apos revogacao definida.
+- [ ] Cliente tem pagina de conta e troca de senha.
+- [ ] Preview demonstra o cliente sem controles admin internos.
+- [ ] Rotas client escopadas para cliente e admin preview com testes negativos.
+- [ ] Login possui rate limit e producao nao sobe com CORS wildcard por omissao.
+- [ ] `web` build passa.
+- [ ] `web` lint passa.
+- [ ] `backend` TypeScript passa.
+- [ ] Audit de dependencias reexecutado depois dos upgrades.

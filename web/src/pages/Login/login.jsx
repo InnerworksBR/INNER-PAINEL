@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import bg1 from '../../assets/bg1.png';
 import bg2 from '../../assets/bg2.png';
@@ -18,6 +18,7 @@ const backgrounds = [bg1, bg2, bg3, bg4];
 
 const Login = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { login } = useAuth();
 
     const [email, setEmail] = useState('');
@@ -74,7 +75,7 @@ const Login = () => {
             <div className="relative z-10 flex flex-col lg:flex-row h-screen w-full overflow-hidden">
 
                 {/* 🔵 LADO ESQUERDO: BANNER E LOGOS */}
-                <div className="flex flex-col justify-between h-full w-full lg:w-1/2 px-8 lg:px-[5vw] py-8 lg:py-12 flex-1">
+                <div className="hidden lg:flex flex-col justify-between h-full w-full lg:w-1/2 px-8 lg:px-[5vw] py-8 lg:py-12 flex-1">
                 
                 {/*LOGO MICROSOFT*/}
                 <div className="flex items-center gap-3 lg:gap-4">
@@ -133,6 +134,12 @@ const Login = () => {
                         {error && (
                             <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs 2xl:text-sm text-center">
                                 {error}
+                            </div>
+                        )}
+
+                        {location.state?.passwordChanged && (
+                            <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-400/50 rounded-lg text-emerald-100 text-xs 2xl:text-sm text-center">
+                                Senha alterada. Entre novamente para continuar.
                             </div>
                         )}
 

@@ -8,8 +8,14 @@ interface LoginBody {
   password: string;
 }
 
+interface ChangePasswordBody {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
-  const { supabaseAdmin } = fastify;
+  const { supabase, supabaseAdmin } = fastify;
 
   fastify.post<{ Body: LoginBody }>('/login', {
     schema: {
@@ -86,4 +92,79 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
   }, async (request, _reply) => {
     return { valid: true, user: (request.user as any)?.user };
   });
+
+  fastify.get('/me', {
+    preHandler: [fastify.authenticate],
+  }, async (request) => {
+    return { user: getAuthenticatedUser(request) };
+  });
+
+  fastify.post<{ Body: ChangePasswordBody }>('/change-password', {
+    preHandler: [fastify.authenticate],
+    preValidation: [rejectUnexpectedPasswordFields],
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['currentPassword', 'newPassword', 'confirmPassword'],
+        properties: {
+          currentPassword: { type: 'string', minLength: 1 },
+          newPassword: { type: 'string', minLength: 8 },
+          confirmPassword: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const user = getAuthenticatedUser(request);
+    const { currentPassword, newPassword, confirmPassword } = request.body;
+
+    if (!user || user.status === 'blocked') {
+      return reply.code(403).send({ error: 'Usuario nao autorizado' });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return reply.code(400).send({ error: 'A confirmacao da nova senha nao confere.' });
+    }
+
+    const { error: passwordError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+
+    if (passwordError) {
+      const status = typeof passwordError.status === 'number' ? passwordError.status : 500;
+      if (status === 400 || status === 401) {
+        return reply.code(401).send({ error: 'Senha atual invalida.' });
+      }
+
+      request.log.error({ err: passwordError, userId: user.id }, 'Failed to reauthenticate password change');
+      return reply.code(500).send({ error: 'Nao foi possivel alterar a senha agora.' });
+    }
+
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
+      password: newPassword,
+    });
+
+    if (updateError) {
+      request.log.error({ err: updateError, userId: user.id }, 'Failed to change authenticated user password');
+      return reply.code(500).send({ error: 'Nao foi possivel alterar a senha agora.' });
+    }
+
+    return { success: true, message: 'Senha alterada com sucesso.' };
+  });
+}
+
+function getAuthenticatedUser(request: FastifyRequest): UserProfile {
+  return (request.user as { user: UserProfile }).user;
+}
+
+async function rejectUnexpectedPasswordFields(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
+    return;
+  }
+
+  const allowedFields = new Set(['currentPassword', 'newPassword', 'confirmPassword']);
+  if (Object.keys(request.body).some((field) => !allowedFields.has(field))) {
+    return reply.code(400).send({ error: 'Campos invalidos para alteracao de senha.' });
+  }
 }

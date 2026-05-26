@@ -28,7 +28,7 @@ const AuditAdmin = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-800">Auditoria</h1>
                     <p className="text-slate-500 mt-1">Rastro de ações administrativas críticas.</p>

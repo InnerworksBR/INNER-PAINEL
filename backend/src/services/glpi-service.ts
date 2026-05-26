@@ -49,7 +49,7 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     try {
       await glpiApi.post('/changeActiveEntities', {
         entities_id: String(entityId),
-        is_recursive: true
+        is_recursive: false
       });
     } catch (e: any) {
        throw new Error(`Falha ao alterar Entidade no GLPI: ${e.response?.data ? JSON.stringify(e.response.data) : e.message}`);
@@ -97,6 +97,16 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
 
       if (error) throw error;
     }
+
+    // A tabela local deve refletir o retrato atual retornado pelo GLPI para a entidade,
+    // não acumular chamados que já não pertencem mais ao conjunto sincronizado.
+    const syncedGlpiIds = ticketsToUpsert.map((ticket) => ticket.glpi_id);
+    let cleanupQuery = supabase.from('glpi_tickets').delete().eq('company_id', company_id);
+    if (syncedGlpiIds.length > 0) {
+      cleanupQuery = cleanupQuery.not('glpi_id', 'in', `(${syncedGlpiIds.join(',')})`);
+    }
+    const { error: cleanupError } = await cleanupQuery;
+    if (cleanupError) throw cleanupError;
 
     // Encerrar sessão GLPI
     try {

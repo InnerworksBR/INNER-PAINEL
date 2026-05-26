@@ -54,6 +54,6 @@ export const useClientRequestConfig = () => {
     () => preview?.companyId
       ? { params: { company_id: preview.companyId } }
       : {},
-    [preview?.companyId]
+    [preview]
   );
 };
