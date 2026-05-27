@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Filter, Ticket, AlertCircle, CheckCircle2, TrendingUp, ChevronDown, RefreshCw } from 'lucide-react';
+import { Filter, Ticket, AlertCircle, CheckCircle2, TrendingUp, ChevronDown, RefreshCw, Search, Download, Calendar } from 'lucide-react';
 import api from '../../../services/api';
 import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
+import TicketDetailDrawer from '../../../components/TicketDetailDrawer';
 
 const DropdownFiltro = ({ icone: Icon, valorAtual, opcoes, aoSelecionar, aberto, aoAlternar, largura = 'w-44' }) => {
   return (
@@ -35,7 +36,12 @@ const ChamadosGLPI = () => {
   const [filtros, setFiltros] = useState({
     status: 'Todos os status',
     prioridade: 'Todas as Prioridades',
+    busca: '',
+    dataInicio: '',
+    dataFim: '',
   });
+  const [selectedTicketId, setSelectedTicketId] = useState(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const requestConfig = useClientRequestConfig();
 
   useEffect(() => {
@@ -73,8 +79,53 @@ const ChamadosGLPI = () => {
   const filteredTickets = tickets.filter(ticket => {
     const matchesStatus = filtros.status === 'Todos os status' || ticket.status === filtros.status;
     const matchesPriority = filtros.prioridade === 'Todas as Prioridades' || ticket.priority === filtros.prioridade;
-    return matchesStatus && matchesPriority;
+    
+    const searchString = filtros.busca.toLowerCase();
+    const matchesBusca = !searchString || 
+      String(ticket.glpi_id).includes(searchString) || 
+      (ticket.title && ticket.title.toLowerCase().includes(searchString));
+      
+    let matchesData = true;
+    if (ticket.created_at && (filtros.dataInicio || filtros.dataFim)) {
+      const ticketDate = new Date(ticket.created_at).setHours(0,0,0,0);
+      if (filtros.dataInicio) {
+        const start = new Date(filtros.dataInicio + 'T00:00:00').setHours(0,0,0,0);
+        if (ticketDate < start) matchesData = false;
+      }
+      if (filtros.dataFim) {
+        const end = new Date(filtros.dataFim + 'T23:59:59').setHours(0,0,0,0);
+        if (ticketDate > end) matchesData = false;
+      }
+    }
+    
+    return matchesStatus && matchesPriority && matchesBusca && matchesData;
   });
+
+  const exportToCSV = () => {
+    if (filteredTickets.length === 0) return;
+    const headers = ['ID GLPI', 'Título', 'Requerente', 'Categoria', 'Prioridade', 'Status', 'Data'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredTickets.map(t => [
+        t.glpi_id,
+        `"${(t.title || '').replace(/"/g, '""')}"`,
+        `"${(t.requester || '').replace(/"/g, '""')}"`,
+        `"${(t.category || '').replace(/"/g, '""')}"`,
+        t.priority || '',
+        t.status || '',
+        t.created_at ? new Date(t.created_at).toLocaleDateString('pt-BR') : ''
+      ].join(','))
+    ].join('\\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `chamados_glpi_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const getStatusStyle = (status) => {
     if (['Resolvido', 'Fechado'].includes(status)) return 'bg-emerald-50 text-emerald-700 border-emerald-100';
@@ -122,13 +173,26 @@ const ChamadosGLPI = () => {
       </div>
 
       {/* Barra de Filtros */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex flex-col md:flex-row md:items-center gap-6">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 border-r border-slate-200 pr-6">
-            <Filter size={20} className="text-slate-400" />
-            Filtros
-          </h2>
-          <div className="flex flex-wrap items-center gap-3">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 border-r border-slate-200 pr-4">
+              <Filter size={20} className="text-slate-400" />
+              Filtros
+            </h2>
+            
+            {/* Busca */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input 
+                type="text" 
+                placeholder="Buscar por ID ou Título..." 
+                value={filtros.busca}
+                onChange={(e) => setFiltros({ ...filtros, busca: e.target.value })}
+                className="pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-sm w-full md:w-64 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            
             <DropdownFiltro icone={Ticket} valorAtual={filtros.status} opcoes={statusOptions}
               aberto={openDropdown === 'status'} aoAlternar={() => toggleDropdown('status')}
               aoSelecionar={(valor) => handleSelect('status', valor)} largura="w-56" />
@@ -136,6 +200,23 @@ const ChamadosGLPI = () => {
               aberto={openDropdown === 'prioridade'} aoAlternar={() => toggleDropdown('prioridade')}
               aoSelecionar={(valor) => handleSelect('prioridade', valor)} largura="w-52" />
           </div>
+
+          {/* Exportar */}
+          <button onClick={exportToCSV} disabled={filteredTickets.length === 0} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            <Download size={16} />
+            Exportar CSV
+          </button>
+        </div>
+        
+        {/* Filtros de Data */}
+        <div className="flex items-center gap-4 ml-0 md:ml-28">
+           <div className="flex items-center gap-2 text-sm text-slate-600">
+             <Calendar size={16} className="text-slate-400" />
+             <span>Período:</span>
+           </div>
+           <input type="date" value={filtros.dataInicio} onChange={(e) => setFiltros({ ...filtros, dataInicio: e.target.value })} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+           <span className="text-slate-400">até</span>
+           <input type="date" value={filtros.dataFim} onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-sm focus:outline-none focus:border-blue-500" />
         </div>
       </div>
 
@@ -228,9 +309,16 @@ const ChamadosGLPI = () => {
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredTickets.length > 0 ? (
                 filteredTickets.map((ticket) => (
-                  <tr key={ticket.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="px-6 py-4 font-medium text-blue-600">#{ticket.glpi_id}</td>
-                    <td className="px-6 py-4 font-semibold text-slate-900 max-w-xs truncate">{ticket.title}</td>
+                  <tr 
+                    key={ticket.id} 
+                    onClick={() => {
+                      setSelectedTicketId(ticket.glpi_id);
+                      setIsDrawerOpen(true);
+                    }}
+                    className="hover:bg-slate-50/70 transition-colors cursor-pointer group"
+                  >
+                    <td className="px-6 py-4 font-medium text-blue-600 group-hover:text-blue-700">#{ticket.glpi_id}</td>
+                    <td className="px-6 py-4 font-semibold text-slate-900 max-w-xs truncate group-hover:text-blue-600 transition-colors">{ticket.title}</td>
                     <td className="px-6 py-4">{ticket.requester || '-'}</td>
                     <td className="px-6 py-4">{ticket.category || '-'}</td>
                     <td className="px-6 py-4">
@@ -259,6 +347,13 @@ const ChamadosGLPI = () => {
           </table>
         </div>
       </div>
+      
+      {/* Drawer de Detalhes */}
+      <TicketDetailDrawer 
+        isOpen={isDrawerOpen} 
+        onClose={() => setIsDrawerOpen(false)} 
+        ticketId={selectedTicketId} 
+      />
     </div>
   );
 };

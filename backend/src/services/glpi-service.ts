@@ -81,7 +81,7 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
       glpi_id: t.id,
       title: t.name,
       status: mapGLPIStatus(t.status),
-      sla_status: t.sla_state ? mapSLAStatus(t.sla_state) : 'N/A',
+      sla_status: calculateSLA(t),
       priority: mapGLPIPriority(t.priority),
       requester: t.users_id_recipient_name || t.users_id_recipient || null,
       category: t.itilcategories_id_name || t.itilcategories_id || null,
@@ -152,10 +152,103 @@ function mapGLPIPriority(priority: number | string): string {
   return priorityMap[String(priority)] || String(priority);
 }
 
-function mapSLAStatus(slaState: number | string): string {
-  const slaMap: Record<string, string> = {
-    '0': 'Dentro do SLA',
-    '1': 'Fora do SLA',
-  };
-  return slaMap[String(slaState)] || 'N/A';
+function calculateSLA(t: any): string {
+  if (t.sla_ttr_state !== undefined && t.sla_ttr_state !== null) {
+    return String(t.sla_ttr_state) === '1' ? 'Fora do SLA' : 'Dentro do SLA';
+  }
+  if (!t.time_to_resolve || t.time_to_resolve === 'null') {
+    return 'N/A';
+  }
+
+  const limitDate = new Date(t.time_to_resolve);
+  if (isNaN(limitDate.getTime())) return 'N/A';
+
+  // Resolvido ou Fechado
+  if (['5', '6'].includes(String(t.status))) {
+    const solveDate = t.solvedate ? new Date(t.solvedate) : (t.closedate ? new Date(t.closedate) : new Date(t.date_mod));
+    return solveDate > limitDate ? 'Fora do SLA' : 'Dentro do SLA';
+  }
+
+  // Ainda aberto
+  return new Date() > limitDate ? 'Fora do SLA' : 'Dentro do SLA';
+}
+
+export async function getTicketDetails(supabase: SupabaseClient, company_id: string, ticket_id: number): Promise<any> {
+  const apiUrl = process.env.GLPI_API_URL;
+  const apiToken = process.env.GLPI_API_TOKEN;
+  const userToken = process.env.GLPI_USER_TOKEN;
+
+  if (!apiUrl || !apiToken || !userToken) {
+    throw new Error('Credenciais globais do GLPI não configuradas.');
+  }
+
+  const { data: integrations, error: intError } = await supabase
+    .from('company_integrations')
+    .select('glpi_entity_id')
+    .eq('company_id', company_id)
+    .single();
+
+  if (intError || !integrations || integrations.glpi_entity_id === null) {
+    throw new Error('ID da Entidade do GLPI não configurado para esta empresa.');
+  }
+
+  const entityId = integrations.glpi_entity_id;
+
+  const initResponse = await axios.get(`${apiUrl}/initSession`, {
+    headers: {
+      'App-Token': apiToken,
+      'Authorization': `user_token ${userToken}`,
+    },
+  });
+
+  const sessionToken = initResponse.data.session_token;
+  const glpiApi = axios.create({
+    baseURL: apiUrl,
+    headers: {
+      'App-Token': apiToken,
+      'Session-Token': sessionToken,
+    },
+  });
+
+  try {
+    await glpiApi.post('/changeActiveEntities', {
+      entities_id: String(entityId),
+      is_recursive: false
+    });
+
+    const ticketRes = await glpiApi.get(`/Ticket/${ticket_id}?expand_dropdowns=true`);
+    const tasksRes = await glpiApi.get(`/Ticket/${ticket_id}/TicketTask`);
+    const followupsRes = await glpiApi.get(`/Ticket/${ticket_id}/ITILFollowup`); // in newer GLPI it's ITILFollowup, but maybe TicketFollowup. Wait, GLPI 9.5+ uses ITILFollowup
+
+    const ticket = ticketRes.data;
+    const tasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
+    const followups = Array.isArray(followupsRes.data) ? followupsRes.data : [];
+
+    // Combine timeline
+    const timeline = [
+      ...tasks.map((t: any) => ({
+        type: 'task',
+        id: t.id,
+        content: t.content,
+        date: t.date,
+        author: t.users_id_name || 'Técnico',
+      })),
+      ...followups.map((f: any) => ({
+        type: 'followup',
+        id: f.id,
+        content: f.content,
+        date: f.date,
+        author: f.users_id_name || 'Requerente',
+      }))
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return {
+      ticket,
+      timeline
+    };
+  } finally {
+    try {
+      await glpiApi.get('/killSession');
+    } catch (_) {}
+  }
 }

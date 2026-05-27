@@ -1,6 +1,6 @@
 // src/routes/client/glpi-routes.ts
 import type { FastifyInstance } from 'fastify';
-import { syncTickets } from '../../services/glpi-service';
+import { syncTickets, getTicketDetails } from '../../services/glpi-service';
 import type { JWTPayload } from '../../types';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 
@@ -21,6 +21,33 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
       return data;
     } catch (err) {
       return sendCompanyScopeError(reply, err);
+    }
+  });
+
+  // Buscar detalhes e histórico de um chamado específico
+  fastify.get<{ Params: { id: string } }>('/tickets/:id', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+    const { id } = request.params;
+    try {
+      const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
+      
+      // Validação de escopo: o chamado deve pertencer à empresa do usuário
+      const { data: ticketCache, error: cacheError } = await supabaseAdmin
+        .from('glpi_tickets')
+        .select('id')
+        .eq('company_id', targetCompanyId)
+        .eq('glpi_id', parseInt(id, 10))
+        .single();
+        
+      if (cacheError || !ticketCache) {
+        return reply.code(404).send({ error: 'Chamado não encontrado ou permissão negada' });
+      }
+
+      const result = await getTicketDetails(supabaseAdmin, targetCompanyId, parseInt(id, 10));
+      return result;
+    } catch (err: any) {
+      if (err.name === 'CompanyScopeError') return sendCompanyScopeError(reply, err);
+      return reply.code(500).send({ error: err.message });
     }
   });
 
