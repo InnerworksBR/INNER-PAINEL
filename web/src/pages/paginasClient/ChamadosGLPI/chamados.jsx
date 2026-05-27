@@ -40,6 +40,13 @@ const ChamadosGLPI = () => {
     dataInicio: '',
     dataFim: '',
   });
+  const [filtrosAplicados, setFiltrosAplicados] = useState({
+    status: 'Todos os status',
+    prioridade: 'Todas as Prioridades',
+    busca: '',
+    dataInicio: '',
+    dataFim: '',
+  });
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const requestConfig = useClientRequestConfig();
@@ -75,25 +82,25 @@ const ChamadosGLPI = () => {
     setOpenDropdown(null);
   };
 
-  // Filtragem local
+  // Filtragem local baseada em filtrosAplicados
   const filteredTickets = tickets.filter(ticket => {
-    const matchesStatus = filtros.status === 'Todos os status' || ticket.status === filtros.status;
-    const matchesPriority = filtros.prioridade === 'Todas as Prioridades' || ticket.priority === filtros.prioridade;
+    const matchesStatus = filtrosAplicados.status === 'Todos os status' || ticket.status === filtrosAplicados.status;
+    const matchesPriority = filtrosAplicados.prioridade === 'Todas as Prioridades' || ticket.priority === filtrosAplicados.prioridade;
     
-    const searchString = filtros.busca.toLowerCase();
+    const searchString = filtrosAplicados.busca.toLowerCase();
     const matchesBusca = !searchString || 
       String(ticket.glpi_id).includes(searchString) || 
       (ticket.title && ticket.title.toLowerCase().includes(searchString));
       
     let matchesData = true;
-    if (ticket.created_at && (filtros.dataInicio || filtros.dataFim)) {
+    if (ticket.created_at && (filtrosAplicados.dataInicio || filtrosAplicados.dataFim)) {
       const ticketDate = new Date(ticket.created_at).setHours(0,0,0,0);
-      if (filtros.dataInicio) {
-        const start = new Date(filtros.dataInicio + 'T00:00:00').setHours(0,0,0,0);
+      if (filtrosAplicados.dataInicio) {
+        const start = new Date(filtrosAplicados.dataInicio + 'T00:00:00').setHours(0,0,0,0);
         if (ticketDate < start) matchesData = false;
       }
-      if (filtros.dataFim) {
-        const end = new Date(filtros.dataFim + 'T23:59:59').setHours(0,0,0,0);
+      if (filtrosAplicados.dataFim) {
+        const end = new Date(filtrosAplicados.dataFim + 'T23:59:59').setHours(0,0,0,0);
         if (ticketDate > end) matchesData = false;
       }
     }
@@ -201,11 +208,17 @@ const ChamadosGLPI = () => {
               aoSelecionar={(valor) => handleSelect('prioridade', valor)} largura="w-52" />
           </div>
 
-          {/* Exportar */}
-          <button onClick={exportToCSV} disabled={filteredTickets.length === 0} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            <Download size={16} />
-            Exportar CSV
-          </button>
+          {/* Botões de Ação: Filtrar e Exportar */}
+          <div className="flex items-center gap-3">
+            <button onClick={() => setFiltrosAplicados(filtros)} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 border border-transparent rounded-xl text-sm font-semibold transition-colors">
+              <Filter size={16} />
+              Aplicar Filtros
+            </button>
+            <button onClick={exportToCSV} disabled={filteredTickets.length === 0} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              <Download size={16} />
+              Exportar CSV
+            </button>
+          </div>
         </div>
         
         {/* Filtros de Data */}
