@@ -3,7 +3,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { verifyAdmin } from '../../hooks/auth-hook';
 import { writeAdminAuditLog } from '../../services/audit-service';
-import { uploadSecurityFile, getSecuritySignedUrl, deleteSecurityFile, ensureSecurityBucketExists } from '../../services/storage-service';
+// Reutiliza o bucket 'documents' (já provisionado e funcional em produção)
+// para evitar problemas de RLS em buckets recém-criados. O conteúdo é
+// reembalado no frontend via Blob com o MIME correto, então o tipo
+// armazenado aqui não afeta a renderização.
+import { uploadFile, getSignedUrl, deleteFile } from '../../services/storage-service';
 
 export default async function adminSecurityRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -57,10 +61,21 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
 
     const f = pendingFiles[0];
 
-    // Garantir que o bucket existe (cria se necessário)
-    await ensureSecurityBucketExists(supabaseAdmin);
+    // Tipo armazenado: HTML guardado como text/plain (MIME permitido no bucket
+    // documents); PDF como application/pdf. O frontend reembala via Blob.
+    const storageMime = reportType === 'zero_trust' ? 'text/plain' : 'application/pdf';
+    const storageName = `security_${reportType}_${f.filename}`;
 
-    // Remover arquivo antigo se existir
+    // 1) Faz o upload do novo arquivo ANTES de remover o antigo,
+    //    para nunca perder o relatório atual num upload que falhe.
+    let newStoragePath: string;
+    try {
+      newStoragePath = await uploadFile(supabaseAdmin, companyId, storageName, f.fileBuffer, storageMime);
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message });
+    }
+
+    // 2) Guarda o caminho antigo (se houver) para limpeza posterior.
     const { data: existing } = await supabaseAdmin
       .from('security_reports')
       .select('file_url')
@@ -68,27 +83,7 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
       .eq('report_type', reportType)
       .maybeSingle();
 
-    if (existing?.file_url) {
-      await deleteSecurityFile(supabaseAdmin, existing.file_url);
-    }
-
-    // Upload do novo arquivo — forçar MIME correto pela extensão
-    const sanitizedName = f.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `${companyId}/${reportType}_${Date.now()}_${sanitizedName}`;
-    const lowerName = f.filename.toLowerCase();
-    const forcedMime = lowerName.endsWith('.html') || lowerName.endsWith('.htm')
-      ? 'text/html'
-      : lowerName.endsWith('.pdf')
-      ? 'application/pdf'
-      : f.mimetype;
-
-    try {
-      await uploadSecurityFile(supabaseAdmin, storagePath, f.fileBuffer, forcedMime);
-    } catch (err: any) {
-      return reply.code(500).send({ error: err.message });
-    }
-
-    // Upsert no banco
+    // 3) Aponta o registro para o novo arquivo.
     const { data, error } = await supabaseAdmin
       .from('security_reports')
       .upsert(
@@ -96,7 +91,7 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
           company_id: companyId,
           report_type: reportType,
           title: title || f.filename,
-          file_url: storagePath,
+          file_url: newStoragePath,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'company_id,report_type' }
@@ -104,7 +99,16 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
       .select()
       .single();
 
-    if (error) return reply.code(500).send({ error: error.message });
+    if (error) {
+      // Reverte o upload órfão se o banco falhar.
+      await deleteFile(supabaseAdmin, newStoragePath);
+      return reply.code(500).send({ error: error.message });
+    }
+
+    // 4) Remove o arquivo antigo (best-effort) só agora que o novo está ativo.
+    if (existing?.file_url && existing.file_url !== newStoragePath) {
+      await deleteFile(supabaseAdmin, existing.file_url);
+    }
 
     await writeAdminAuditLog(supabaseAdmin, request, {
       action: 'security_report.upload',
@@ -131,7 +135,7 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
     if (!report.file_url) return reply.code(404).send({ error: 'Arquivo não disponível' });
 
     try {
-      const url = await getSecuritySignedUrl(supabaseAdmin, report.file_url);
+      const url = await getSignedUrl(supabaseAdmin, report.file_url);
       return { url, title: report.title };
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
@@ -149,7 +153,7 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
       .single();
 
     if (report?.file_url) {
-      await deleteSecurityFile(supabaseAdmin, report.file_url);
+      await deleteFile(supabaseAdmin, report.file_url);
     }
 
     const { error } = await supabaseAdmin.from('security_reports').delete().eq('id', id);

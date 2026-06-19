@@ -2,7 +2,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const BUCKET_NAME = 'documents';
-const SECURITY_BUCKET = 'security-reports';
 
 /**
  * Garante que o bucket 'documents' exista no Storage.
@@ -40,59 +39,6 @@ export async function ensureBucketExists(supabase: SupabaseClient): Promise<void
       console.log('Bucket "documents" criado com sucesso.');
     }
   }
-}
-
-/**
- * Garante que o bucket 'security-reports' exista (HTML + PDF).
- */
-export async function ensureSecurityBucketExists(supabase: SupabaseClient): Promise<void> {
-  const { data: buckets } = await supabase.storage.listBuckets();
-  const exists = buckets?.some((b: any) => b.name === SECURITY_BUCKET);
-  if (!exists) {
-    const { error } = await supabase.storage.createBucket(SECURITY_BUCKET, {
-      public: false,
-      fileSizeLimit: 50 * 1024 * 1024,
-    });
-    if (error && !error.message.includes('already exists')) {
-      console.error('Erro ao criar bucket security-reports:', error.message);
-    } else {
-      console.log('Bucket "security-reports" criado/verificado com sucesso.');
-    }
-  }
-}
-
-export async function uploadSecurityFile(
-  supabase: SupabaseClient,
-  storagePath: string,
-  fileBuffer: Buffer,
-  mimeType: string
-): Promise<void> {
-  const { error } = await supabase.storage
-    .from(SECURITY_BUCKET)
-    .upload(storagePath, fileBuffer, { contentType: mimeType, upsert: true });
-  if (error) throw new Error(`Falha no upload de segurança: ${error.message}`);
-}
-
-export async function getSecuritySignedUrl(
-  supabase: SupabaseClient,
-  storagePath: string,
-  expiresInSeconds: number = 3600
-): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from(SECURITY_BUCKET)
-    .createSignedUrl(storagePath, expiresInSeconds);
-  if (error) throw new Error(`Falha ao gerar URL de segurança: ${error.message}`);
-  return data.signedUrl;
-}
-
-export async function deleteSecurityFile(
-  supabase: SupabaseClient,
-  storagePath: string
-): Promise<void> {
-  const { error } = await supabase.storage
-    .from(SECURITY_BUCKET)
-    .remove([storagePath]);
-  if (error) console.error(`Erro ao deletar arquivo de segurança ${storagePath}:`, error.message);
 }
 
 /**

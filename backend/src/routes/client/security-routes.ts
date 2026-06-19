@@ -2,7 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { JWTPayload } from '../../types';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
-import { getSecuritySignedUrl } from '../../services/storage-service';
+import { getSignedUrl } from '../../services/storage-service';
 
 export default async function clientSecurityRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -67,7 +67,7 @@ export default async function clientSecurityRoutes(fastify: FastifyInstance): Pr
     }
 
     try {
-      const url = await getSecuritySignedUrl(supabaseAdmin, report.file_url, 7200);
+      const url = await getSignedUrl(supabaseAdmin, report.file_url, 7200);
       return { url, title: report.title };
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
