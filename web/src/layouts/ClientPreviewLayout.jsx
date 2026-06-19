@@ -13,9 +13,9 @@ const PreviewShell = () => {
   if (error) return <div className="p-4 sm:p-8 text-red-600">{error}</div>;
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen overflow-hidden">
+    <div className="flex flex-col md:flex-row min-h-screen">
       <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
-      <div className="flex-1 bg-gray-100 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
+      <div className="flex-1 bg-gray-100 flex flex-col min-h-screen min-w-0 overflow-y-auto overflow-x-hidden">
         <MobileHeader onMenuClick={() => setIsMobileMenuOpen(true)} title="Portal de Contratos (Visualização)" />
         <div className="md:sticky md:top-0 z-10 border-b border-amber-200 bg-amber-50 px-4 sm:px-8 py-3 text-amber-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
