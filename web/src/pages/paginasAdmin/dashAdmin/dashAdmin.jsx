@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Activity, AlertTriangle, Building2, FileText, RefreshCw, ShieldCheck, Users } from "lucide-react";
 import api from '../../../services/api';
 
 const DashAdmin = () => {
+    const navigate = useNavigate();
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
 
@@ -39,6 +41,7 @@ const DashAdmin = () => {
             subtitle: `${stats?.companies?.active || 0} ativas`,
             icon: Building2,
             color: "bg-blue-50 text-blue-600",
+            path: '/admin/empresasAdmin',
         },
         {
             title: "Usuários",
@@ -46,6 +49,7 @@ const DashAdmin = () => {
             subtitle: `${stats?.users?.active || 0} ativos / ${stats?.users?.blocked || 0} bloqueados`,
             icon: Users,
             color: "bg-emerald-50 text-emerald-600",
+            path: '/admin/usuariosAdmin',
         },
         {
             title: "Documentos",
@@ -53,6 +57,7 @@ const DashAdmin = () => {
             subtitle: `${stats?.documents?.stored || 0} armazenados / ${stats?.documents?.pending || 0} pendentes`,
             icon: FileText,
             color: "bg-violet-50 text-violet-600",
+            path: '/admin/docAdmin',
         },
         {
             title: "Saúde Operacional",
@@ -60,6 +65,7 @@ const DashAdmin = () => {
             subtitle: healthLabel.subtitle,
             icon: healthLabel.icon,
             color: healthLabel.color,
+            path: '/admin/auditAdmin',
         },
     ];
 
@@ -78,7 +84,7 @@ const DashAdmin = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {cards.map((card, i) => (
-                    <div key={i} className="bg-white rounded-lg border border-slate-200 shadow-sm p-6">
+                    <div key={i} onClick={() => navigate(card.path)} className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all">
                         <div className="flex justify-between items-start mb-4">
                             <h3 className="text-sm font-semibold text-slate-500">{card.title}</h3>
                             <div className={`p-2 rounded-lg ${card.color}`}>

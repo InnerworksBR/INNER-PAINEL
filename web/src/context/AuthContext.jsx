@@ -59,11 +59,20 @@ export const AuthProvider = ({ children }) => {
         // Navigate to login is handled by ProtectedRoute
     }, []);
 
+    const updateUser = useCallback((changes) => {
+        setUser((current) => {
+            const updated = { ...current, ...changes };
+            localStorage.setItem('user', JSON.stringify(updated));
+            return updated;
+        });
+    }, []);
+
     const value = {
         user,
         loading,
         login,
         logout,
+        updateUser,
         isAdmin: user?.role === 'admin',
     };
 

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Filter, Ticket, AlertCircle, CheckCircle2, TrendingUp, ChevronDown, RefreshCw, Search, Download, Calendar } from 'lucide-react';
+import { Filter, Ticket, AlertCircle, CheckCircle2, TrendingUp, ChevronDown, RefreshCw, Search, Download, Calendar, X } from 'lucide-react';
+
+const DEFAULT_FILTROS = {
+  status: 'Todos os status',
+  prioridade: 'Todas as Prioridades',
+  busca: '',
+  dataInicio: '',
+  dataFim: '',
+};
 import api from '../../../services/api';
 import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
 import TicketDetailDrawer from '../../../components/TicketDetailDrawer';
@@ -33,20 +41,8 @@ const ChamadosGLPI = () => {
   const [tickets, setTickets] = useState([]);
   const [stats, setStats] = useState(null);
   const [openDropdown, setOpenDropdown] = useState(null);
-  const [filtros, setFiltros] = useState({
-    status: 'Todos os status',
-    prioridade: 'Todas as Prioridades',
-    busca: '',
-    dataInicio: '',
-    dataFim: '',
-  });
-  const [filtrosAplicados, setFiltrosAplicados] = useState({
-    status: 'Todos os status',
-    prioridade: 'Todas as Prioridades',
-    busca: '',
-    dataInicio: '',
-    dataFim: '',
-  });
+  const [filtros, setFiltros] = useState(DEFAULT_FILTROS);
+  const [filtrosAplicados, setFiltrosAplicados] = useState(DEFAULT_FILTROS);
   const [selectedTicketId, setSelectedTicketId] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const requestConfig = useClientRequestConfig();
@@ -82,12 +78,24 @@ const ChamadosGLPI = () => {
     setOpenDropdown(null);
   };
 
+  const clearFilters = () => {
+    setFiltros(DEFAULT_FILTROS);
+    setFiltrosAplicados(DEFAULT_FILTROS);
+  };
+
+  const hasActiveFilters =
+    filtrosAplicados.status !== DEFAULT_FILTROS.status ||
+    filtrosAplicados.prioridade !== DEFAULT_FILTROS.prioridade ||
+    filtrosAplicados.dataInicio !== DEFAULT_FILTROS.dataInicio ||
+    filtrosAplicados.dataFim !== DEFAULT_FILTROS.dataFim ||
+    filtros.busca !== DEFAULT_FILTROS.busca;
+
   // Filtragem local baseada em filtrosAplicados
   const filteredTickets = tickets.filter(ticket => {
     const matchesStatus = filtrosAplicados.status === 'Todos os status' || ticket.status === filtrosAplicados.status;
     const matchesPriority = filtrosAplicados.prioridade === 'Todas as Prioridades' || ticket.priority === filtrosAplicados.prioridade;
     
-    const searchString = filtrosAplicados.busca.toLowerCase();
+    const searchString = filtros.busca.toLowerCase();
     const matchesBusca = !searchString || 
       String(ticket.glpi_id).includes(searchString) || 
       (ticket.title && ticket.title.toLowerCase().includes(searchString));
@@ -110,7 +118,7 @@ const ChamadosGLPI = () => {
 
   const exportToCSV = () => {
     if (filteredTickets.length === 0) return;
-    const headers = ['ID GLPI', 'Título', 'Requerente', 'Categoria', 'Prioridade', 'Status', 'Data'];
+    const headers = ['ID GLPI', 'Título', 'Requerente', 'Categoria', 'Prioridade', 'Status', 'Data', 'Atualizado'];
     const csvContent = [
       headers.join(','),
       ...filteredTickets.map(t => [
@@ -120,11 +128,12 @@ const ChamadosGLPI = () => {
         `"${(t.category || '').replace(/"/g, '""')}"`,
         t.priority || '',
         t.status || '',
-        t.created_at ? new Date(t.created_at).toLocaleDateString('pt-BR') : ''
+        t.created_at ? new Date(t.created_at).toLocaleDateString('pt-BR') : '',
+        t.glpi_date_mod && t.glpi_date_mod !== t.created_at ? new Date(t.glpi_date_mod).toLocaleDateString('pt-BR') : '—'
       ].join(','))
-    ].join('\\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    ].join('\n');
+
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -214,6 +223,12 @@ const ChamadosGLPI = () => {
               <Filter size={16} />
               Aplicar Filtros
             </button>
+            {hasActiveFilters && (
+              <button onClick={clearFilters} className="inline-flex items-center gap-1.5 px-3 py-2 text-slate-500 hover:text-red-500 border border-slate-200 rounded-xl text-sm font-semibold transition-colors">
+                <X size={15} />
+                Limpar
+              </button>
+            )}
             <button onClick={exportToCSV} disabled={filteredTickets.length === 0} className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               <Download size={16} />
               Exportar CSV
@@ -232,6 +247,44 @@ const ChamadosGLPI = () => {
            <input type="date" value={filtros.dataFim} onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-sm focus:outline-none focus:border-blue-500" />
         </div>
       </div>
+
+      {/* Chips de filtros ativos */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap gap-2 items-center">
+          {filtrosAplicados.status !== DEFAULT_FILTROS.status && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold">
+              Status: {filtrosAplicados.status}
+              <button onClick={() => setFiltrosAplicados(prev => ({ ...prev, status: DEFAULT_FILTROS.status }))} className="hover:text-red-500 transition-colors ml-0.5">
+                <X size={12} />
+              </button>
+            </span>
+          )}
+          {filtrosAplicados.prioridade !== DEFAULT_FILTROS.prioridade && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold">
+              Prioridade: {filtrosAplicados.prioridade}
+              <button onClick={() => setFiltrosAplicados(prev => ({ ...prev, prioridade: DEFAULT_FILTROS.prioridade }))} className="hover:text-red-500 transition-colors ml-0.5">
+                <X size={12} />
+              </button>
+            </span>
+          )}
+          {(filtrosAplicados.dataInicio || filtrosAplicados.dataFim) && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold">
+              Período: {filtrosAplicados.dataInicio ? new Date(filtrosAplicados.dataInicio + 'T00:00:00').toLocaleDateString('pt-BR') : '...'} – {filtrosAplicados.dataFim ? new Date(filtrosAplicados.dataFim + 'T00:00:00').toLocaleDateString('pt-BR') : '...'}
+              <button onClick={() => setFiltrosAplicados(prev => ({ ...prev, dataInicio: DEFAULT_FILTROS.dataInicio, dataFim: DEFAULT_FILTROS.dataFim }))} className="hover:text-red-500 transition-colors ml-0.5">
+                <X size={12} />
+              </button>
+            </span>
+          )}
+          {filtros.busca !== DEFAULT_FILTROS.busca && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs font-semibold">
+              Busca: {filtros.busca}
+              <button onClick={() => setFiltros(prev => ({ ...prev, busca: DEFAULT_FILTROS.busca }))} className="hover:text-red-500 transition-colors ml-0.5">
+                <X size={12} />
+              </button>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -317,6 +370,7 @@ const ChamadosGLPI = () => {
                 <th className="px-6 py-4">Prioridade</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Data</th>
+                <th className="px-6 py-4">Atualizado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -347,11 +401,14 @@ const ChamadosGLPI = () => {
                     <td className="px-6 py-4 text-slate-500">
                       {ticket.created_at ? new Date(ticket.created_at).toLocaleDateString('pt-BR') : '-'}
                     </td>
+                    <td className="px-6 py-4 text-slate-500">
+                      {ticket.glpi_date_mod && ticket.glpi_date_mod !== ticket.created_at ? new Date(ticket.glpi_date_mod).toLocaleDateString('pt-BR') : '—'}
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan="8" className="px-6 py-12 text-center text-slate-400">
                     Nenhum chamado encontrado para os filtros selecionados.
                   </td>
                 </tr>

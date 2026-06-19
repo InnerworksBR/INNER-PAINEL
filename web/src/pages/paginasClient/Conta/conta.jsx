@@ -15,6 +15,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 
+const initialNameForm = { full_name: '' };
+
 const initialPasswordForm = {
   currentPassword: '',
   newPassword: '',
@@ -23,7 +25,7 @@ const initialPasswordForm = {
 
 const Conta = () => {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, updateUser } = useAuth();
   const [account, setAccount] = useState(null);
   const [loadingAccount, setLoadingAccount] = useState(true);
   const [accountError, setAccountError] = useState('');
@@ -31,6 +33,11 @@ const Conta = () => {
   const [visibleFields, setVisibleFields] = useState({});
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [nameForm, setNameForm] = useState(initialNameForm);
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState('');
+  const [nameSuccess, setNameSuccess] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -53,6 +60,10 @@ const Conta = () => {
     loadAccount();
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    setNameForm({ full_name: account?.full_name || '' });
+  }, [account]);
 
   const roleLabel = useMemo(
     () => account?.role === 'admin' ? 'Administrador' : 'Cliente',
@@ -84,6 +95,35 @@ const Conta = () => {
     return '';
   };
 
+  const saveName = async (event) => {
+    event.preventDefault();
+    const trimmed = nameForm.full_name.trim();
+    if (!trimmed) {
+      setNameError('O nome nao pode ser vazio.');
+      return;
+    }
+    if (trimmed.length > 100) {
+      setNameError('O nome pode ter no maximo 100 caracteres.');
+      return;
+    }
+
+    setSavingName(true);
+    setNameError('');
+    setNameSuccess('');
+
+    try {
+      await api.put('/auth/me', { full_name: trimmed });
+      updateUser({ full_name: trimmed });
+      setAccount((current) => ({ ...current, full_name: trimmed }));
+      setNameSuccess('Nome atualizado com sucesso!');
+      setTimeout(() => setNameSuccess(''), 3000);
+    } catch (error) {
+      setNameError(error.response?.data?.error || 'Nao foi possivel atualizar o nome agora.');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const changePassword = async (event) => {
     event.preventDefault();
     const validationError = validatePasswordForm();
@@ -99,6 +139,8 @@ const Conta = () => {
     try {
       await api.post('/auth/change-password', passwordForm);
       setPasswordForm(initialPasswordForm);
+      setSuccessMessage('Senha alterada com sucesso!');
+      await new Promise((r) => setTimeout(r, 2000));
       logout();
       navigate('/', {
         replace: true,
@@ -143,12 +185,49 @@ const Conta = () => {
               Carregando conta...
             </div>
           ) : (
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <AccountField icon={UserRound} label="Nome" value={account?.full_name || 'Nao informado'} />
-              <AccountField icon={Mail} label="E-mail" value={account?.email || 'Nao informado'} />
-              <AccountField icon={Building2} label="Empresa" value={account?.company_name || 'Nao vinculada'} />
-              <AccountField icon={ShieldCheck} label="Perfil" value={roleLabel} />
-            </dl>
+            <div className="space-y-4">
+              {nameSuccess && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  <CheckCircle2 size={16} className="shrink-0" />
+                  {nameSuccess}
+                </div>
+              )}
+              <form onSubmit={saveName} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-500">
+                  <UserRound size={16} />
+                  Nome
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={nameForm.full_name}
+                    onChange={(e) => { setNameForm({ full_name: e.target.value }); setNameError(''); }}
+                    maxLength={100}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Seu nome completo"
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingName}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingName ? <LoaderCircle size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                    Salvar
+                  </button>
+                </div>
+                {nameError && (
+                  <div className="flex items-center gap-2 text-sm text-red-700">
+                    <AlertCircle size={14} className="shrink-0" />
+                    {nameError}
+                  </div>
+                )}
+              </form>
+              <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <AccountField icon={Mail} label="E-mail" value={account?.email || 'Nao informado'} />
+                <AccountField icon={Building2} label="Empresa" value={account?.company_name || 'Nao vinculada'} />
+                <AccountField icon={ShieldCheck} label="Perfil" value={roleLabel} />
+              </dl>
+            </div>
           )}
         </section>
 
@@ -162,6 +241,13 @@ const Conta = () => {
               <p className="text-sm text-slate-500">A nova senha precisa ter 8 caracteres ou mais.</p>
             </div>
           </div>
+
+          {successMessage && (
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 mb-4">
+              <CheckCircle2 size={16} className="shrink-0" />
+              {successMessage}
+            </div>
+          )}
 
           <form className="space-y-4" onSubmit={changePassword}>
             <PasswordField

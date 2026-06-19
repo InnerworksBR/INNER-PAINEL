@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Folder, ChevronLeft, ChevronRight, FileText, RefreshCw, Download } from 'lucide-react';
+import { Search, Folder, ChevronLeft, ChevronRight, FileText, RefreshCw, Download, AlertCircle } from 'lucide-react';
 import api from '../../../services/api';
 import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
 
@@ -8,6 +8,7 @@ const DocumentacaoTecnica = () => {
   const [category, setCategory] = useState('Todas');
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [downloadError, setDownloadError] = useState('');
   const requestConfig = useClientRequestConfig();
 
   const categoriesList = [
@@ -28,12 +29,6 @@ const DocumentacaoTecnica = () => {
     fetchDocs();
   }, [requestConfig]);
 
-  // Cálculo dinâmico de contagem por categoria
-  const categoriesWithCounts = categoriesList.map(catName => ({
-    name: catName,
-    count: documents.filter(doc => doc.category === catName).length
-  }));
-
   // Lógica de Filtragem
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase());
@@ -41,9 +36,19 @@ const DocumentacaoTecnica = () => {
     return matchesSearch && matchesCategory;
   });
 
+  // Cálculo dinâmico de contagem por categoria (reflete busca ativa)
+  const countForCategory = (catName) =>
+    (searchTerm?.trim() ? filteredDocuments : documents).filter(doc => doc.category === catName).length;
+
+  const categoriesWithCounts = categoriesList.map(catName => ({
+    name: catName,
+    count: countForCategory(catName)
+  }));
+
   const handleDownload = async (doc) => {
     if (!doc.file_url || doc.file_url === 'storage_pendente') {
-      alert('Arquivo não disponível para download.');
+      setDownloadError('Arquivo ainda não disponível para download.');
+      setTimeout(() => setDownloadError(''), 4000);
       return;
     }
     try {
@@ -51,7 +56,8 @@ const DocumentacaoTecnica = () => {
       window.open(res.data.url, '_blank');
     } catch (error) {
       console.error('Erro ao gerar link de download:', error);
-      alert('Falha ao baixar o arquivo: ' + (error.response?.data?.error || error.message));
+      setDownloadError('Falha ao baixar o arquivo. Tente novamente.');
+      setTimeout(() => setDownloadError(''), 4000);
     }
   };
 
@@ -124,6 +130,14 @@ const DocumentacaoTecnica = () => {
           </div>
         ))}
       </div>
+
+      {/* Mensagem de erro de download inline */}
+      {downloadError && (
+        <div className="mb-4 px-4 py-2.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center gap-2">
+          <AlertCircle size={16} />
+          {downloadError}
+        </div>
+      )}
 
       {/* Seção de listagem de documentos */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">

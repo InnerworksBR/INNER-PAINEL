@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 
 import bg1 from '../../assets/bg1.png';
 import bg2 from '../../assets/bg2.png';
@@ -26,6 +27,7 @@ const Login = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [index, setIndex] = useState(0);
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -162,14 +164,30 @@ const Login = () => {
                                 <label className="block text-white text-xs lg:text-sm 2xl:text-lg font-medium mb-1 2xl:mb-2">
                                     Senha
                                 </label>
-                                <input
-                                    required
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full px-3 py-2 2xl:px-5 2xl:py-4 bg-white/10 border border-white/20 rounded-xl text-white text-sm 2xl:text-lg"
-                                    placeholder="Digite sua senha"
-                                />
+                                <div className="relative">
+                                    <input
+                                        required
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full px-3 py-2 2xl:px-5 2xl:py-4 pr-11 bg-white/10 border border-white/20 rounded-xl text-white text-sm 2xl:text-lg"
+                                        placeholder="Digite sua senha"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword((v) => !v)}
+                                        aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-white/50 hover:text-white/90 transition"
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                                <Link
+                                    to="/recuperar-senha"
+                                    className="block text-right text-xs text-white/60 hover:text-white/90 underline mt-1"
+                                >
+                                    Esqueci minha senha
+                                </Link>
                             </div>
 
                             <button

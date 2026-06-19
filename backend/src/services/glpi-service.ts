@@ -77,6 +77,7 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     }
 
     // 3. Mapear e persistir
+    // Migration SQL necessária: ALTER TABLE glpi_tickets ADD COLUMN IF NOT EXISTS glpi_date_mod timestamptz;
     const ticketsToUpsert = tickets.map((t: any) => ({
       glpi_id: t.id,
       title: t.name,
@@ -86,6 +87,7 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
       requester: t.users_id_recipient_name || t.users_id_recipient || null,
       category: t.itilcategories_id_name || t.itilcategories_id || null,
       created_at: t.date_creation || t.date,
+      glpi_date_mod: t.date_mod ? new Date(t.date_mod).toISOString() : null,
       company_id: company_id,
     }));
 

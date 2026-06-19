@@ -11,6 +11,8 @@ import DocumentacaoTecnica from "../pages/paginasClient/Documentação/documenta
 import ChamadosGLPI from "../pages/paginasClient/ChamadosGLPI/chamados";
 import Conta from "../pages/paginasClient/Conta/conta";
 import Login from "../pages/Login/login";
+import RecuperarSenha from "../pages/RecuperarSenha/recuperarSenha";
+import RedefinirSenha from "../pages/RedefinirSenha/redefinirSenha";
 
 // Admin Pages
 import DashAdmin from "../pages/paginasAdmin/dashAdmin/dashAdmin";
@@ -28,6 +30,14 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: <Login />,
+  },
+  {
+    path: "/recuperar-senha",
+    element: <RecuperarSenha />,
+  },
+  {
+    path: "/redefinir-senha",
+    element: <RedefinirSenha />,
   },
   {
     path: "/admin/empresas/:companyId/preview",
@@ -62,6 +72,7 @@ export const router = createBrowserRouter([
       { path: "auditAdmin", element: <AuditAdmin /> },
       { path: "inventarioAdmin", element: <InventarioAdmin /> },
       { path: "configAdmin", element: <ConfigAdmin /> },
+      { path: "conta", element: <Conta /> },
     ],
   },
   {

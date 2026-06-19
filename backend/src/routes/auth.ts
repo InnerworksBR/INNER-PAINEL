@@ -14,6 +14,10 @@ interface ChangePasswordBody {
   confirmPassword: string;
 }
 
+interface UpdateProfileBody {
+  full_name: string;
+}
+
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabase, supabaseAdmin } = fastify;
 
@@ -97,6 +101,49 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
     preHandler: [fastify.authenticate],
   }, async (request) => {
     return { user: getAuthenticatedUser(request) };
+  });
+
+  fastify.put<{ Body: UpdateProfileBody }>('/me', {
+    preHandler: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['full_name'],
+        additionalProperties: false,
+        properties: {
+          full_name: { type: 'string', minLength: 1, maxLength: 100 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const user = getAuthenticatedUser(request);
+    const { full_name } = request.body;
+
+    const trimmed = full_name.trim();
+    if (!trimmed) {
+      return reply.code(400).send({ error: 'O nome nao pode ser vazio.' });
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({ full_name: trimmed, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+
+    if (updateError) {
+      request.log.error({ err: updateError, userId: user.id }, 'Failed to update profile full_name');
+      return reply.code(500).send({ error: 'Nao foi possivel atualizar o perfil agora.' });
+    }
+
+    if (user.role === 'admin') {
+      await writeAdminAuditLog(supabaseAdmin, request, {
+        action: 'auth.update_profile',
+        entityType: 'profile',
+        entityId: user.id,
+        summary: `Perfil atualizado: full_name alterado para "${trimmed}"`,
+      });
+    }
+
+    return { user: { ...user, full_name: trimmed } };
   });
 
   fastify.post<{ Body: ChangePasswordBody }>('/change-password', {

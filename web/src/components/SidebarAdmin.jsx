@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X, UserRound } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -80,9 +80,13 @@ const SidebarAdmin = ({ isOpen, onClose }) => {
             </nav>
 
             <div className="border-t border-slate-700 pt-4 mt-4">
+                <NavLink to="/admin/conta" className={getActiveClass} onClick={onClose}>
+                    <UserRound size={18} />
+                    Minha Conta
+                </NavLink>
                 <button
                     onClick={handleLogout}
-                    className="flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-red-600/20 text-slate-400 hover:text-red-400 w-full"
+                    className="flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-red-600/20 text-slate-400 hover:text-red-400 w-full mt-1"
                 >
                     <LogOut size={18} />
                     Sair

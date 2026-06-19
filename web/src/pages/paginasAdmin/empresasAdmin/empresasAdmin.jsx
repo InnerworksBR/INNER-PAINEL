@@ -46,6 +46,7 @@ const EmpresasAdmin = () => {
     const [syncStatus, setSyncStatus] = useState({ loading: false, result: null });
     const [saveError, setSaveError] = useState('');
     const [saveSuccess, setSaveSuccess] = useState('');
+    const [formError, setFormError] = useState('');
 
     const handleIntegrationsSubmit = async (e) => {
         e.preventDefault();
@@ -98,6 +99,7 @@ const EmpresasAdmin = () => {
     };
 
     const handleOpenModal = (company = null) => {
+        setFormError('');
         if (company) {
             setEditingCompany(company);
             setFormValues(company);
@@ -108,16 +110,24 @@ const EmpresasAdmin = () => {
         setIsModalOpen(true);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if (formValues.name && formValues.cnpj) {
-            if (editingCompany) {
-                updateCompany({ ...formValues, id: editingCompany.id });
-            } else {
-                addCompany(formValues);
-            }
-            setIsModalOpen(false);
+        setFormError('');
+        if (!formValues.name?.trim() || !formValues.cnpj?.trim()) {
+            setFormError('Nome e CNPJ são obrigatórios.');
+            return;
         }
+        let result;
+        if (editingCompany) {
+            result = await updateCompany({ ...formValues, id: editingCompany.id });
+        } else {
+            result = await addCompany(formValues);
+        }
+        if (result?.success === false) {
+            setFormError(result.error || 'Erro ao salvar empresa.');
+            return;
+        }
+        setIsModalOpen(false);
     };
 
     const handleDeleteClick = (id) => {
@@ -288,12 +298,15 @@ const EmpresasAdmin = () => {
                                     {editingCompany ? 'Atualizar dados no portal' : 'Nova Entidade no Portal'}
                                 </p>
                             </div>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                            <button onClick={() => { setIsModalOpen(false); setFormError(''); }} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
                                 <X size={20} className="text-slate-500" />
                             </button>
                         </div>
 
                         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                            {formError && (
+                                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">{formError}</div>
+                            )}
                             <div className="space-y-1.5">
                                 <label className="text-sm font-normal text-slate-700 ml-1">Nome da Empresa</label>
                                 <input
@@ -344,7 +357,7 @@ const EmpresasAdmin = () => {
                             <div className="flex justify-end gap-3 pt-4">
                                 <button
                                     type="button"
-                                    onClick={() => setIsModalOpen(false)}
+                                    onClick={() => { setIsModalOpen(false); setFormError(''); }}
                                     className="px-5 py-2.5 text-sm font-normal text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
                                 >
                                     Cancelar
@@ -404,7 +417,7 @@ const EmpresasAdmin = () => {
                             )}
 
                             <div className="p-4 border border-slate-200 rounded-2xl bg-slate-50">
-                                <h3 className="font-semibold text-slate-800 mb-3">Status das sincronizaÃ§Ãµes</h3>
+                                <h3 className="font-semibold text-slate-800 mb-3">Status das sincronizações</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {integrationStatuses.map((item) => (
                                         <div key={item.name} className="bg-white border border-slate-200 rounded-xl p-3">
@@ -414,7 +427,7 @@ const EmpresasAdmin = () => {
                                                     {item.configured ? 'Configurada' : 'Pendente'}
                                                 </span>
                                             </div>
-                                            <p className="text-xs text-slate-500 mt-2">Ãšltima sync: {formatSyncDate(item.lastSync)}</p>
+                                            <p className="text-xs text-slate-500 mt-2">Última sync: {formatSyncDate(item.lastSync)}</p>
                                             <p className="text-xs text-slate-500">Contagem: {item.count ?? 0}</p>
                                             {item.lastError && <p className="text-xs text-red-600 mt-1 truncate" title={item.lastError}>Erro: {item.lastError}</p>}
                                         </div>

@@ -34,7 +34,21 @@ export default async function adminUserRoutes(fastify: FastifyInstance): Promise
 
     const { data, error } = await query;
     if (error) return reply.code(500).send({ error: error.message });
-    return data;
+
+    let emailMap = new Map<string, string>();
+    try {
+      const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+      emailMap = new Map((authData?.users ?? []).map((u) => [u.id, u.email ?? '']));
+    } catch (_) {
+      // email fica '' em caso de falha — não quebra o retorno principal
+    }
+
+    const enriched = (data ?? []).map((profile: any) => ({
+      ...profile,
+      email: emailMap.get(profile.id) || '',
+    }));
+
+    return enriched;
   });
 
   fastify.post<{ Body: CreateUserBody }>('/', async (request, reply) => {

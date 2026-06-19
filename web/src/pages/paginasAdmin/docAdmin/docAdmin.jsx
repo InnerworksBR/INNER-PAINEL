@@ -13,6 +13,7 @@ const DocAdmin = () => {
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState('');
+    const [actionMessage, setActionMessage] = useState(null);
 
     const fetchDocs = async () => {
         try {
@@ -36,7 +37,8 @@ const DocAdmin = () => {
         if (!files || files.length === 0) return;
 
         if (selectedCompanyId === 'all') {
-            alert('Por favor, selecione uma empresa específica para fazer upload de documentos.');
+            setActionMessage({ type: 'warning', text: 'Selecione uma empresa específica para enviar documentos.' });
+            setTimeout(() => setActionMessage(null), 4000);
             return;
         }
 
@@ -89,7 +91,8 @@ const DocAdmin = () => {
     // Download real com URL assinada
     const handleDownload = async (doc) => {
         if (!doc.file_url || doc.file_url === 'storage_pendente') {
-            alert('Este documento possui apenas registro lógico — arquivo não disponível para download.');
+            setActionMessage({ type: 'error', text: 'Documento possui apenas registro lógico — arquivo não disponível.' });
+            setTimeout(() => setActionMessage(null), 4000);
             return;
         }
 
@@ -98,7 +101,8 @@ const DocAdmin = () => {
             window.open(res.data.url, '_blank');
         } catch (err) {
             console.error('Erro ao gerar download:', err);
-            alert('Falha ao gerar link de download: ' + (err.response?.data?.error || err.message));
+            setActionMessage({ type: 'error', text: 'Falha ao gerar link de download.' });
+            setTimeout(() => setActionMessage(null), 4000);
         }
     };
 
@@ -152,6 +156,13 @@ const DocAdmin = () => {
                         </div>
                     )}
                     <div className="text-center">
+                        {actionMessage && (
+                            <div className={actionMessage.type === 'error'
+                                ? 'p-3 rounded-xl bg-red-50 text-red-700 text-sm mb-2'
+                                : 'p-3 rounded-xl bg-amber-50 text-amber-700 text-sm mb-2'}>
+                                {actionMessage.text}
+                            </div>
+                        )}
                         {uploadProgress ? (
                             <p className="text-lg font-medium text-blue-700">{uploadProgress}</p>
                         ) : (

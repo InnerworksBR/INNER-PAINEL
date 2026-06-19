@@ -34,8 +34,21 @@ const ConfigAdmin = () => {
     }, []);
 
     const handleSave = async () => {
-        setIsSaving(true);
         setErrorMessage('');
+        const timeoutValue = Number(sessionTimeout);
+        if (timeoutValue < 5) {
+            setErrorMessage('O timeout mínimo é 5 minutos.');
+            return;
+        }
+        if (timeoutValue > 480) {
+            setErrorMessage('O timeout máximo é 480 minutos (8 horas).');
+            return;
+        }
+        if (!systemName?.trim()) {
+            setErrorMessage('O nome do sistema não pode ficar em branco.');
+            return;
+        }
+        setIsSaving(true);
         try {
             await api.post('/admin/settings', {
                 systemName,
@@ -127,6 +140,7 @@ const ConfigAdmin = () => {
                         <input
                             type="number"
                             min="5"
+                            max="480"
                             value={sessionTimeout}
                             onChange={(e) => setSessionTimeout(e.target.value)}
                             className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"

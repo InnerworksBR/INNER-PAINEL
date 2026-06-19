@@ -12,7 +12,8 @@ import {
   Filter,
   Eye,
   EyeOff,
-  ChevronDown
+  ChevronDown,
+  AlertCircle
 } from 'lucide-react';
 import {
   PieChart as RechartsPieChart,
@@ -258,6 +259,14 @@ const Microsoft365 = () => {
           </button>
         </div>
       </div>
+
+      {/* Banner de ausência de dados */}
+      {!loading && metricsData.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-center gap-2 mb-4">
+          <AlertCircle size={16} />
+          Nenhuma licença sincronizada. Configure a integração Microsoft 365 em Empresas &rsaquo; Integrações ou aguarde a próxima sincronização.
+        </div>
+      )}
 
       {/* Painel de Filtro de Licenças */}
       {filterOpen && (

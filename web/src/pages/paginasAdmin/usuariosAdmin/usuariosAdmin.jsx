@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Ban, Check, Edit2, KeyRound, LockOpen, Search, Trash2, UserPlus, X } from 'lucide-react';
 import { useCompanies } from '../../../context/CompanyContext';
 import api from '../../../services/api';
@@ -17,10 +17,19 @@ const UsuariosAdmin = () => {
     const [formUser, setFormUser] = useState(emptyUser);
     const [resetUser, setResetUser] = useState(null);
     const [newPassword, setNewPassword] = useState('');
+    const [confirmNewPassword, setConfirmNewPassword] = useState('');
+    const feedbackTimerRef = useRef(null);
 
     useEffect(() => {
         fetchUsers();
+        return () => clearTimeout(feedbackTimerRef.current);
     }, []);
+
+    const showFeedback = (type, text) => {
+        clearTimeout(feedbackTimerRef.current);
+        setFeedback({ type, text });
+        feedbackTimerRef.current = setTimeout(() => setFeedback(null), 5000);
+    };
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -28,14 +37,14 @@ const UsuariosAdmin = () => {
             const res = await api.get('/admin/users');
             setUsers(res.data || []);
         } catch (error) {
-            setFeedback({ type: 'error', text: error.response?.data?.error || 'Erro ao buscar usuários.' });
+            showFeedback('error', error.response?.data?.error || 'Erro ao buscar usuários.');
         } finally {
             setLoading(false);
         }
     };
 
     const filteredUsers = users.filter((user) => {
-        const matchesSearch = (user.full_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesSearch = ((user.full_name || '') + ' ' + (user.email || '')).toLowerCase().includes(searchTerm.toLowerCase());
         const matchesProfile = selectedProfile === 'Todos Perfis' ||
             (selectedProfile === 'Administrador' && user.role === 'admin') ||
             (selectedProfile === 'Cliente' && user.role === 'client');
@@ -52,15 +61,15 @@ const UsuariosAdmin = () => {
                     role: formUser.role,
                     company_id: formUser.company_id,
                 });
-                setFeedback({ type: 'success', text: 'Usuário atualizado com sucesso.' });
+                showFeedback('success', 'Usuário atualizado com sucesso.');
             } else {
                 await api.post('/admin/users', formUser);
-                setFeedback({ type: 'success', text: 'Usuário criado com sucesso.' });
+                showFeedback('success', 'Usuário criado com sucesso.');
             }
             closeModal();
             await fetchUsers();
         } catch (error) {
-            setFeedback({ type: 'error', text: error.response?.data?.error || error.message });
+            showFeedback('error', error.response?.data?.error || error.message);
         }
     };
 
@@ -69,10 +78,10 @@ const UsuariosAdmin = () => {
         setFeedback(null);
         try {
             await api.delete(`/admin/users/${userId}`);
-            setFeedback({ type: 'success', text: 'Usuário excluído com sucesso.' });
+            showFeedback('success', 'Usuário excluído com sucesso.');
             await fetchUsers();
         } catch (error) {
-            setFeedback({ type: 'error', text: error.response?.data?.error || error.message });
+            showFeedback('error', error.response?.data?.error || error.message);
         }
     };
 
@@ -80,23 +89,32 @@ const UsuariosAdmin = () => {
         setFeedback(null);
         try {
             await api.post(`/admin/users/${user.id}/${action}`);
-            setFeedback({ type: 'success', text: action === 'block' ? 'Usuário bloqueado.' : 'Usuário desbloqueado.' });
+            showFeedback('success', action === 'block' ? 'Usuário bloqueado.' : 'Usuário desbloqueado.');
             await fetchUsers();
         } catch (error) {
-            setFeedback({ type: 'error', text: error.response?.data?.error || error.message });
+            showFeedback('error', error.response?.data?.error || error.message);
         }
     };
 
     const handleResetPassword = async (event) => {
         event.preventDefault();
+        if (newPassword.length < 8) {
+            showFeedback('error', 'A senha deve ter no mínimo 8 caracteres.');
+            return;
+        }
+        if (newPassword !== confirmNewPassword) {
+            showFeedback('error', 'As senhas não conferem.');
+            return;
+        }
         setFeedback(null);
         try {
             await api.post(`/admin/users/${resetUser.id}/reset-password`, { password: newPassword });
-            setFeedback({ type: 'success', text: 'Senha redefinida com sucesso.' });
+            showFeedback('success', 'Senha redefinida com sucesso.');
             setResetUser(null);
             setNewPassword('');
+            setConfirmNewPassword('');
         } catch (error) {
-            setFeedback({ type: 'error', text: error.response?.data?.error || error.message });
+            showFeedback('error', error.response?.data?.error || error.message);
         }
     };
 
@@ -122,6 +140,12 @@ const UsuariosAdmin = () => {
         setIsModalOpen(false);
         setEditingUser(null);
         setFormUser(emptyUser);
+    };
+
+    const closeResetModal = () => {
+        setResetUser(null);
+        setNewPassword('');
+        setConfirmNewPassword('');
     };
 
     return (
@@ -154,13 +178,16 @@ const UsuariosAdmin = () => {
                 <div className="p-5 border-b border-slate-100 bg-slate-50/40 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
                     <div className="relative w-full md:w-96">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar usuário..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                        <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou e-mail..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
                     </div>
-                    <select value={selectedProfile} onChange={(e) => setSelectedProfile(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm">
-                        <option>Todos Perfis</option>
-                        <option>Administrador</option>
-                        <option>Cliente</option>
-                    </select>
+                    <div className="flex items-center gap-4">
+                        <p className="text-xs text-slate-500">{filteredUsers.length} usuário(s) encontrado(s)</p>
+                        <select value={selectedProfile} onChange={(e) => setSelectedProfile(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-4 py-2.5 text-sm">
+                            <option>Todos Perfis</option>
+                            <option>Administrador</option>
+                            <option>Cliente</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -168,6 +195,7 @@ const UsuariosAdmin = () => {
                         <thead className="bg-slate-50 border-b border-slate-100">
                             <tr>
                                 <th className="px-5 py-4 text-xs text-slate-500 uppercase">Nome</th>
+                                <th className="px-5 py-4 text-xs text-slate-500 uppercase hidden md:table-cell">E-mail</th>
                                 <th className="px-5 py-4 text-xs text-slate-500 uppercase">Perfil</th>
                                 <th className="px-5 py-4 text-xs text-slate-500 uppercase">Status</th>
                                 <th className="px-5 py-4 text-xs text-slate-500 uppercase">Empresa</th>
@@ -177,13 +205,16 @@ const UsuariosAdmin = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
-                                <tr><td className="p-6 text-slate-500" colSpan={6}>Carregando...</td></tr>
+                                <tr><td className="p-6 text-slate-500" colSpan={7}>Carregando...</td></tr>
+                            ) : filteredUsers.length === 0 ? (
+                                <tr><td colSpan={7} className="px-5 py-10 text-center text-slate-400 text-sm">Nenhum usuário encontrado com os filtros aplicados.</td></tr>
                             ) : filteredUsers.map((user) => (
                                 <tr key={user.id} className="hover:bg-slate-50">
                                     <td className="px-5 py-4">
                                         <p className="font-semibold text-slate-800">{user.full_name || 'Sem nome'}</p>
                                         <p className="text-xs text-slate-400">{user.id}</p>
                                     </td>
+                                    <td className="px-5 py-4 hidden md:table-cell truncate max-w-[180px] text-sm text-slate-600" title={user.email}>{user.email || '—'}</td>
                                     <td className="px-5 py-4"><Badge text={user.role} tone={user.role === 'admin' ? 'purple' : 'blue'} /></td>
                                     <td className="px-5 py-4"><Badge text={user.status === 'blocked' ? 'Bloqueado' : 'Ativo'} tone={user.status === 'blocked' ? 'red' : 'green'} /></td>
                                     <td className="px-5 py-4 text-sm text-slate-700">{user.companies?.name || '-- Admin / sem vínculo --'}</td>
@@ -208,6 +239,9 @@ const UsuariosAdmin = () => {
             {isModalOpen && (
                 <Modal title={editingUser ? 'Editar Usuário' : 'Novo Usuário'} onClose={closeModal}>
                     <form onSubmit={handleSubmitUser} className="space-y-4">
+                        {editingUser && (
+                            <p className="text-xs text-slate-500 -mt-2 mb-2">&#9993; {editingUser?.email}</p>
+                        )}
                         <Field label="Nome completo" value={formUser.full_name} onChange={(value) => setFormUser({ ...formUser, full_name: value })} required />
                         {!editingUser && <Field label="E-mail" type="email" value={formUser.email} onChange={(value) => setFormUser({ ...formUser, email: value })} required />}
                         {!editingUser && <Field label="Senha inicial" type="password" value={formUser.password} onChange={(value) => setFormUser({ ...formUser, password: value })} required />}
@@ -230,9 +264,11 @@ const UsuariosAdmin = () => {
             )}
 
             {resetUser && (
-                <Modal title={`Redefinir senha: ${resetUser.full_name || resetUser.id}`} onClose={() => setResetUser(null)}>
+                <Modal title={`Redefinir senha: ${resetUser.full_name || resetUser.id}`} onClose={closeResetModal}>
                     <form onSubmit={handleResetPassword} className="space-y-4">
                         <Field label="Nova senha" type="password" value={newPassword} onChange={setNewPassword} required />
+                        <Field label="Confirmar nova senha" type="password" value={confirmNewPassword} onChange={setConfirmNewPassword} required />
+                        <p className="text-xs text-slate-400">Mínimo de 8 caracteres</p>
                         <button className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg">Redefinir senha</button>
                     </form>
                 </Modal>

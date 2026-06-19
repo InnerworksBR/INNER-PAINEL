@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, CheckCircle, Eye, EyeOff, RefreshCw, Search, X } from 'lucide-react';
 import api from '../../../services/api';
 import { useCompanies } from '../../../context/CompanyContext';
@@ -28,6 +28,14 @@ const InventarioAdmin = () => {
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const feedbackTimer = useRef(null);
+
+  const showFeedback = (type, text) => {
+    clearTimeout(feedbackTimer.current);
+    setFeedback({ type, text });
+    feedbackTimer.current = setTimeout(() => setFeedback(null), 4000);
+  };
 
   const loadProfiles = async () => {
     setLoading(true);
@@ -35,12 +43,18 @@ const InventarioAdmin = () => {
       const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
       const response = await api.get('/admin/inventory/profiles', { params });
       setProfiles(response.data || []);
+    } catch (err) {
+      showFeedback('error', 'Erro ao carregar inventário.');
+      setProfiles([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadProfiles(); }, []);
+  useEffect(() => {
+    loadProfiles();
+    return () => clearTimeout(feedbackTimer.current);
+  }, []);
 
   const visibleProfiles = useMemo(() => profiles, [profiles]);
 
@@ -51,32 +65,59 @@ const InventarioAdmin = () => {
   };
 
   const saveProfile = async () => {
-    const response = await api.patch(`/admin/inventory/profiles/${selected.id}`, form);
-    setSelected({ ...selected, ...response.data });
-    await loadProfiles();
+    try {
+      const response = await api.patch(`/admin/inventory/profiles/${selected.id}`, form);
+      setSelected({ ...selected, ...response.data });
+      await loadProfiles();
+      showFeedback('success', 'Operação realizada com sucesso.');
+    } catch (err) {
+      showFeedback('error', 'Falha ao realizar operação.');
+    }
   };
 
   const toggleVisibility = async (profile) => {
     if (profile.customer_visible && !window.confirm('Ocultar este ativo do cliente?')) return;
-    await api.patch(`/admin/inventory/profiles/${profile.id}/visibility`, { customer_visible: !profile.customer_visible });
-    await loadProfiles();
+    try {
+      await api.patch(`/admin/inventory/profiles/${profile.id}/visibility`, { customer_visible: !profile.customer_visible });
+      await loadProfiles();
+      showFeedback('success', 'Operação realizada com sucesso.');
+    } catch (err) {
+      showFeedback('error', 'Falha ao realizar operação.');
+    }
   };
 
   const markReviewed = async () => {
-    const response = await api.post(`/admin/inventory/profiles/${selected.id}/review`);
-    setSelected({ ...selected, ...response.data });
-    await loadProfiles();
+    try {
+      const response = await api.post(`/admin/inventory/profiles/${selected.id}/review`);
+      setSelected({ ...selected, ...response.data });
+      await loadProfiles();
+      showFeedback('success', 'Operação realizada com sucesso.');
+    } catch (err) {
+      showFeedback('error', 'Falha ao realizar operação.');
+    }
   };
 
   const toggleHealthScore = async (profile) => {
-    await api.patch(`/admin/inventory/profiles/${profile.id}`, {
-      include_in_health_score: !profile.include_in_health_score,
-    });
-    await loadProfiles();
+    try {
+      await api.patch(`/admin/inventory/profiles/${profile.id}`, {
+        include_in_health_score: !profile.include_in_health_score,
+      });
+      await loadProfiles();
+      showFeedback('success', 'Operação realizada com sucesso.');
+    } catch (err) {
+      showFeedback('error', 'Falha ao realizar operação.');
+    }
   };
 
   return (
     <div className="space-y-6">
+      {feedback && (
+        <div className={feedback.type === 'success'
+          ? 'mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm'
+          : 'mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm'}>
+          {feedback.text}
+        </div>
+      )}
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Inventário</h1>
@@ -144,6 +185,9 @@ const InventarioAdmin = () => {
               </tr>
             </thead>
             <tbody>
+              {!loading && visibleProfiles.length === 0 && (
+                <tr><td colSpan={8} className="p-10 text-center text-slate-400">Nenhum ativo encontrado com os filtros aplicados.</td></tr>
+              )}
               {visibleProfiles.map((profile) => (
                 <tr key={profile.id} className="border-t">
                   <td className="p-4 font-medium">{profile.display_name || '-'}</td>

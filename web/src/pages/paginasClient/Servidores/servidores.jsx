@@ -78,7 +78,7 @@ const Servidores = () => {
     }
   };
 
-  const displayStatus = (status) => status === 'Atencao' ? 'Atencao' : status;
+  const displayStatus = (status) => status === 'Atencao' ? 'Atenção' : status;
   const hasGbData = (used, total) => Number(used) > 0 || Number(total) > 0;
   const formatGbPair = (used, total) => hasGbData(used, total) ? `${used || 0} GB / ${total || 0} GB` : '--';
   const formatZabbixTime = (server) => {
@@ -170,6 +170,23 @@ const Servidores = () => {
           </button>
         </div>
 
+        {/* Seletor de servidor para mobile/tablet (visível apenas em telas < lg) */}
+        {servers.length > 0 && (
+          <div className="block lg:hidden mb-6">
+            <select
+              value={effectiveActiveServerId || ''}
+              onChange={(e) => setActiveServerId(e.target.value)}
+              className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {servers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.hostname} — {displayStatus(s.status)} | CPU: {s.cpu_usage}%
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {activeServer ? (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -249,9 +266,9 @@ const Servidores = () => {
               <div className="h-72 p-5">
                 {history.length > 1 ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={history.map((row) => ({ ...row, time: new Date(row.collected_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }))}>
+                    <LineChart data={history.map((row) => ({ ...row, time: new Date(row.collected_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }))}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
-                      <XAxis dataKey="time" tick={{ fontSize: 11 }} />
+                      <XAxis dataKey="time" tick={{ fontSize: 10 }} />
                       <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
                       <Tooltip />
                       <Line type="monotone" dataKey="cpu_usage" name="CPU" stroke="#3b82f6" dot={false} />
@@ -277,25 +294,35 @@ const Servidores = () => {
                 <AlertCircle className="w-5 h-5 text-gray-400" />
               </div>
               <div className="divide-y divide-gray-100">
-                {events.length > 0 ? events.slice(0, 8).map((event) => (
-                  <div key={event.id} className="px-5 py-3 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${event.severity === 'critical' ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-800 truncate">{event.entity_name}</p>
-                        <p className="text-xs text-gray-500 truncate">{event.message}</p>
+                {(() => {
+                  const displayedEvents = activeServer
+                    ? events.filter(e => e.entity_name === activeServer.hostname || e.entity_name === activeServer.name)
+                    : events;
+                  if (displayedEvents.length > 0) {
+                    return displayedEvents.slice(0, 8).map((event) => (
+                      <div key={event.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${event.severity === 'critical' ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{event.entity_name}</p>
+                            <p className="text-xs text-gray-500 truncate">{event.message}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-medium text-gray-700">{event.previous_status || '-'} -&gt; {event.current_status}</p>
+                          <p className="text-[10px] text-gray-400">{new Date(event.created_at).toLocaleString('pt-BR')}</p>
+                        </div>
                       </div>
+                    ));
+                  }
+                  return (
+                    <div className="px-5 py-8 text-center text-sm text-gray-400">
+                      {activeServer
+                        ? `Nenhum evento registrado para ${activeServer.hostname}.`
+                        : 'Nenhuma queda ou retorno registrado ainda. Os eventos aparecem quando o status muda entre sincronizações.'}
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs font-medium text-gray-700">{event.previous_status || '-'} -&gt; {event.current_status}</p>
-                      <p className="text-[10px] text-gray-400">{new Date(event.created_at).toLocaleString('pt-BR')}</p>
-                    </div>
-                  </div>
-                )) : (
-                  <div className="px-5 py-8 text-center text-sm text-gray-400">
-                    Nenhuma queda ou retorno registrado ainda. Os eventos aparecem quando o status muda entre sincronizações.
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
 
