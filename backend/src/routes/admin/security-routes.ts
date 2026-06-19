@@ -72,12 +72,18 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
       await deleteSecurityFile(supabaseAdmin, existing.file_url);
     }
 
-    // Upload do novo arquivo
+    // Upload do novo arquivo — forçar MIME correto pela extensão
     const sanitizedName = f.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const storagePath = `${companyId}/${reportType}_${Date.now()}_${sanitizedName}`;
+    const lowerName = f.filename.toLowerCase();
+    const forcedMime = lowerName.endsWith('.html') || lowerName.endsWith('.htm')
+      ? 'text/html; charset=utf-8'
+      : lowerName.endsWith('.pdf')
+      ? 'application/pdf'
+      : f.mimetype;
 
     try {
-      await uploadSecurityFile(supabaseAdmin, storagePath, f.fileBuffer, f.mimetype);
+      await uploadSecurityFile(supabaseAdmin, storagePath, f.fileBuffer, forcedMime);
     } catch (err: any) {
       return reply.code(500).send({ error: err.message });
     }

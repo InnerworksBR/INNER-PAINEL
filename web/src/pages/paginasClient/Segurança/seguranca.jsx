@@ -22,7 +22,8 @@ const Seguranca = () => {
   const [activeTab, setActiveTab] = useState('zero_trust');
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewUrls, setViewUrls] = useState({});
+  const [viewUrls, setViewUrls] = useState({});     // PDF: signed URL direto
+  const [htmlContent, setHtmlContent] = useState({}); // HTML: conteúdo para srcdoc
   const [loadingView, setLoadingView] = useState({});
   const [error, setError] = useState('');
   const requestConfig = useClientRequestConfig();
@@ -34,15 +35,27 @@ const Seguranca = () => {
       .finally(() => setLoading(false));
   }, [requestConfig]);
 
-  // Carrega a URL assinada quando a aba muda ou os reports chegam
+  // Carrega o relatório quando a aba muda ou os reports chegam
   useEffect(() => {
     const report = reports.find((r) => r.report_type === activeTab);
-    if (!report || viewUrls[report.id] || loadingView[report.id]) return;
+    if (!report) return;
+    if (viewUrls[report.id] || htmlContent[report.id] || loadingView[report.id]) return;
 
     setLoadingView((prev) => ({ ...prev, [report.id]: true }));
+
     api.get(`/client/security/${report.id}/view`, requestConfig)
-      .then((res) => {
-        setViewUrls((prev) => ({ ...prev, [report.id]: res.data.url }));
+      .then(async (res) => {
+        const signedUrl = res.data.url;
+
+        if (report.report_type === 'zero_trust') {
+          // HTML: buscar conteúdo e usar srcdoc para forçar renderização correta
+          const htmlRes = await fetch(signedUrl);
+          const htmlText = await htmlRes.text();
+          setHtmlContent((prev) => ({ ...prev, [report.id]: htmlText }));
+        } else {
+          // PDF: signed URL direto funciona bem no iframe
+          setViewUrls((prev) => ({ ...prev, [report.id]: signedUrl }));
+        }
       })
       .catch(() => {
         setError('Erro ao carregar relatório. Tente novamente.');
@@ -141,8 +154,10 @@ const Seguranca = () => {
             );
           }
 
-          const url = viewUrls[report.id];
+          const pdfUrl = viewUrls[report.id];
+          const html = htmlContent[report.id];
           const isLoadingView = loadingView[report.id];
+          const isReady = report.report_type === 'zero_trust' ? !!html : !!pdfUrl;
 
           return (
             <div
@@ -150,14 +165,21 @@ const Seguranca = () => {
               className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden"
               style={{ height: 'calc(100vh - 280px)', minHeight: '500px' }}
             >
-              {isLoadingView || !url ? (
+              {isLoadingView || !isReady ? (
                 <div className="flex items-center justify-center h-full">
                   <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
                   <span className="ml-3 text-gray-500">Carregando relatório...</span>
                 </div>
+              ) : report.report_type === 'zero_trust' ? (
+                <iframe
+                  srcDoc={html}
+                  title={report.title}
+                  className="w-full h-full"
+                  style={{ border: 'none' }}
+                />
               ) : (
                 <iframe
-                  src={url}
+                  src={pdfUrl}
                   title={report.title}
                   className="w-full h-full"
                   style={{ border: 'none' }}
