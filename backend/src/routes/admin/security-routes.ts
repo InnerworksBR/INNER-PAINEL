@@ -77,7 +77,7 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
     const storagePath = `${companyId}/${reportType}_${Date.now()}_${sanitizedName}`;
     const lowerName = f.filename.toLowerCase();
     const forcedMime = lowerName.endsWith('.html') || lowerName.endsWith('.htm')
-      ? 'text/html; charset=utf-8'
+      ? 'text/html'
       : lowerName.endsWith('.pdf')
       ? 'application/pdf'
       : f.mimetype;
