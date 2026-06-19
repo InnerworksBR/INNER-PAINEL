@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { buildApp } from './app';
 import { startSyncScheduler } from './jobs/sync-scheduler';
-import { ensureBucketExists } from './services/storage-service';
+import { ensureBucketExists, ensureSecurityBucketExists } from './services/storage-service';
 
 dotenv.config();
 
@@ -15,7 +15,8 @@ const start = async () => {
 
     try {
       await ensureBucketExists(fastify.supabaseAdmin);
-      fastify.log.info('Supabase Storage bucket verificado');
+      await ensureSecurityBucketExists(fastify.supabaseAdmin);
+      fastify.log.info('Supabase Storage buckets verificados');
     } catch (err: any) {
       fastify.log.warn('Aviso: nao foi possivel verificar Storage bucket: ' + err.message);
     }

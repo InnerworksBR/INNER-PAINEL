@@ -1,4 +1,4 @@
-import { LayoutDashboard, Cloud, Server, Network, FileText, Ticket, LogOut, UserRound, X } from "lucide-react";
+import { LayoutDashboard, Cloud, Server, Network, FileText, Ticket, LogOut, UserRound, X, Shield } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useClientPortalPath, useClientPreview } from "../context/ClientPreviewContext";
@@ -76,6 +76,11 @@ const Sidebar = ({ isOpen, onClose }) => {
         <NavLink to={portalPath('chamados')} className={getActiveClass} onClick={onClose}>
           <Ticket size={18} />
           Chamados GLPI
+        </NavLink>
+
+        <NavLink to={portalPath('seguranca')} className={getActiveClass} onClick={onClose}>
+          <Shield size={18} />
+          Segurança
         </NavLink>
 
         {!preview?.isPreview && (

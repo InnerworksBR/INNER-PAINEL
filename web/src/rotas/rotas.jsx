@@ -10,12 +10,14 @@ import Rede from "../pages/paginasClient/Rede/rede";
 import DocumentacaoTecnica from "../pages/paginasClient/Documentação/documentacao";
 import ChamadosGLPI from "../pages/paginasClient/ChamadosGLPI/chamados";
 import Conta from "../pages/paginasClient/Conta/conta";
+import Seguranca from "../pages/paginasClient/Segurança/seguranca";
 import Login from "../pages/Login/login";
 import RecuperarSenha from "../pages/RecuperarSenha/recuperarSenha";
 import RedefinirSenha from "../pages/RedefinirSenha/redefinirSenha";
 
 // Admin Pages
 import DashAdmin from "../pages/paginasAdmin/dashAdmin/dashAdmin";
+import SegurancaAdmin from "../pages/paginasAdmin/segurancaAdmin/segurancaAdmin";
 import EmpresasAdmin from "../pages/paginasAdmin/empresasAdmin/empresasAdmin";
 import DocAdmin from "../pages/paginasAdmin/docAdmin/docAdmin";
 import UsuariosAdmin from "../pages/paginasAdmin/usuariosAdmin/usuariosAdmin";
@@ -54,6 +56,7 @@ export const router = createBrowserRouter([
       { path: "rede", element: <Rede /> },
       { path: "documentacao", element: <DocumentacaoTecnica /> },
       { path: "chamados", element: <ChamadosGLPI /> },
+      { path: "seguranca", element: <Seguranca /> },
     ],
   },
   {
@@ -72,6 +75,7 @@ export const router = createBrowserRouter([
       { path: "auditAdmin", element: <AuditAdmin /> },
       { path: "inventarioAdmin", element: <InventarioAdmin /> },
       { path: "configAdmin", element: <ConfigAdmin /> },
+      { path: "segurancaAdmin", element: <SegurancaAdmin /> },
       { path: "conta", element: <Conta /> },
     ],
   },
@@ -90,6 +94,7 @@ export const router = createBrowserRouter([
       { path: "rede", element: <Rede /> },
       { path: "documentacao", element: <DocumentacaoTecnica /> },
       { path: "chamados", element: <ChamadosGLPI /> },
+      { path: "seguranca", element: <Seguranca /> },
       { path: "conta", element: <Conta /> },
     ],
   },

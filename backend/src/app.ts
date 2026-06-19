@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import type { FastifyInstance, FastifyServerOptions } from 'fastify';
 
 import adminAuditRoutes from './routes/admin/audit-routes';
+import adminSecurityRoutes from './routes/admin/security-routes';
+import clientSecurityRoutes from './routes/client/security-routes';
 import adminCompaniesRoutes from './routes/admin/companies-routes';
 import adminDashboardRoutes from './routes/admin/dashboard-routes';
 import adminDocsRoutes from './routes/admin/docs-routes';
@@ -37,6 +39,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(clientDocsRoutes, { prefix: '/api/client/docs' });
   fastify.register(clientDashboardRoutes, { prefix: '/api/client/dashboard' });
   fastify.register(clientNetworkRoutes, { prefix: '/api/client/network' });
+  fastify.register(clientSecurityRoutes, { prefix: '/api/client/security' });
 
   fastify.register(adminUserRoutes, { prefix: '/api/admin/users' });
   fastify.register(adminCompaniesRoutes, { prefix: '/api/admin/companies' });
@@ -46,6 +49,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(adminAuditRoutes, { prefix: '/api/admin/audit-logs' });
   fastify.register(adminInventoryRoutes, { prefix: '/api/admin/inventory' });
   fastify.register(adminMs365Routes, { prefix: '/api/admin/ms365' });
+  fastify.register(adminSecurityRoutes, { prefix: '/api/admin/security' });
 
   fastify.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
