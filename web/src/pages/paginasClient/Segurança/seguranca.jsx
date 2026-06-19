@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, Globe, FileText, RefreshCw, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Shield, Globe, FileText, RefreshCw, AlertCircle, ExternalLink } from 'lucide-react';
 import api from '../../../services/api';
 import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
 
@@ -9,12 +9,14 @@ const TABS = [
     label: 'Análise Zero Trust',
     icon: Globe,
     description: 'Relatório detalhado de análise de risco',
+    mime: 'text/html',
   },
   {
     type: 'simplified',
     label: 'Relatório Simplificado',
     icon: FileText,
     description: 'Versão em linguagem acessível',
+    mime: 'application/pdf',
   },
 ];
 
@@ -26,6 +28,7 @@ const Seguranca = () => {
   const [loadingView, setLoadingView] = useState({});
   const [error, setError] = useState('');
   const requestConfig = useClientRequestConfig();
+  const blobUrlsRef = useRef([]);
 
   useEffect(() => {
     api.get('/client/security', requestConfig)
@@ -34,23 +37,49 @@ const Seguranca = () => {
       .finally(() => setLoading(false));
   }, [requestConfig]);
 
-  // Carrega a URL assinada quando a aba muda ou os reports chegam
+  // Limpa os Blob URLs criados ao desmontar o componente
   useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+      blobUrlsRef.current = [];
+    };
+  }, []);
+
+  // Carrega o relatório quando a aba muda ou os reports chegam.
+  // Busca o arquivo via signed URL e o reembala como Blob com o MIME
+  // correto — assim o iframe renderiza o HTML/PDF independente do
+  // Content-Type que o Supabase Storage devolve.
+  useEffect(() => {
+    const tab = TABS.find((t) => t.type === activeTab);
     const report = reports.find((r) => r.report_type === activeTab);
     if (!report || viewUrls[report.id] || loadingView[report.id]) return;
 
+    let cancelled = false;
     setLoadingView((prev) => ({ ...prev, [report.id]: true }));
+
     api.get(`/client/security/${report.id}/view`, requestConfig)
-      .then((res) => {
-        setViewUrls((prev) => ({ ...prev, [report.id]: res.data.url }));
+      .then(async (res) => {
+        const fileRes = await fetch(res.data.url);
+        const buffer = await fileRes.arrayBuffer();
+        const blob = new Blob([buffer], { type: tab.mime });
+        const blobUrl = URL.createObjectURL(blob);
+        if (cancelled) {
+          URL.revokeObjectURL(blobUrl);
+          return;
+        }
+        blobUrlsRef.current.push(blobUrl);
+        setViewUrls((prev) => ({ ...prev, [report.id]: blobUrl }));
       })
       .catch(() => {
+        if (cancelled) return;
         setError('Erro ao carregar relatório. Tente novamente.');
         setTimeout(() => setError(''), 5000);
       })
       .finally(() => {
-        setLoadingView((prev) => ({ ...prev, [report.id]: false }));
+        if (!cancelled) setLoadingView((prev) => ({ ...prev, [report.id]: false }));
       });
+
+    return () => { cancelled = true; };
   }, [activeTab, reports, requestConfig]);
 
   if (loading) {
@@ -86,31 +115,46 @@ const Seguranca = () => {
       )}
 
       {/* Abas */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
-        {TABS.map(({ type, label, icon: Icon }) => {
-          const report = reports.find((r) => r.report_type === type);
-          const available = !!report;
-          return (
-            <button
-              key={type}
-              onClick={() => available && setActiveTab(type)}
-              disabled={!available}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                activeTab === type
-                  ? 'border-blue-600 text-blue-600'
-                  : available
-                  ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 cursor-pointer'
-                  : 'border-transparent text-gray-300 cursor-not-allowed'
-              }`}
-            >
-              <Icon size={16} />
-              {label}
-              {!available && (
-                <span className="text-xs text-gray-300 font-normal">(indisponível)</span>
-              )}
-            </button>
-          );
-        })}
+      <div className="flex items-center justify-between mb-6 border-b border-gray-200">
+        <div className="flex gap-1">
+          {TABS.map(({ type, label, icon: Icon }) => {
+            const report = reports.find((r) => r.report_type === type);
+            const available = !!report;
+            return (
+              <button
+                key={type}
+                onClick={() => available && setActiveTab(type)}
+                disabled={!available}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                  activeTab === type
+                    ? 'border-blue-600 text-blue-600'
+                    : available
+                    ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 cursor-pointer'
+                    : 'border-transparent text-gray-300 cursor-not-allowed'
+                }`}
+              >
+                <Icon size={16} />
+                {label}
+                {!available && (
+                  <span className="text-xs text-gray-300 font-normal">(indisponível)</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Abrir em nova aba */}
+        {viewUrls[reports.find((r) => r.report_type === activeTab)?.id] && (
+          <a
+            href={viewUrls[reports.find((r) => r.report_type === activeTab)?.id]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors pb-2"
+          >
+            <ExternalLink size={15} />
+            Abrir em nova aba
+          </a>
+        )}
       </div>
 
       {/* Conteúdo das abas */}
