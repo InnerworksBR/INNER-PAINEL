@@ -60,6 +60,9 @@ const Seguranca = () => {
     api.get(`/client/security/${report.id}/view`, requestConfig)
       .then(async (res) => {
         const fileRes = await fetch(res.data.url);
+        if (!fileRes.ok) {
+          throw new Error(`Erro ${fileRes.status}: ${fileRes.statusText}`);
+        }
         const buffer = await fileRes.arrayBuffer();
         const blob = new Blob([buffer], { type: tab.mime });
         const blobUrl = URL.createObjectURL(blob);
@@ -70,10 +73,11 @@ const Seguranca = () => {
         blobUrlsRef.current.push(blobUrl);
         setViewUrls((prev) => ({ ...prev, [report.id]: blobUrl }));
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        setError('Erro ao carregar relatório. Tente novamente.');
-        setTimeout(() => setError(''), 5000);
+        console.error('Erro ao carregar relatório:', err);
+        setError('Erro ao carregar relatório. Verifique se o arquivo foi enviado no admin.');
+        setTimeout(() => setError(''), 6000);
       })
       .finally(() => {
         if (!cancelled) setLoadingView((prev) => ({ ...prev, [report.id]: false }));
