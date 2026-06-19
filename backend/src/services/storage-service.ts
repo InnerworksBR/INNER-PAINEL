@@ -52,14 +52,12 @@ export async function ensureSecurityBucketExists(supabase: SupabaseClient): Prom
     const { error } = await supabase.storage.createBucket(SECURITY_BUCKET, {
       public: false,
       fileSizeLimit: 50 * 1024 * 1024,
-      allowedMimeTypes: [
-        'application/pdf',
-        'text/html',
-        'application/octet-stream',
-      ],
     });
-    if (error) console.error('Erro ao criar bucket security-reports:', error.message);
-    else console.log('Bucket "security-reports" criado com sucesso.');
+    if (error && !error.message.includes('already exists')) {
+      console.error('Erro ao criar bucket security-reports:', error.message);
+    } else {
+      console.log('Bucket "security-reports" criado/verificado com sucesso.');
+    }
   }
 }
 

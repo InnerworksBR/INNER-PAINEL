@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { verifyAdmin } from '../../hooks/auth-hook';
 import { writeAdminAuditLog } from '../../services/audit-service';
-import { uploadSecurityFile, getSecuritySignedUrl, deleteSecurityFile } from '../../services/storage-service';
+import { uploadSecurityFile, getSecuritySignedUrl, deleteSecurityFile, ensureSecurityBucketExists } from '../../services/storage-service';
 
 export default async function adminSecurityRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -56,6 +56,9 @@ export default async function adminSecurityRoutes(fastify: FastifyInstance): Pro
     }
 
     const f = pendingFiles[0];
+
+    // Garantir que o bucket existe (cria se necessário)
+    await ensureSecurityBucketExists(supabaseAdmin);
 
     // Remover arquivo antigo se existir
     const { data: existing } = await supabaseAdmin
