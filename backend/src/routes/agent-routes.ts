@@ -431,11 +431,11 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
       return reply.code(400).send({ error: 'ID e segredo do coletor sao obrigatorios.' });
     }
 
-    // Validar Coletor
+    // Validar Coletor - buscar pelo asset_key
     const { data: collector, error: colErr } = await supabaseAdmin
       .from('registered_agents')
       .select('*')
-      .eq('id', collector_id)
+      .eq('asset_key', collector_id)
       .eq('agent_secret', collectorSecret)
       .eq('agent_type', 'collector')
       .single();
@@ -515,11 +515,11 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
       return reply.code(400).send({ error: 'Segredo do coletor e obrigatorio.' });
     }
 
-    // Validar Coletor
+    // Validar Coletor - buscar pelo asset_key
     const { data: collector, error: colErr } = await supabaseAdmin
       .from('registered_agents')
       .select('*')
-      .eq('id', id)
+      .eq('asset_key', id)
       .eq('agent_secret', collectorSecret)
       .eq('agent_type', 'collector')
       .single();
