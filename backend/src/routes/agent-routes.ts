@@ -98,8 +98,7 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
             display_name: hostname,
             last_synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-          }, { onConflict: 'company_id,source_type,source_id' })
-          .catch(() => {});
+          }, { onConflict: 'company_id,source_type,source_id' });
       }
     }
 
@@ -497,8 +496,7 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
             display_name: dev.device_name || `Device-${dev.ip_address}`,
             last_synced_at: now,
             updated_at: now,
-          }, { onConflict: 'company_id,source_type,source_id' })
-          .catch(() => {});
+          }, { onConflict: 'company_id,source_type,source_id' });
       }
       count++;
     }
