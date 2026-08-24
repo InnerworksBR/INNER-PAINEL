@@ -10,7 +10,6 @@ import {
   Clock,
   Cpu,
   MemoryStick,
-  Harddrive,
   Globe,
   ShieldAlert,
   RefreshCw,
@@ -351,7 +350,7 @@ const AgenteDetalhe = () => {
               </div>
               <div className="p-4 bg-slate-50 rounded-xl">
                 <div className="flex items-center gap-2 text-slate-500 mb-2">
-                  <Harddrive size={16} />
+                  <HardDrive size={16} />
                   <span className="text-xs uppercase">Disco</span>
                 </div>
                 <p className="text-2xl font-bold text-slate-800">
