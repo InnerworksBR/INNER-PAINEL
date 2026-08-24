@@ -17,9 +17,6 @@ import clientDocsRoutes from './routes/client/docs-routes';
 import clientGlpiRoutes from './routes/client/glpi-routes';
 import clientMetricsRoutes from './routes/client/metrics-routes';
 import clientNetworkRoutes from './routes/client/network-routes';
-import agentRoutes from './routes/agent-routes';
-import adminAgentsRoutes from './routes/admin/agents-routes';
-import adminSnmpRoutes from './routes/admin/snmp-routes';
 import corsPlugin from './plugins/cors';
 import jwtPlugin from './plugins/jwt';
 import maintenancePlugin from './plugins/maintenance';
@@ -36,7 +33,6 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(maintenancePlugin);
 
   fastify.register(authRoutes, { prefix: '/api/auth' });
-  fastify.register(agentRoutes, { prefix: '/api/agent' });
 
   fastify.register(clientGlpiRoutes, { prefix: '/api/client/glpi' });
   fastify.register(clientMetricsRoutes, { prefix: '/api/client/metrics' });
@@ -54,8 +50,6 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(adminInventoryRoutes, { prefix: '/api/admin/inventory' });
   fastify.register(adminMs365Routes, { prefix: '/api/admin/ms365' });
   fastify.register(adminSecurityRoutes, { prefix: '/api/admin/security' });
-  fastify.register(adminAgentsRoutes, { prefix: '/api/admin/agents' });
-  fastify.register(adminSnmpRoutes, { prefix: '/api/admin/snmp' });
 
   fastify.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 

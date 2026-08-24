@@ -23,7 +23,7 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
         return query;
       };
 
-      const [ms365Res, serversRes, ticketsRes, docsRes, networkRes, assetProfilesRes, agentsRes] = await Promise.all([
+      const [ms365Res, serversRes, ticketsRes, docsRes, networkRes, assetProfilesRes] = await Promise.all([
         filterByCompany(supabaseAdmin.from('ms365_metrics').select('*')),
         filterByCompany(supabaseAdmin.from('servers').select('*')),
         filterByCompany(supabaseAdmin.from('glpi_tickets').select('*')),
@@ -34,11 +34,6 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
             .from('asset_profiles')
             .select('source_type, source_id, customer_visible, include_in_health_score')
         ),
-        filterByCompany(
-          supabaseAdmin
-            .from('registered_agents')
-            .select('id, hostname, status, last_heartbeat, agent_type')
-        ),
       ]);
 
       const ms365 = ms365Res.data || [];
@@ -47,7 +42,6 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       const docs = docsRes.data || [];
       const network = networkRes.data || [];
       const assetProfiles = assetProfilesRes.data || [];
-      const agents = agentsRes.data || [];
       const visibleServerIds = new Set(
         assetProfiles
           .filter((profile: any) => profile.source_type === 'server' && profile.customer_visible === true)
@@ -60,15 +54,6 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       );
       const visibleServers = servers.filter((server: any) => visibleServerIds.has(server.id));
       const visibleNetwork = network.filter((device: any) => visibleNetworkDeviceIds.has(device.id));
-
-      // Calcular status de agentes
-      const now = Date.now();
-      const agentThreshold = 5 * 60 * 1000; // 5 min sem heartbeat = offline
-      const activeAgents = agents.filter((agent: any) => {
-        const lastHb = new Date(agent.last_heartbeat).getTime();
-        return agent.status === 'Online' && (now - lastHb) < agentThreshold;
-      });
-      const offlineAgents = agents.length - activeAgents.length;
 
       const validMs365 = ms365.filter((metric: any) => metric.include_in_dashboard === true);
       const totalLicenses = validMs365.reduce((acc: number, m: any) => acc + (m.total || 0), 0);
@@ -115,13 +100,6 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           hasData: docs.length > 0,
           total: docs.length,
           lastUpdated: getLatestDate(docs, 'created_at'),
-        },
-        agents: {
-          hasData: agents.length > 0,
-          total: agents.length,
-          online: activeAgents.length,
-          offline: offlineAgents,
-          lastUpdated: getLatestDate(agents, 'last_heartbeat'),
         },
         health: calculateHealthScore({ servers: visibleServers, network: visibleNetwork, healthProfiles: assetProfiles }),
       };

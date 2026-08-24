@@ -1,7 +1,0 @@
-- [x] 1. Criar componente ou lógica de controle para o Menu Mobile, que será responsável por abrir/fechar a Sidebar em telas pequenas.
-- [x] 2. Atualizar os componentes de Sidebar (`Sidebar.jsx` e `SidebarAdmin.jsx`) para suportarem o modo mobile (ex: posicionamento absoluto, z-index, classes condicionalmente aplicadas como `-translate-x-full`). *(Pode ser feito em paralelo com a tarefa 3 usando subagente)*
-- [x] 3. Atualizar os layouts globais (`layout.jsx`, `AdminLayout.jsx`, `ClientPreviewLayout.jsx`) para incluir o botão de menu (hamburger) e ajustar as classes estruturais (`flex-col` no mobile em vez de side-by-side se necessário, ou usar a sidebar como overlay). *(Pode ser feito em paralelo com a tarefa 2 usando subagente)*
-- [x] 4. Revisar e ajustar a responsividade das páginas principais de Administração (`src/pages/paginasAdmin/`), ajustando `grid`, `flex` e `paddings`. *(Pode ser feito em paralelo com a tarefa 5 usando subagente)*
-- [x] 5. Revisar e ajustar a responsividade das páginas principais do Cliente (`src/pages/paginasClient/`), ajustando `grid`, `flex` e `paddings`. *(Pode ser feito em paralelo com a tarefa 4 usando subagente)*
-- [x] 6. Revisar responsividade do fluxo de Login e ajustar componentes de overlay/drawers (como `AssetDetailDrawer.jsx`) para telas pequenas.
-- [x] 7. Realizar testes e verificação final em todos os layouts simulando dispositivos móveis, para assegurar o funcionamento integrado.
