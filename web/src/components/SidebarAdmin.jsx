@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X, UserRound, Shield } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X, UserRound, Shield, Radio } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -51,6 +51,11 @@ const SidebarAdmin = ({ isOpen, onClose }) => {
                 <NavLink to="/admin/empresasAdmin" className={getActiveClass} onClick={onClose}>
                     <Building2 size={18} />
                     Empresas
+                </NavLink>
+
+                <NavLink to="/admin/agentesAdmin" className={getActiveClass} onClick={onClose}>
+                    <Radio size={18} />
+                    Agentes & Coletores
                 </NavLink>
 
                 <NavLink to="/admin/docAdmin" className={getActiveClass} onClick={onClose}>

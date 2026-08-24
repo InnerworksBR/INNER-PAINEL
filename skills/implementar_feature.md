@@ -6,7 +6,7 @@ Esta skill define o fluxo de trabalho padrão para implementar novas features ou
 ## Gatilho (Trigger)
 Ative esta skill sempre que o usuário solicitar a criação de uma nova feature, correção de bug ou qualquer outra modificação estrutural no sistema.
 
-## Regras de Execução
+## Regras de Execução 
 
 ### 1. Preparação do Diretório
 - Acesse a pasta `implementações/` na raiz do projeto.

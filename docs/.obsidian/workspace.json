@@ -1,0 +1,226 @@
+{
+  "main": {
+    "id": "a808d94822c978f4",
+    "type": "split",
+    "children": [
+      {
+        "id": "c33f9543e9465887",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "78e5c71b0093f601",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "08-Guias/README.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "README"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "5d2c970ffdfd9514",
+    "type": "split",
+    "children": [
+      {
+        "id": "4072497148373831",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9672859f6c5a8095",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "beac88f7efc833d5",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "66ac70fc3a66e2f1",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "8cf7253c10b01edf",
+    "type": "split",
+    "children": [
+      {
+        "id": "844301d2d1dcdc36",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "79545cb23153bf0f",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "08-Guias/README.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos"
+            }
+          },
+          {
+            "id": "3a1da3dcd7fb4221",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "08-Guias/README.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída"
+            }
+          },
+          {
+            "id": "856b5325585f1508",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "6eb92be4fce6d75a",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "76ec489899e5c2db",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "08-Guias/README.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "78e5c71b0093f601",
+  "lastOpenFiles": [
+    "07-Implementações/README.md",
+    "06-Integrações/README.md",
+    "README.md",
+    "10-Agentes/README.md",
+    "02-Arquitetura/README.md",
+    "02-Arquitetura/README.md.tmp.40140.1b8ef519a121",
+    "07-Implementações/README.md.tmp.40140.a6ca3051bbd3",
+    "05-Banco-de-Dados/README.md.tmp.40140.98ab341375e0",
+    "04-Frontend/README.md.tmp.40140.b6a60d8e1c4c",
+    "01-Visão-Geral/README.md.tmp.40140.fb531873ccff",
+    "01-Visão-Geral/KPIs.md",
+    "01-Visão-Geral/KPIs.md.tmp.40140.ae180d38f916",
+    "04-Frontend/Componentes.md",
+    "04-Frontend/Componentes.md.tmp.40140.424ae0020382",
+    "08-Guias/Setup.md",
+    "08-Guias/Setup.md.tmp.40140.3289917af853",
+    "02-Arquitetura/Perfis-de-Acesso.md",
+    "02-Arquitetura/Perfis-de-Acesso.md.tmp.40140.fb3fbec385ab",
+    "04-Frontend/Dashboard.md",
+    "04-Frontend/Dashboard.md.tmp.40140.dd2177bcfff1",
+    "09-Decisões/README.md",
+    "product/PRD.md",
+    "08-Guias/README.md",
+    "05-Banco-de-Dados/README.md",
+    "04-Frontend/README.md",
+    "03-Backend/Serviços.md",
+    "product/DISCOVERY-monitoramento-descentralizado.md",
+    "project/repository-analysis.md",
+    "01-Visão-Geral/Funcionalidades.md",
+    "03-Backend/API-Routes.md",
+    "test-e2e-agente.md",
+    "performance-test-plan.md"
+  ]
+}

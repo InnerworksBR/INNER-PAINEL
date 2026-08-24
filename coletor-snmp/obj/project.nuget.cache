@@ -1,0 +1,205 @@
+{
+  "version": 2,
+  "dgSpecHash": "V3u1V+p3KxI=",
+  "success": false,
+  "projectFilePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.configuration\\10.0.0\\microsoft.extensions.configuration.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.configuration.abstractions\\10.0.0\\microsoft.extensions.configuration.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.configuration.binder\\10.0.0\\microsoft.extensions.configuration.binder.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.configuration.fileextensions\\10.0.0\\microsoft.extensions.configuration.fileextensions.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.configuration.json\\10.0.0\\microsoft.extensions.configuration.json.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.dependencyinjection\\10.0.0\\microsoft.extensions.dependencyinjection.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\10.0.0\\microsoft.extensions.dependencyinjection.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.fileproviders.abstractions\\10.0.0\\microsoft.extensions.fileproviders.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.fileproviders.physical\\10.0.0\\microsoft.extensions.fileproviders.physical.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.filesystemglobbing\\10.0.0\\microsoft.extensions.filesystemglobbing.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.logging\\10.0.0\\microsoft.extensions.logging.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\10.0.0\\microsoft.extensions.logging.abstractions.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.logging.configuration\\10.0.0\\microsoft.extensions.logging.configuration.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.logging.console\\10.0.0\\microsoft.extensions.logging.console.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.options\\10.0.0\\microsoft.extensions.options.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.options.configurationextensions\\10.0.0\\microsoft.extensions.options.configurationextensions.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\microsoft.extensions.primitives\\10.0.0\\microsoft.extensions.primitives.10.0.0.nupkg.sha512",
+    "C:\\Users\\CristianPaxur\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "ColetorSNMP depende de Microsoft.Extensions.Configuration (>= 8.0.0), mas Microsoft.Extensions.Configuration 8.0.0 não foi encontrado. Microsoft.Extensions.Configuration 10.0.0 foi resolvido em vez disso.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.Extensions.Configuration",
+      "targetGraphs": [
+        "net8.0",
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "ColetorSNMP depende de Microsoft.Extensions.Configuration.Binder (>= 8.0.0), mas Microsoft.Extensions.Configuration.Binder 8.0.0 não foi encontrado. Microsoft.Extensions.Configuration.Binder 10.0.0 foi resolvido em vez disso.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.Extensions.Configuration.Binder",
+      "targetGraphs": [
+        "net8.0",
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "ColetorSNMP depende de Microsoft.Extensions.Configuration.Json (>= 8.0.0), mas Microsoft.Extensions.Configuration.Json 8.0.0 não foi encontrado. Microsoft.Extensions.Configuration.Json 10.0.0 foi resolvido em vez disso.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.Extensions.Configuration.Json",
+      "targetGraphs": [
+        "net8.0",
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "ColetorSNMP depende de Microsoft.Extensions.DependencyInjection (>= 8.0.0), mas Microsoft.Extensions.DependencyInjection 8.0.0 não foi encontrado. Microsoft.Extensions.DependencyInjection 10.0.0 foi resolvido em vez disso.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.Extensions.DependencyInjection",
+      "targetGraphs": [
+        "net8.0",
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "ColetorSNMP depende de Microsoft.Extensions.Logging (>= 8.0.0), mas Microsoft.Extensions.Logging 8.0.0 não foi encontrado. Microsoft.Extensions.Logging 10.0.0 foi resolvido em vez disso.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.Extensions.Logging",
+      "targetGraphs": [
+        "net8.0",
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1603",
+      "level": "Warning",
+      "message": "ColetorSNMP depende de Microsoft.Extensions.Logging.Console (>= 8.0.0), mas Microsoft.Extensions.Logging.Console 8.0.0 não foi encontrado. Microsoft.Extensions.Logging.Console 10.0.0 foi resolvido em vez disso.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "warningLevel": 1,
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.Extensions.Logging.Console",
+      "targetGraphs": [
+        "net8.0",
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'SnmpSharpNet (>= 2.0.0)' para 'net8.0'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "SnmpSharpNet",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'System.Text.Json (>= 10.0.0)' para 'net8.0'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "System.Text.Json",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'System.Diagnostics.DiagnosticSource (>= 10.0.0)' para 'net8.0'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "System.Diagnostics.DiagnosticSource",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'SnmpSharpNet (>= 2.0.0)' para 'net8.0/win-x64'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "SnmpSharpNet",
+      "targetGraphs": [
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'System.Text.Json (>= 10.0.0)' para 'net8.0/win-x64'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "System.Text.Json",
+      "targetGraphs": [
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'System.Diagnostics.DiagnosticSource (>= 10.0.0)' para 'net8.0/win-x64'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "System.Diagnostics.DiagnosticSource",
+      "targetGraphs": [
+        "net8.0/win-x64"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'Microsoft.NETCore.App.Runtime.win-x64 (= 8.0.30)' para 'net8.0'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.NETCore.App.Runtime.win-x64",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'Microsoft.WindowsDesktop.App.Runtime.win-x64 (= 8.0.30)' para 'net8.0'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Não foi possível resolver 'Microsoft.AspNetCore.App.Runtime.win-x64 (= 8.0.30)' para 'net8.0'.",
+      "projectPath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "filePath": "C:\\Apps\\INNER_PAINEL\\coletor-snmp\\SnmpCollector.csproj",
+      "libraryId": "Microsoft.AspNetCore.App.Runtime.win-x64",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    }
+  ]
+}

@@ -12,10 +12,38 @@ Todas as implementações seguem a metodologia Spec-Driven Development.
 | [006](./006-correcoes-glpi-chamados/) | Correções e Melhorias GLPI/Chamados | 🟢 Concluída | 100% | Crítica |
 | [007](./007-melhorias-zabbix-rede-docs/) | Melhorias Zabbix, Rede e Documentação | 🟢 Concluída | 100% | Alta |
 | [008](./008-correcoes-telas-admin/) | Correções nas Telas Admin (Empresas, Inventário, Docs) | 🟢 Concluída | 100% | Alta |
+| [009](./009-gerador-documentos-word/) | Gerador de Documentos Word | 🟡 Planejada | 0% | Alta |
+| [010](./010-baseline-qualidade-e-release/) | Baseline de Qualidade e Release | 🟠 Aguardando aprovação | 0% | Crítica |
+| [011](./011-seguranca-aplicacao-e-uploads/) | Segurança da Aplicação e Uploads | 🟠 Aguardando aprovação | 0% | Crítica |
+| [012](./012-glpi-chamados-sla-e-periodos/) | GLPI — Chamados, SLA e Períodos | 🟠 Aguardando aprovação | 0% | Alta |
+| [013](./013-zabbix-coleta-confiavel-e-historico/) | Zabbix — Coleta Confiável e Histórico | 🟠 Aguardando aprovação | 0% | Alta |
+| [014](./014-cockpit-de-plantao/) | Cockpit de Plantão | 🟠 Aguardando aprovação | 0% | Alta |
+| [015](./015-inventario-completo-glpi/) | Inventário Completo do GLPI | 🟠 Aguardando aprovação | 0% | Média |
+| [016](./016-saude-e-integracoes/) | Saúde e Integrações | 🟠 Aguardando aprovação | 0% | Alta |
+| [017](./017-identidade-e-autorizacao/) | Identidade e Autorização | 🟠 Aguardando aprovação | 0% | Alta |
+| [018](./018-cofre-de-credenciais/) | Cofre de Credenciais | 🔴 Bloqueada por segurança | 0% | Média |
 
 ---
 
 ## Ordem de Execução Recomendada
+
+### Roadmap aprovado em 2026-07-16
+
+```text
+010 Baseline e gates
+ ├─► 011 Segurança imediata
+ ├─► 012 GLPI chamados/SLA ─┐
+ └─► 013 Zabbix confiável ─┼─► 016 Saúde/integrações ─► 014 Cockpit
+                           └───────────────────────────► 015 Inventário GLPI
+
+011 ─► 017 Identidade/MFA/step-up ─► 018 Cofre (bloqueado até decisões de chaves)
+
+009 Gerador Word: independente, mas bloqueado pelo template oficial.
+```
+
+Recomendação de execução: iniciar por **010**; depois **011**, **012** e **013**. A **016** consolida semântica e telemetria antes do **014**. A **015** pode começar após contratos/migrations base. A **018** não deve ser iniciada antes da conclusão da **017** e das aprovações registradas no ADR-003.
+
+### Ordem histórica do ciclo anterior
 
 ```
 006 ─────────────────────────────────────────► executar PRIMEIRO (bug crítico CSV)
@@ -37,7 +65,7 @@ Todas as implementações seguem a metodologia Spec-Driven Development.
      (admin: encoding/mojibake, feedback, empty states)
 ```
 
-As implementações são independentes entre si e podem ser executadas em qualquer ordem, exceto: **006 deve ser feita primeiro** pelo bug crítico do CSV. As implementações 003–008 cobrem 100% das telas do sistema (cliente + admin), validadas contra o código real em 2026-06-19.
+As orientações abaixo registram o ciclo 003–008 e não substituem o roadmap aprovado em 2026-07-16. Naquele ciclo, **006** deveria ser executada primeiro pelo bug crítico do CSV. As implementações 003–008 foram validadas contra o código disponível em 2026-06-19.
 
 ---
 
@@ -87,5 +115,14 @@ Review de todas as funcionalidades do portal, cobrindo autenticação, usuários
 | Gestão de Empresas (admin) | 008 |
 | Inventário (admin) | 008 |
 | Documentos (admin) | 008 |
+| Qualidade, CI e migrations | 010 |
+| Segurança, relatórios HTML e uploads | 011 |
+| Chamados e SLA confiável | 012 |
+| Zabbix, freshness e histórico | 013 |
+| Cockpit de plantão | 014 |
+| Inventário completo GLPI | 015 |
+| Saúde, MS365 e integrações | 016 |
+| Identidade, MFA e step-up | 017 |
+| Cofre de credenciais | 018 |
 
 > **Não cobertos (já corretos):** `auditAdmin` (tem loading/erro/empty state), `configAdmin` (validação de timeout já planejada em 005 T-009), `dashboard.jsx` cliente (cards clicáveis, degrada com defaults). Login coberto por 003.

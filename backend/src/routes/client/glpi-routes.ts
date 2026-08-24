@@ -43,7 +43,7 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
         return reply.code(404).send({ error: 'Chamado não encontrado ou permissão negada' });
       }
 
-      const result = await getTicketDetails(supabaseAdmin, targetCompanyId, parseInt(id, 10));
+      const result = await getTicketDetails(supabaseAdmin, targetCompanyId || '', parseInt(id, 10));
       return result;
     } catch (err: any) {
       if (err.name === 'CompanyScopeError') return sendCompanyScopeError(reply, err);

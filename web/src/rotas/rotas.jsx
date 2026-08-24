@@ -24,6 +24,10 @@ import UsuariosAdmin from "../pages/paginasAdmin/usuariosAdmin/usuariosAdmin";
 import ConfigAdmin from "../pages/paginasAdmin/configAdmin/configAdmin";
 import AuditAdmin from "../pages/paginasAdmin/auditAdmin/auditAdmin";
 import InventarioAdmin from "../pages/paginasAdmin/inventarioAdmin/inventarioAdmin";
+import AgentesAdmin from "../pages/paginasAdmin/agentesAdmin/agentesAdmin";
+import AgentesLista from "../pages/paginasAdmin/agentesAdmin/AgentesLista";
+import AgenteDetalhe from "../pages/paginasAdmin/agentesAdmin/AgenteDetalhe";
+import ColetoresSnmp from "../pages/paginasAdmin/snmp/ColetoresSnmp";
 
 // Route Protection
 import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
@@ -70,6 +74,10 @@ export const router = createBrowserRouter([
       { index: true, element: <DashAdmin /> },
       { path: "dashAdmin", element: <DashAdmin /> },
       { path: "empresasAdmin", element: <EmpresasAdmin /> },
+      { path: "agentesAdmin", element: <AgentesAdmin /> },
+      { path: "agentesLista", element: <AgentesLista /> },
+      { path: "agente/:id", element: <AgenteDetalhe /> },
+      { path: "snmpColetores", element: <ColetoresSnmp /> },
       { path: "docAdmin", element: <DocAdmin /> },
       { path: "usuariosAdmin", element: <UsuariosAdmin /> },
       { path: "auditAdmin", element: <AuditAdmin /> },

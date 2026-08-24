@@ -1,0 +1,9 @@
+{
+  "portal_url": "http://seu-servidor:3000",
+  "asset_key": "seu-asset-key-aqui",
+  "agent_secret": "seu-secret-aqui",
+  "interval_seconds": 60,
+  "heartbeat_interval_seconds": 300,
+  "log_level": "INFO",
+  "log_file": "C:\\ProgramData\\INNER_PAINEL\\logs\\agent.log"
+}
