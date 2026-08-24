@@ -1,5 +1,5 @@
 ; Inner Agent - Inno Setup Script
-; Cria instalador visual para Windows
+; Cria instalador visual para Windows com campo de Token
 ; Requer: Inno Setup 6.x (https://jrsoftware.org/isinfo.php)
 
 #define MyAppName "Inner Agent"
@@ -48,21 +48,30 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\start.bat"; Tasks: desktopi
 Type: filesandordirs; Name: "{app}"
 
 [Run]
-Filename: "{cmd}"; Parameters: "/c sc create InnerAgent binPath= ""\""{app}\start.bat\"""" start= auto DisplayName= ""Inner Agent"""; Flags: runhidden; AfterInstall: True
-Filename: "{cmd}"; Parameters: "/c sc description InnerAgent ""Inner Agent - Monitoramento"""; Flags: runhidden; AfterInstall: True
-Filename: "{cmd}"; Parameters: "/c net start InnerAgent"; Flags: runhidden; AfterInstall: True
+Filename: "{cmd}"; Parameters: "/c sc create InnerAgent binPath= ""\""{app}\start.bat\"""" start= auto DisplayName= ""Inner Agent"""; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c sc description InnerAgent ""Inner Agent - Monitoramento"""; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c net start InnerAgent"; Flags: runhidden
 
 [Code]
 var
-  PortalUrlPage: TInputQueryWizardPage;
+  PortalPage: TInputQueryWizardPage;
+  TokenPage: TInputQueryWizardPage;
 
 procedure InitializeWizard;
 begin
-  PortalUrlPage := CreateInputQueryPage(wpWelcome,
-    'Configurar Portal', 'Informe a URL do portal Inner:',
-    'O agente enviara metricas para esta URL.');
-  PortalUrlPage.Add('URL do Portal:', False);
-  PortalUrlPage.Values[0] := 'https://portal.inner.com.br';
+  // Pagina 1: URL do Portal
+  PortalPage := CreateInputQueryPage(wpWelcome,
+    'Configurar Conexao', 'Informe a URL do portal Inner:',
+    'O agente conecara a esta URL para enviar metricas.');
+  PortalPage.Add('URL do Portal:', False);
+  PortalPage.Values[0] := 'https://portal.inner.com.br';
+
+  // Pagina 2: Token de Ativacao
+  TokenPage := CreateInputQueryPage(PortalPage.ID,
+    'Token de Ativacao', 'Informe o token de ativacao:',
+    'O token foi gerado no painel admin para vincular este agente a uma empresa.');
+  TokenPage.Add('Token de Ativacao:', False);
+  TokenPage.Values[0] := '';
 end;
 
 function IsValidUrl(Url: String): Boolean;
@@ -70,14 +79,27 @@ begin
   Result := (Pos('http://', LowerCase(Url)) = 1) or (Pos('https://', LowerCase(Url)) = 1);
 end;
 
+function IsValidToken(Token: String): Boolean;
+begin
+  Result := (Length(Token) >= 10) and (Pos('INNER-KEY-', UpperCase(Token)) = 1);
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
-  if CurPageID = PortalUrlPage.ID then
+  if CurPageID = PortalPage.ID then
   begin
-    if not IsValidUrl(PortalUrlPage.Values[0]) then
+    if not IsValidUrl(PortalPage.Values[0]) then
     begin
-      MsgBox('URL do portal invalida. Deve comecar com http:// ou https://', mbError, MB_OK);
+      MsgBox('URL invalida. Deve comecar com http:// ou https://', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+  if CurPageID = TokenPage.ID then
+  begin
+    if not IsValidToken(TokenPage.Values[0]) then
+    begin
+      MsgBox('Token invalido. O token deve comecar com INNER-KEY-', mbError, MB_OK);
       Result := False;
     end;
   end;
@@ -92,21 +114,21 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ConfigPath: String;
   StartBatPath: String;
-  Content: String;
 begin
   if CurStep = ssPostInstall then
   begin
+    // Gerar config.json com URL e Token
     ConfigPath := ExpandConstant('{app}\config.json');
     SaveStringToFile(ConfigPath,
-      '{"portalUrl":"' + PortalUrlPage.Values[0] + '","token":"","intervalSeconds":60}' + #13#10,
+      '{"portalUrl":"' + PortalPage.Values[0] + '","token":"' + TokenPage.Values[0] + '","intervalSeconds":60}' + #13#10,
       False);
 
-    // Criar start.bat
+    // Criar start.bat para iniciar o agente
     StartBatPath := ExpandConstant('{app}\start.bat');
-    Content := '@echo off' + #13#10 +
+    SaveStringToFile(StartBatPath,
+      '@echo off' + #13#10 +
       'cd /d "%~dp0"' + #13#10 +
       'powershell -ExecutionPolicy Bypass -NoLogo -WindowStyle Hidden -File "%~dp0agent.ps1"' + #13#10 +
-      'pause' + #13#10;
-    SaveStringToFile(StartBatPath, Content, False);
+      'pause' + #13#10, False);
   end;
 end;
