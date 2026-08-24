@@ -1,5 +1,5 @@
-INNER SNMP COLLECTOR - INSTALACAO
-=================================
+INNER SNMP COLLECTOR - INSTALACAO v1.0.1
+=========================================
 
 Este coletor descobre dispositivos de rede (switches, roteadores, access points, etc)
 usando ping sweep e SNMP.
@@ -8,8 +8,8 @@ PASSO 1: CONFIGURAR
 --------------------
 1. Edite o arquivo collector-config.json
 2. Altere a URL do portal (portalUrl)
-3. Cole o ID do coletor (collectorId)
-4. O collectorSecret sera gerado automaticamente no primeiro registro
+3. Cole o token de ativacao (activationToken) - crie um token do tipo coletor no admin
+4. Os campos collectorId e collectorSecret serao preenchidos automaticamente
 
 PASSO 2: INSTALAR COMO SERVICO
 -------------------------------

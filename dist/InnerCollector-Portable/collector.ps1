@@ -1,30 +1,33 @@
 # Inner SNMP Collector - Descoberta de Dispositivos de Rede
-# Versao: 1.0.0
+# Versao: 1.0.1
 
 param(
     [string]$PortalUrl = "",
-    [string]$CollectorId = "",
-    [string]$CollectorSecret = "",
+    [string]$ActivationToken = "",
     [int]$IntervalSeconds = 300
 )
 
 $ErrorActionPreference = "Continue"
-$Script:Version = "1.0.0"
+$Script:Version = "1.0.1"
 $Script:ConfigFile = "$PSScriptRoot\collector-config.json"
 $Script:LogFile = "$PSScriptRoot\collector.log"
 
-# Variaveis globais
+# Variaveis globais para credenciais
 $global:CollectorId = $null
 $global:CollectorSecret = $null
 
 # Carregar config
 if (Test-Path $Script:ConfigFile) {
-    $json = Get-Content $Script:ConfigFile -Raw
-    $config = $json | ConvertFrom-Json
-    if (-not $PortalUrl -and $config.portalUrl) { $PortalUrl = $config.portalUrl }
-    if (-not $CollectorId -and $config.collectorId) { $global:CollectorId = $config.collectorId }
-    if (-not $CollectorSecret -and $config.collectorSecret) { $global:CollectorSecret = $config.collectorSecret }
-    if ($config.intervalSeconds) { $IntervalSeconds = $config.intervalSeconds }
+    try {
+        $json = Get-Content $Script:ConfigFile -Raw | ConvertFrom-Json
+        if (-not $PortalUrl -and $json.portalUrl) { $PortalUrl = $json.portalUrl }
+        if (-not $ActivationToken -and $json.activationToken) { $ActivationToken = $json.activationToken }
+        if ($json.collectorId) { $global:CollectorId = $json.collectorId }
+        if ($json.collectorSecret) { $global:CollectorSecret = $json.collectorSecret }
+        if ($json.intervalSeconds) { $IntervalSeconds = $json.intervalSeconds }
+    } catch {
+        Write-Log "Erro ao carregar config: $_" "WARN"
+    }
 }
 
 function Write-Log {
@@ -35,6 +38,12 @@ function Write-Log {
 }
 
 function Invoke-CollectorRegister {
+    # Se ja tem credenciais, pular
+    if ($global:CollectorId -and $global:CollectorSecret) {
+        Write-Log "Coletor ja registrado com ID: $($global:CollectorId)" "INFO"
+        return $true
+    }
+
     Write-Log "Registrando coletor no portal..."
 
     $hostname = $env:COMPUTERNAME
@@ -46,7 +55,7 @@ function Invoke-CollectorRegister {
     } catch {}
 
     $body = @{
-        activation_token = $CollectorId
+        activation_token = $ActivationToken
         collector_type = "snmp"
         hostname = $hostname
         ip_address = $ipAddress
@@ -64,6 +73,7 @@ function Invoke-CollectorRegister {
             # Salvar no config
             $newConfig = @{
                 portalUrl = $PortalUrl
+                activationToken = $ActivationToken
                 collectorId = $global:CollectorId
                 collectorSecret = $global:CollectorSecret
                 intervalSeconds = $IntervalSeconds
@@ -72,6 +82,8 @@ function Invoke-CollectorRegister {
 
             Write-Log "Coletor registrado - ID: $($global:CollectorId)" "SUCCESS"
             return $true
+        } else {
+            Write-Log "Registro falhou: $($resp.error)" "ERROR"
         }
     } catch {
         Write-Log "Registro falhou: $_" "ERROR"
@@ -312,17 +324,27 @@ if (-not $PortalUrl) {
     exit 1
 }
 
+if (-not $ActivationToken -and (-not $global:CollectorId -or -not $global:CollectorSecret)) {
+    Write-Log "ERRO: Configure activationToken no collector-config.json" "ERROR"
+    exit 1
+}
+
+# Tentar registro se nao tem credenciais
 if (-not $global:CollectorId -or -not $global:CollectorSecret) {
     Write-Log "Coletor nao registrado, tentando registro..." "WARN"
-    Invoke-CollectorRegister
+    $registered = Invoke-CollectorRegister
+    if (-not $registered) {
+        Write-Log "Falha no registro. Verifique o token e a URL do portal." "ERROR"
+    }
 }
 
 Write-Log "Coletor inicializado - Intervalo: ${IntervalSeconds}s" "INFO"
 
 # Loop principal
 while ($true) {
-    # Registrar se necessario
+    # Verificar se precisa registrar
     if (-not $global:CollectorId -or -not $global:CollectorSecret) {
+        Write-Log "Tentando registro novamente..." "WARN"
         $ok = Invoke-CollectorRegister
         if (-not $ok) {
             Start-Sleep -Seconds $IntervalSeconds
@@ -335,6 +357,9 @@ while ($true) {
         $config = Invoke-RestMethod -Uri "$PortalUrl/api/agent/collector/$global:CollectorId/config" -Method Get -Headers @{"x-collector-secret" = $global:CollectorSecret} -TimeoutSec 30
     } catch {
         Write-Log "Erro ao buscar config: $_" "WARN"
+        # Se falhar, pode ser que as credenciais estao erradas - tentar registro de novo
+        $global:CollectorId = $null
+        $global:CollectorSecret = $null
         Start-Sleep -Seconds $IntervalSeconds
         continue
     }
