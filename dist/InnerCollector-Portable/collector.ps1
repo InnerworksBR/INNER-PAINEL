@@ -182,11 +182,38 @@ function Invoke-IcmpScan {
     param([string]$IpAddress)
 
     try {
-        $ping = Test-Connection -ComputerName $IpAddress -Count 1 -Quiet -TimeoutSeconds 2
+        $ping = Test-Connection -ComputerName $IpAddress -Count 1 -Quiet -TimeoutSeconds 1
         return $ping
     } catch {
         return $false
     }
+}
+
+function Test-Port {
+    param([string]$IpAddress, [int]$Port = 161)
+
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $result = $tcp.BeginConnect($IpAddress, $Port, $null, $null)
+        $wait = $result.AsyncWaitHandle.WaitOne(500, $false)
+        if ($wait) {
+            try {
+                $tcp.EndConnect($result)
+                $tcp.Close()
+                return $true
+            } catch {
+                $tcp.Close()
+            }
+        }
+        $tcp.Close()
+    } catch {}
+
+    # Tentar porta 80/443 mesmo se 161 falhar
+    if ($Port -eq 161) {
+        return (Test-Port -IpAddress $IpAddress -Port 80) -or (Test-Port -IpAddress $IpAddress -Port 443)
+    }
+
+    return $false
 }
 
 function Get-NetworkDevices {
@@ -206,7 +233,7 @@ function Get-NetworkDevices {
 
     for ($i = $startNum; $i -le $endNum; $i++) {
         $count++
-        if ($count % 20 -eq 0) {
+        if ($count % 10 -eq 0) {
             Write-Log "Scan progress: $count IPs verificados, $found dispositivos encontrados" "INFO"
         }
 
@@ -216,10 +243,18 @@ function Get-NetworkDevices {
         $b4 = $i % 256
         $ip = "$b1.$b2.$b3.$b4"
 
-        # Ping sweep
-        $alive = Invoke-IcmpScan -IpAddress $ip
+        # Tentar varias portas comuns de dispositivos de rede
+        $ports = @(161, 80, 443, 22, 23, 161, 162, 8080, 8443)
+        $detected = $false
 
-        if ($alive) {
+        foreach ($port in $ports) {
+            if (Test-Port -IpAddress $ip -Port $port) {
+                $detected = $true
+                break
+            }
+        }
+
+        if ($detected) {
             Write-Log "Dispositivo encontrado: $ip" "INFO"
 
             $device = @{
@@ -257,9 +292,13 @@ function Get-NetworkDevices {
 
                     # Inferir tipo
                     $device.device_type = Infer-DeviceType -SysDescr $device.sysdescr -DeviceName $device.device_name
+                } else {
+                    # Sem snmpwalk, inferir tipo pela porta aberta
+                    $device.device_type = Infer-DeviceTypeByPort -IpAddress $ip
                 }
             } catch {
                 # SNMP nao disponivel, usar apenas ping
+                $device.device_type = Infer-DeviceTypeByPort -IpAddress $ip
             }
 
             $devices += $device
@@ -271,19 +310,52 @@ function Get-NetworkDevices {
     return $devices
 }
 
+function Infer-DeviceTypeByPort {
+    param([string]$IpAddress)
+
+    # Tentar detectar pelo comportamento/tipo de dispositivo
+    # Isso e uma heuristica
+    try {
+        # Tentar HTTP para ver se e um dispositivo web
+        $response = Invoke-WebRequest -Uri "http://$IpAddress" -TimeoutSec 3 -UseBasicParsing -ErrorAction SilentlyContinue
+        if ($response) {
+            $content = $response.Content.ToLower()
+            if ($content -match "cisco|switch|router") { return "Switch" }
+            if ($content -match "mikrotik|routeros") { return "Router" }
+            if ($content -match "printer|laserjet|impressora") { return "Printer" }
+            if ($content -match "ubiquiti|unifi|access") { return "Access Point" }
+            if ($content -match "fortinet|fortigate") { return "Firewall" }
+        }
+    } catch {}
+
+    # Tentar detectar por resposta SNMP generica
+    $snmpwalkPath = "$PSScriptRoot\snmpwalk.exe"
+    if (Test-Path $snmpwalkPath) {
+        $output = & $snmpwalkPath -v 2c -c "public" $IpAddress "1.3.6.1.2.1.1.1.0" 2>$null
+        if ($output -and $output -notmatch "Timeout") {
+            return Infer-DeviceType -SysDescr $output -DeviceName ""
+        }
+    }
+
+    return "Network Device"
+}
+
 function Infer-DeviceType {
     param([string]$SysDescr, [string]$DeviceName)
 
     $combined = "$SysDescr $DeviceName".ToLower()
 
-    if ($combined -match "cisco|catalyst|ios") { return "Switch" }
-    if ($combined -match "hp |procurve|aruba") { return "Switch" }
-    if ($combined -match "mikrotik|routeros") { return "Router" }
-    if ($combined -match "ubiquiti|unifi") { return "Access Point" }
-    if ($combined -match "fortinet|fortigate|pfsense") { return "Firewall" }
-    if ($combined -match "printer|laserjet|mfc") { return "Printer" }
-    if ($combined -match "tp-link|d-link|netgear") { return "Switch" }
-    if ($combined -match "dell|powerconnect") { return "Switch" }
+    if ($combined -match "cisco|catalyst|ios|2960|3750|9300|9500") { return "Switch" }
+    if ($combined -match "hp |procurve|aruba|j9772|j4865") { return "Switch" }
+    if ($combined -match "mikrotik|routeros|routerboard|rb|CCR") { return "Router" }
+    if ($combined -match "ubiquiti|unifi|aircube|usg|udm|switch") { return "Access Point" }
+    if ($combined -match "fortinet|fortigate|fortiswitch") { return "Firewall" }
+    if ($combined -match "printer|laserjet|mfc|impressora|dcp-l|samsung hp|brother") { return "Printer" }
+    if ($combined -match "tp-link|d-link|netgear|gs|sg|switch") { return "Switch" }
+    if ($combined -match "dell|powerconnect|n-series|n1548") { return "Switch" }
+    if ($combined -match "zte|huawei|ont|gpon|olt") { return "ONT/ONU" }
+    if ($combined -match "intelbras|ipcommerce|seud") { return "Access Point" }
+    if ($combined -match "axiros|acs|cpe|tr-069") { return "CPE" }
 
     return "Network Device"
 }
