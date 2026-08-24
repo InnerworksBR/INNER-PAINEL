@@ -10,6 +10,22 @@ const AgentesAdmin = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
+    // Estado para coletores SNMP
+    const [snmpCollectors, setSnmpCollectors] = useState([]);
+    const [isSnmpModalOpen, setIsSnmpModalOpen] = useState(false);
+    const [editingCollector, setEditingCollector] = useState(null);
+    const [snmpForm, setSnmpForm] = useState({
+        company_id: '',
+        name: '',
+        ip_range_start: '',
+        ip_range_end: '',
+        community_string: 'public',
+        snmp_version: '2c',
+        snmp_port: 161,
+        interval_seconds: 300,
+        enabled: true
+    });
+
     // Modal para Gerar Token
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCompanyId, setSelectedCompanyId] = useState('');
@@ -22,12 +38,14 @@ const AgentesAdmin = () => {
         setLoading(true);
         setError('');
         try {
-            const [tokensRes, agentsRes] = await Promise.all([
+            const [tokensRes, agentsRes, snmpRes] = await Promise.all([
                 api.get('/admin/agents/tokens'),
-                api.get('/admin/agents/list')
+                api.get('/admin/agents/list'),
+                api.get('/admin/snmp/collectors').catch(() => ({ data: [] }))
             ]);
             setTokens(tokensRes.data || []);
             setAgents(agentsRes.data || []);
+            setSnmpCollectors(snmpRes.data || []);
         } catch (err) {
             setError(err.response?.data?.error || 'Erro ao carregar dados dos agentes.');
         } finally {
@@ -76,6 +94,63 @@ const AgentesAdmin = () => {
         }
     };
 
+    // SNMP Collector handlers
+    const handleOpenSnmpModal = (collector = null) => {
+        if (collector) {
+            setEditingCollector(collector);
+            setSnmpForm({
+                company_id: collector.company_id,
+                name: collector.name || '',
+                ip_range_start: collector.ip_range_start || '',
+                ip_range_end: collector.ip_range_end || '',
+                community_string: collector.community_string || 'public',
+                snmp_version: collector.snmp_version || '2c',
+                snmp_port: collector.snmp_port || 161,
+                interval_seconds: collector.interval_seconds || 300,
+                enabled: collector.enabled !== false
+            });
+        } else {
+            setEditingCollector(null);
+            setSnmpForm({
+                company_id: companies[0]?.id || '',
+                name: '',
+                ip_range_start: '',
+                ip_range_end: '',
+                community_string: 'public',
+                snmp_version: '2c',
+                snmp_port: 161,
+                interval_seconds: 300,
+                enabled: true
+            });
+        }
+        setIsSnmpModalOpen(true);
+    };
+
+    const handleSaveSnmpCollector = async (e) => {
+        e.preventDefault();
+        try {
+            if (editingCollector) {
+                await api.patch(`/admin/snmp/collectors/${editingCollector.id}`, snmpForm);
+            } else {
+                await api.post('/admin/snmp/collectors', snmpForm);
+            }
+            setIsSnmpModalOpen(false);
+            loadData();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Erro ao salvar coletor SNMP.');
+        }
+    };
+
+    const handleDeleteSnmpCollector = async (collectorId) => {
+        if (!window.confirm('Tem certeza que deseja remover este coletor SNMP?')) return;
+        try {
+            await api.delete(`/admin/snmp/collectors/${collectorId}`);
+            loadData();
+        } catch (err) {
+            alert(err.response?.data?.error || 'Erro ao remover coletor.');
+        }
+    };
+
     const copyToClipboard = (text, fieldName) => {
         navigator.clipboard.writeText(text);
         setCopiedField(fieldName);
@@ -112,6 +187,13 @@ const AgentesAdmin = () => {
                     >
                         <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
                         Atualizar
+                    </button>
+                    <button
+                        onClick={() => handleOpenSnmpModal()}
+                        className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg flex items-center gap-2 text-sm transition-colors"
+                    >
+                        <Network size={16} />
+                        Configurar Coletores SNMP
                     </button>
                     <button
                         onClick={() => {
@@ -271,7 +353,86 @@ const AgentesAdmin = () => {
                 </div>
             </div>
 
-            {/* Tabela de Tokens de Ativação */}
+            {/* Secao de Coletores SNMP */}
+            <div className="bg-white rounded-xl border border-purple-200 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+                            <Network size={20} className="text-purple-600" />
+                            Coletores SNMP Configurados
+                        </h2>
+                        <p className="text-slate-500 text-xs mt-0.5">
+                            Configure o scan de dispositivos de rede (switches, roteadores, access points, impressoras).
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => handleOpenSnmpModal()}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg flex items-center gap-2"
+                    >
+                        <Plus size={16} />
+                        Novo Coletor
+                    </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm text-slate-600">
+                        <thead className="bg-purple-50 text-purple-700 font-medium border-b border-purple-100">
+                            <tr>
+                                <th className="p-4">Nome</th>
+                                <th className="p-4">Empresa</th>
+                                <th className="p-4">Range de IPs</th>
+                                <th className="p-4">Community</th>
+                                <th className="p-4">Intervalo</th>
+                                <th className="p-4">Status</th>
+                                <th className="p-4 text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {snmpCollectors.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                                        Nenhum coletor SNMP configurado. Clique em "Novo Coletor" para adicionar.
+                                    </td>
+                                </tr>
+                            ) : (
+                                snmpCollectors.map((col) => (
+                                    <tr key={col.id} className="hover:bg-slate-50/80 transition-colors">
+                                        <td className="p-4 font-medium text-slate-800">{col.name}</td>
+                                        <td className="p-4">{col.companies?.name || '-'}</td>
+                                        <td className="p-4 font-mono text-xs">
+                                            {col.ip_range_start} - {col.ip_range_end}
+                                        </td>
+                                        <td className="p-4 font-mono text-xs">{col.community_string}</td>
+                                        <td className="p-4">{col.interval_seconds}s</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${col.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                                {col.enabled ? 'Ativo' : 'Inativo'}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <button
+                                                onClick={() => handleOpenSnmpModal(col)}
+                                                className="px-2 py-1 text-blue-600 hover:bg-blue-50 rounded text-xs"
+                                            >
+                                                Editar
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteSnmpCollector(col.id)}
+                                                className="px-2 py-1 text-red-600 hover:bg-red-50 rounded text-xs ml-2"
+                                            >
+                                                Remover
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Modal de Coletores SNMP */}
+            {isSnmpModalOpen && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="p-5 border-b border-slate-100">
                     <h2 className="text-lg font-semibold text-slate-800">Chaves / Tokens de Ativação Ativos</h2>
@@ -336,6 +497,128 @@ const AgentesAdmin = () => {
                     </table>
                 </div>
             </div>
+
+            {/* Modal de Coletores SNMP */}
+            {isSnmpModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6 border-b border-slate-200">
+                            <h2 className="text-xl font-semibold text-slate-800">
+                                {editingCollector ? 'Editar' : 'Novo'} Coletor SNMP
+                            </h2>
+                            <p className="text-slate-500 text-sm mt-1">
+                                Configure o range de IPs e parametros SNMP para descoberta de dispositivos.
+                            </p>
+                        </div>
+
+                        <form onSubmit={handleSaveSnmpCollector} className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Empresa</label>
+                                <select
+                                    value={snmpForm.company_id}
+                                    onChange={(e) => setSnmpForm({ ...snmpForm, company_id: e.target.value })}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                                    required
+                                >
+                                    <option value="">Selecione a empresa</option>
+                                    {companies.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Coletor</label>
+                                <input
+                                    type="text"
+                                    value={snmpForm.name}
+                                    onChange={(e) => setSnmpForm({ ...snmpForm, name: e.target.value })}
+                                    placeholder="Ex: Rede Principal"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                                    required
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">IP Inicial</label>
+                                    <input
+                                        type="text"
+                                        value={snmpForm.ip_range_start}
+                                        onChange={(e) => setSnmpForm({ ...snmpForm, ip_range_start: e.target.value })}
+                                        placeholder="192.168.1.1"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">IP Final</label>
+                                    <input
+                                        type="text"
+                                        value={snmpForm.ip_range_end}
+                                        onChange={(e) => setSnmpForm({ ...snmpForm, ip_range_end: e.target.value })}
+                                        placeholder="192.168.1.254"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Community String</label>
+                                <input
+                                    type="text"
+                                    value={snmpForm.community_string}
+                                    onChange={(e) => setSnmpForm({ ...snmpForm, community_string: e.target.value })}
+                                    placeholder="public"
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Intervalo (segundos)</label>
+                                    <input
+                                        type="number"
+                                        value={snmpForm.interval_seconds}
+                                        onChange={(e) => setSnmpForm({ ...snmpForm, interval_seconds: Number(e.target.value) })}
+                                        min="60"
+                                        max="3600"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                                    <select
+                                        value={snmpForm.enabled ? 'true' : 'false'}
+                                        onChange={(e) => setSnmpForm({ ...snmpForm, enabled: e.target.value === 'true' })}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                                    >
+                                        <option value="true">Ativo</option>
+                                        <option value="false">Inativo</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsSnmpModalOpen(false)}
+                                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm hover:bg-slate-50"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700"
+                                >
+                                    {editingCollector ? 'Salvar' : 'Criar'} Coletor
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {/* Modal: Gerar Chave de Ativação & Exibir Comandos */}
             {isModalOpen && (
