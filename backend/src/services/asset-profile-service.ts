@@ -79,7 +79,7 @@ export async function upsertAssetProfileFromSource(
     source_type: sourceType,
     source_id: sourceId,
     asset_type: existing?.asset_type || inferAssetType(sourceType, source),
-    customer_visible: existing?.customer_visible ?? false,
+    customer_visible: existing?.customer_visible ?? true,
     include_in_health_score: existing?.include_in_health_score ?? true,
     is_active: true,
     display_name: existing?.display_name || (sourceType === 'server' ? source.hostname : source.device_name),

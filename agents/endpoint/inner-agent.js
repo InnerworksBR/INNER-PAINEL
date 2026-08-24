@@ -30,6 +30,7 @@ console.log(`[INNER AGENT] API Target: ${api_url}`);
 
 // Função para medir uso de CPU em %
 let prevCpuTimes = getCpuTimes();
+let prevCpuTimes2 = null;
 
 function getCpuTimes() {
   const cpus = os.cpus();
@@ -48,10 +49,48 @@ function getCpuUsagePercent() {
   const curr = getCpuTimes();
   const totalDiff = curr.total - prevCpuTimes.total;
   const idleDiff = curr.idle - prevCpuTimes.idle;
+
+  // Guardar segunda medição para comparação
+  if (prevCpuTimes2 === null) {
+    prevCpuTimes2 = prevCpuTimes;
+  }
+
+  // Atualizar para próxima medição
   prevCpuTimes = curr;
+
   if (totalDiff === 0) return 0;
-  const usage = 100 - Math.floor((idleDiff / totalDiff) * 100);
-  return Math.max(0, Math.min(100, usage));
+
+  let usage = 100 - Math.floor((idleDiff / totalDiff) * 100);
+  usage = Math.max(0, Math.min(100, usage));
+
+  // Se CPU é 0% e sistema parece ocioso, tentar usar WMI como fallback
+  if (usage === 0 && idleDiff > 0) {
+    const wmiCpu = getCpuUsageWMI();
+    if (wmiCpu !== null) {
+      return wmiCpu;
+    }
+  }
+
+  return usage;
+}
+
+// Fallback para Windows: usa WMI para obter CPU real
+function getCpuUsageWMI() {
+  try {
+    const isWin = process.platform === 'win32';
+    if (!isWin) return null;
+
+    // Tentar usar Get-Counter do PowerShell (mais preciso)
+    const psCmd = `powershell -NoProfile -Command "$cpu = Get-Counter '\\Processor(_Total)\\% Processor Time' -SampleInterval 1 -MaxSamples 1 | Select-Object -ExpandProperty CounterSamples | Select-Object -ExpandProperty CookedValue; if ($cpu -is [array]) { [math]::Round(($cpu | Measure-Object -Average).Average, 0) } else { [math]::Round($cpu, 0) }"`;
+    const out = execSync(psCmd, { encoding: 'utf8', timeout: 5000 }).trim();
+    const cpuValue = parseFloat(out);
+    if (!isNaN(cpuValue) && cpuValue > 0 && cpuValue <= 100) {
+      return Math.round(cpuValue);
+    }
+  } catch (err) {
+    // Silencioso - apenas fallback
+  }
+  return null;
 }
 
 // Obter dados de disco (GB)
@@ -98,6 +137,11 @@ async function sendMetrics() {
 
   const cpu_usage = getCpuUsagePercent();
   const disk = getDiskInfo();
+
+  // Log de warning se CPU está 0% para ajudar no debug
+  if (cpu_usage === 0) {
+    console.log(`[WARN] CPU reportando 0% - verificando método alternativo...`);
+  }
 
   const payload = {
     asset_key,

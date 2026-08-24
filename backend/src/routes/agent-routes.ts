@@ -99,7 +99,7 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
             last_synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }, { onConflict: 'company_id,source_type,source_id' })
-          .catch((err) => request.log.warn({ err }, 'asset_profile upsert failed (non-fatal)'));
+          .then(() => {}, (err: any) => request.log.warn({ err }, 'asset_profile upsert failed (non-fatal)'));
       }
     }
 
@@ -498,7 +498,7 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
             last_synced_at: now,
             updated_at: now,
           }, { onConflict: 'company_id,source_type,source_id' })
-          .catch((err) => request.log.warn({ err }, 'asset_profile upsert failed (non-fatal)'));
+          .then(() => {}, (err: any) => request.log.warn({ err }, 'asset_profile upsert failed (non-fatal)'));
       }
       count++;
     }
