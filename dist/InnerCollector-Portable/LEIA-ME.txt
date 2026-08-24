@@ -1,0 +1,51 @@
+INNER SNMP COLLECTOR - INSTALACAO
+=================================
+
+Este coletor descobre dispositivos de rede (switches, roteadores, access points, etc)
+usando ping sweep e SNMP.
+
+PASSO 1: CONFIGURAR
+--------------------
+1. Edite o arquivo collector-config.json
+2. Altere a URL do portal (portalUrl)
+3. Cole o ID do coletor (collectorId)
+4. O collectorSecret sera gerado automaticamente no primeiro registro
+
+PASSO 2: INSTALAR COMO SERVICO
+-------------------------------
+1. Clique com botao DIREITO em "instalar-servico.bat"
+2. Selecione "Executar como Administrador"
+3. Aguarde a mensagem de sucesso
+
+PASSO 3: VERIFICAR
+-------------------
+1. Abra o Painel de Controle > Ferramentas Administrativas > Servicos
+2. Procure por "Inner SNMP Collector"
+3. Verifique se o status e "Em Execucao"
+
+ARQUIVOS:
+- collector.ps1       -> Script principal de coleta
+- collector-config.json -> Configuracao
+- collector.log       -> Log de execucao (gerado automaticamente)
+- snmpwalk.exe       -> Ferramenta SNMP opcional (baixe de https://www.snmp-tools.net)
+
+CONFIGURACAO NO PORTAL:
+----------------------
+Apos instalar, configure no portal admin:
+1. Acesse Gestao de Coletores SNMP
+2. Crie um novo coletor com o token gerado
+3. Defina o range de IPs para scan
+4. Defina a community string SNMP (default: public)
+
+PROBLEMAS?
+----------
+1. Verifique se o collector-config.json esta correto
+2. Verifique o arquivo collector.log para erros
+3. Para melhor resultado, baixe snmpwalk.exe e coloque na mesma pasta
+
+REQUISITOS:
+-----------
+- Windows Server 2016+
+- PowerShell 5.1+
+- Permissao de administrador para instalar como servico
+- Acesso de rede aos dispositivos que deseja monitorar

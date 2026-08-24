@@ -360,6 +360,201 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
     return reply.send({ status: 'success', processed: count, timestamp: now });
   });
 
+  // 3a. Registro do Coletor de Rede (alias para /enroll com tipo collector)
+  fastify.post('/collector/enroll', async (request, reply) => {
+    const body = request.body as any;
+    const { activation_token, hostname, ip_address, os_info, version = '1.0.0' } = body || {};
+
+    if (!activation_token || !hostname) {
+      return reply.code(400).send({ error: 'Token de ativacao e Hostname sao obrigatorios.' });
+    }
+
+    // Validar Token de Ativacao
+    const { data: tokenRecord, error: tokenErr } = await supabaseAdmin
+      .from('agent_activation_tokens')
+      .select('*')
+      .eq('token', activation_token.trim())
+      .eq('is_active', true)
+      .single();
+
+    if (tokenErr || !tokenRecord) {
+      return reply.code(401).send({ error: 'Token de ativacao invalido ou inativo.' });
+    }
+
+    if (tokenRecord.expires_at && new Date(tokenRecord.expires_at) < new Date()) {
+      return reply.code(401).send({ error: 'Token de ativacao expirado.' });
+    }
+
+    const company_id = tokenRecord.company_id;
+    const collector_id = generateAssetKey('collector');
+    const collector_secret = crypto.randomBytes(24).toString('hex');
+
+    // Registrar Coletor
+    const { data: collector, error: colErr } = await supabaseAdmin
+      .from('registered_agents')
+      .insert({
+        company_id,
+        agent_type: 'collector',
+        asset_key: collector_id,
+        agent_secret: collector_secret,
+        hostname,
+        ip_address,
+        os_info,
+        version,
+        status: 'Online',
+        last_heartbeat: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (colErr || !collector) {
+      return reply.code(500).send({ error: 'Falha ao registrar coletor: ' + colErr?.message });
+    }
+
+    return reply.send({
+      status: 'success',
+      message: 'Coletor registrado com sucesso.',
+      collector_id,
+      collector_secret,
+      agent_id: collector.id,
+      company_id,
+    });
+  });
+
+  // 3b. Envio de dispositivos do coletor
+  fastify.post('/collector/devices', async (request, reply) => {
+    const collectorSecret = request.headers['x-collector-secret'] as string;
+    const body = request.body as any;
+    const { collector_id, devices = [] } = body || {};
+
+    if (!collectorSecret || !collector_id) {
+      return reply.code(400).send({ error: 'ID e segredo do coletor sao obrigatorios.' });
+    }
+
+    // Validar Coletor
+    const { data: collector, error: colErr } = await supabaseAdmin
+      .from('registered_agents')
+      .select('*')
+      .eq('id', collector_id)
+      .eq('agent_secret', collectorSecret)
+      .eq('agent_type', 'collector')
+      .single();
+
+    if (colErr || !collector) {
+      return reply.code(401).send({ error: 'Autenticacao do coletor falhou.' });
+    }
+
+    const now = new Date().toISOString();
+
+    // Atualizar heartbeat do coletor
+    await supabaseAdmin
+      .from('registered_agents')
+      .update({ status: 'Online', last_heartbeat: now, updated_at: now })
+      .eq('id', collector.id);
+
+    // Processar dispositivos de rede recebidos
+    let count = 0;
+    for (const dev of devices) {
+      if (!dev.ip_address) continue;
+
+      const device_key = `INNER-NET-${crypto.createHash('md5').update(`${collector.company_id}-${dev.ip_address}`).digest('hex').substring(0, 8).toUpperCase()}`;
+
+      const { data: netDev } = await supabaseAdmin
+        .from('network_devices')
+        .upsert(
+          {
+            company_id: collector.company_id,
+            device_name: dev.device_name || `Device-${dev.ip_address}`,
+            device_type: dev.device_type || 'Network Device',
+            location: dev.location || 'Rede Local',
+            ip_address: dev.ip_address,
+            uptime_percent: Number(dev.uptime || 100),
+            status: dev.status === 'Online' ? 'Online' : 'Offline',
+            snmp_data: {
+              sysdescr: dev.sysdescr || '',
+              community: dev.community || 'public',
+            },
+            monitoring_source: 'agent_native',
+            asset_key: device_key,
+            agent_id: collector.id,
+            last_updated: now,
+          },
+          { onConflict: 'company_id,ip_address' }
+        )
+        .select()
+        .single();
+
+      if (netDev) {
+        // Criar asset_profile para o dispositivo
+        await supabaseAdmin
+          .from('asset_profiles')
+          .upsert({
+            company_id: collector.company_id,
+            source_type: 'network_device',
+            source_id: netDev.id,
+            customer_visible: true,
+            include_in_health_score: true,
+            display_name: dev.device_name || `Device-${dev.ip_address}`,
+            last_synced_at: now,
+            updated_at: now,
+          }, { onConflict: 'company_id,source_type,source_id' })
+          .catch(() => {});
+      }
+      count++;
+    }
+
+    return reply.send({ status: 'success', processed: count, timestamp: now });
+  });
+
+  // 3c. Buscar configuracao de scan do coletor
+  fastify.get<{ Params: { id: string } }>('/collector/:id/config', async (request, reply) => {
+    const collectorSecret = request.headers['x-collector-secret'] as string;
+    const { id } = request.params;
+
+    if (!collectorSecret) {
+      return reply.code(400).send({ error: 'Segredo do coletor e obrigatorio.' });
+    }
+
+    // Validar Coletor
+    const { data: collector, error: colErr } = await supabaseAdmin
+      .from('registered_agents')
+      .select('*')
+      .eq('id', id)
+      .eq('agent_secret', collectorSecret)
+      .eq('agent_type', 'collector')
+      .single();
+
+    if (colErr || !collector) {
+      return reply.code(401).send({ error: 'Autenticacao do coletor falhou.' });
+    }
+
+    // Buscar configuracao do coletor SNMP
+    const { data: config, error: configErr } = await supabaseAdmin
+      .from('snmp_collectors')
+      .select('*')
+      .eq('company_id', collector.company_id)
+      .eq('enabled', true)
+      .single();
+
+    if (configErr || !config) {
+      return reply.send({
+        enabled: false,
+        ip_range_start: null,
+        ip_range_end: null,
+        community_string: 'public',
+      });
+    }
+
+    return reply.send({
+      enabled: true,
+      ip_range_start: config.ip_range_start,
+      ip_range_end: config.ip_range_end,
+      community_string: config.community_string || 'public',
+      snmp_version: config.snmp_version || '2c',
+      snmp_port: config.snmp_port || 161,
+    });
+  });
+
   // 4. Heartbeat explícito do agente
   fastify.post('/heartbeat', async (request, reply) => {
     const agentSecret = (request.headers['x-agent-secret'] as string) || (request.headers['authorization'] as string)?.replace('Bearer ', '');

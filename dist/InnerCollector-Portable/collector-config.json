@@ -1,0 +1,6 @@
+{
+    "portalUrl": "https://SEU_PORTAL_AQUI",
+    "collectorId": "INNER-COL-SEU_TOKEN",
+    "collectorSecret": "",
+    "intervalSeconds": 300
+}
