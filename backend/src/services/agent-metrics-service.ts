@@ -127,7 +127,7 @@ export async function processAgentMetrics(
   }
 
   // 5b. Garantir que o servidor e visivel ao cliente
-  await supabase
+  const { error: profileError } = await supabase
     .from('asset_profiles')
     .upsert({
       company_id,
@@ -138,10 +138,11 @@ export async function processAgentMetrics(
       display_name: hostname,
       last_synced_at: now,
       updated_at: now,
-    }, { onConflict: 'company_id,source_type,source_id' })
-    .catch(() => {
-      // Nao falhar se asset_profiles nao existir
-    });
+    }, { onConflict: 'company_id,source_type,source_id' });
+
+  if (profileError) {
+    console.error('Erro ao upsert asset_profiles:', profileError.message);
+  }
 
   // 6. Gravar métricas históricas
   const { error: metricsErr } = await supabase.from('agent_metrics').insert({
@@ -222,7 +223,7 @@ export async function processAgentMetrics(
 
     // Garantir que a VM e visivel ao cliente
     if (vmServer?.id) {
-      await supabase
+      const { error: vmProfileError } = await supabase
         .from('asset_profiles')
         .upsert({
           company_id,
@@ -233,8 +234,11 @@ export async function processAgentMetrics(
           display_name: vm.name,
           last_synced_at: now,
           updated_at: now,
-        }, { onConflict: 'company_id,source_type,source_id' })
-        .catch(() => {});
+        }, { onConflict: 'company_id,source_type,source_id' });
+
+      if (vmProfileError) {
+        console.error('Erro ao upsert asset_profiles para VM:', vmProfileError.message);
+      }
     }
 
     // Gerar evento se mudou de status
