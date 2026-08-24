@@ -55,7 +55,7 @@ function Invoke-CollectorRegister {
     }
 
     try {
-        $resp = Invoke-RestMethod -Uri "$PortalUrl/api/collector/enroll" -Method Post -ContentType "application/json" -Body ($body | ConvertTo-Json) -TimeoutSec 30
+        $resp = Invoke-RestMethod -Uri "$PortalUrl/api/agent/collector/enroll" -Method Post -ContentType "application/json" -Body ($body | ConvertTo-Json) -TimeoutSec 30
 
         if ($resp.status -eq "success") {
             $global:CollectorId = $resp.collector_id
@@ -291,7 +291,7 @@ function Send-CollectorData {
     }
 
     try {
-        Invoke-RestMethod -Uri "$PortalUrl/api/collector/devices" -Method Post -ContentType "application/json" -Headers @{"x-collector-secret" = $global:CollectorSecret} -Body ($body | ConvertTo-Json -Depth 5) -TimeoutSec 60 | Out-Null
+        Invoke-RestMethod -Uri "$PortalUrl/api/agent/collector/devices" -Method Post -ContentType "application/json" -Headers @{"x-collector-secret" = $global:CollectorSecret} -Body ($body | ConvertTo-Json -Depth 5) -TimeoutSec 60 | Out-Null
         return $true
     } catch {
         Write-Log "Erro ao enviar dados: $_" "ERROR"
@@ -332,7 +332,7 @@ while ($true) {
 
     # Buscar configuracao de scan
     try {
-        $config = Invoke-RestMethod -Uri "$PortalUrl/api/collector/$global:CollectorId/config" -Method Get -Headers @{"x-collector-secret" = $global:CollectorSecret} -TimeoutSec 30
+        $config = Invoke-RestMethod -Uri "$PortalUrl/api/agent/collector/$global:CollectorId/config" -Method Get -Headers @{"x-collector-secret" = $global:CollectorSecret} -TimeoutSec 30
     } catch {
         Write-Log "Erro ao buscar config: $_" "WARN"
         Start-Sleep -Seconds $IntervalSeconds
