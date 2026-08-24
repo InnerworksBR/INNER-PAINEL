@@ -126,6 +126,23 @@ export async function processAgentMetrics(
     return { success: false, error: `Host upsert failed: ${hostErr.message}`, events_count: 0 };
   }
 
+  // 5b. Garantir que o servidor e visivel ao cliente
+  await supabase
+    .from('asset_profiles')
+    .upsert({
+      company_id,
+      source_type: 'server',
+      source_id: hostServer.id,
+      customer_visible: true,
+      include_in_health_score: true,
+      display_name: hostname,
+      last_synced_at: now,
+      updated_at: now,
+    }, { onConflict: 'company_id,source_type,source_id' })
+    .catch(() => {
+      // Nao falhar se asset_profiles nao existir
+    });
+
   // 6. Gravar métricas históricas
   const { error: metricsErr } = await supabase.from('agent_metrics').insert({
     agent_id,
@@ -178,7 +195,7 @@ export async function processAgentMetrics(
       .single();
 
     // Upsert VM
-    await supabase.from('servers').upsert(
+    const { data: vmServer } = await supabase.from('servers').upsert(
       {
         company_id,
         hostname: vm.name,
@@ -201,7 +218,24 @@ export async function processAgentMetrics(
         last_updated: now,
       },
       { onConflict: 'company_id,hostname' }
-    );
+    ).select('id').single();
+
+    // Garantir que a VM e visivel ao cliente
+    if (vmServer?.id) {
+      await supabase
+        .from('asset_profiles')
+        .upsert({
+          company_id,
+          source_type: 'server',
+          source_id: vmServer.id,
+          customer_visible: true,
+          include_in_health_score: true,
+          display_name: vm.name,
+          last_synced_at: now,
+          updated_at: now,
+        }, { onConflict: 'company_id,source_type,source_id' })
+        .catch(() => {});
+    }
 
     // Gerar evento se mudou de status
     const previousStatus = existingVm?.status;

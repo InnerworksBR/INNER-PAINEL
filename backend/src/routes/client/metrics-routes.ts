@@ -28,27 +28,42 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
     }
   });
 
-  // Buscar métricas de Servidores
+  // Buscar métricas de Servidores (agentes nativos)
   fastify.get('/servers', async (request, reply) => {
     const { user } = request.user as JWTPayload;
     try {
       const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
-      let visibleProfiles = supabaseAdmin
-        .from('asset_profiles')
-        .select('source_id')
-        .eq('source_type', 'server')
-        .eq('customer_visible', true);
-      if (targetCompanyId) visibleProfiles = visibleProfiles.eq('company_id', targetCompanyId);
-      const { data: profiles, error: profilesError } = await visibleProfiles;
-      if (profilesError) return reply.code(500).send({ error: profilesError.message });
-      const visibleIds = (profiles || []).map((profile: any) => profile.source_id);
-      if (visibleIds.length === 0) return [];
 
-      let query = supabaseAdmin.from('servers').select('*').in('id', visibleIds);
+      // Buscar servidores que foram monitorados por agente nativo
+      // Inclui tanto hosts quanto VMs
+      let query = supabaseAdmin
+        .from('servers')
+        .select('*')
+        .eq('monitoring_source', 'agent_native')
+        .order('hostname', { ascending: true });
+
       if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
+
       const { data, error } = await query;
       if (error) return reply.code(500).send({ error: error.message });
-      return data;
+
+      // Se nao tem dados de agente nativo, tentar buscar servidores com agent_id
+      if (!data || data.length === 0) {
+        let agentsQuery = supabaseAdmin
+          .from('servers')
+          .select('*')
+          .not('agent_id', 'is', null)
+          .order('hostname', { ascending: true });
+
+        if (targetCompanyId) agentsQuery = agentsQuery.eq('company_id', targetCompanyId);
+
+        const { data: agentData, error: agentError } = await agentsQuery;
+        if (!agentError && agentData) {
+          return agentData;
+        }
+      }
+
+      return data || [];
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }

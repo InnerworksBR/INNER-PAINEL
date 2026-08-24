@@ -163,18 +163,11 @@ const EmpresasAdmin = () => {
             count: currentIntegrations.ms365_last_sync_count,
         },
         {
-            name: 'Zabbix Servidores',
-            configured: Boolean(currentIntegrations.zabbix_api_url && currentIntegrations.zabbix_user),
-            lastSync: currentIntegrations.zabbix_last_sync_at,
-            lastError: currentIntegrations.zabbix_last_sync_error,
-            count: currentIntegrations.zabbix_last_sync_count,
-        },
-        {
-            name: 'Zabbix Rede',
-            configured: Boolean(currentIntegrations.zabbix_api_url && currentIntegrations.zabbix_user),
-            lastSync: currentIntegrations.zabbix_network_last_sync_at,
-            lastError: currentIntegrations.zabbix_network_last_sync_error,
-            count: currentIntegrations.zabbix_network_last_sync_count,
+            name: 'Agente Inner (Servidores)',
+            configured: true,
+            lastSync: null,
+            lastError: null,
+            count: null,
         },
     ];
 
@@ -446,22 +439,18 @@ const EmpresasAdmin = () => {
                                 </div>
                             </div>
 
-                            {/* Zabbix */}
-                            <div className="p-4 border border-slate-200 rounded-2xl bg-white shadow-sm">
-                                <h3 className="font-semibold text-slate-800 mb-4 flex border-b pb-2">Zabbix (Monitoramento)</h3>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">URL da API</label>
-                                        <input type="text" placeholder="https://zabbix.domain.com/api_jsonrpc.php" value={integrationValues.zabbix_api_url} onChange={(e) => setIntegrationValues({ ...integrationValues, zabbix_api_url: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">Usuário Zabbix</label>
-                                        <input type="text" value={integrationValues.zabbix_user} onChange={(e) => setIntegrationValues({ ...integrationValues, zabbix_user: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-normal text-slate-500 uppercase tracking-widest ml-1">Senha Zabbix</label>
-                                        <input type="password" value={integrationValues.zabbix_password} onChange={(e) => setIntegrationValues({ ...integrationValues, zabbix_password: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                                    </div>
+                            {/* Agente Inner - Informacoes */}
+                            <div className="p-4 border border-slate-200 rounded-2xl bg-blue-50 shadow-sm">
+                                <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
+                                    <Monitor size={16} className="text-blue-600" />
+                                    Agente Inner (Monitoramento)
+                                </h3>
+                                <p className="text-xs text-slate-600 mb-3">
+                                    Os servidores sao monitorados automaticamente pelo Agente Inner instalado nos endpoints.
+                                </p>
+                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                    <CheckCircle size={14} className="text-emerald-500" />
+                                    <span>Agentes registrados aparecem automaticamente</span>
                                 </div>
                             </div>
 

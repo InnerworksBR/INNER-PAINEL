@@ -86,17 +86,20 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
         .single();
 
       if (server && !srvErr) {
-        await upsertAssetProfileFromSource(
-          supabaseAdmin,
-          'server',
-          server,
-          {
-            hostname,
-            asset_key,
-            monitoring_source: 'agent_native',
-            status: 'Online',
-          }
-        );
+        // Criar asset_profile com visibilidade para o cliente
+        await supabaseAdmin
+          .from('asset_profiles')
+          .upsert({
+            company_id,
+            source_type: 'server',
+            source_id: server.id,
+            customer_visible: true,
+            include_in_health_score: true,
+            display_name: hostname,
+            last_synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'company_id,source_type,source_id' })
+          .catch(() => {});
       }
     }
 
