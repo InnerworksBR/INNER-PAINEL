@@ -242,6 +242,10 @@ public static class Program
     private static IHost CreateHostBuilder(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
+        builder.Services.AddWindowsService(options =>
+        {
+            options.ServiceName = "Inner Monitoring Agent";
+        });
 
         // Configure Serilog
         builder.Services.AddSerilog((services, lc) => lc
