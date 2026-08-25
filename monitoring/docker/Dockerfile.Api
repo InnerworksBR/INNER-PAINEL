@@ -1,21 +1,22 @@
 # Estagio 1: build
+# Espera receber o build context apontando para a raiz do repo (onde existe /monitoring/src)
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copia apenas os csproj primeiro (cache de dependencias)
-COPY src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj src/Inner.Monitoring.Cloud.Api/
-COPY src/Inner.Monitoring.Domain/Inner.Monitoring.Domain.csproj src/Inner.Monitoring.Domain/
-COPY src/Inner.Monitoring.Contracts/Inner.Monitoring.Contracts.csproj src/Inner.Monitoring.Contracts/
-COPY src/Inner.Monitoring.Application/Inner.Monitoring.Application.csproj src/Inner.Monitoring.Application/
-COPY src/Inner.Monitoring.Infrastructure/Inner.Monitoring.Infrastructure.csproj src/Inner.Monitoring.Infrastructure/
-COPY src/Inner.Monitoring.Infrastructure.Postgres/Inner.Monitoring.Infrastructure.Postgres.csproj src/Inner.Monitoring.Infrastructure.Postgres/
-COPY src/Inner.Monitoring.Infrastructure.Security/Inner.Monitoring.Infrastructure.Security.csproj src/Inner.Monitoring.Infrastructure.Security/
+COPY monitoring/src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj monitoring/src/Inner.Monitoring.Cloud.Api/
+COPY monitoring/src/Inner.Monitoring.Domain/Inner.Monitoring.Domain.csproj monitoring/src/Inner.Monitoring.Domain/
+COPY monitoring/src/Inner.Monitoring.Contracts/Inner.Monitoring.Contracts.csproj monitoring/src/Inner.Monitoring.Contracts/
+COPY monitoring/src/Inner.Monitoring.Application/Inner.Monitoring.Application.csproj monitoring/src/Inner.Monitoring.Application/
+COPY monitoring/src/Inner.Monitoring.Infrastructure/Inner.Monitoring.Infrastructure.csproj monitoring/src/Inner.Monitoring.Infrastructure/
+COPY monitoring/src/Inner.Monitoring.Infrastructure.Postgres/Inner.Monitoring.Infrastructure.Postgres.csproj monitoring/src/Inner.Monitoring.Infrastructure.Postgres/
+COPY monitoring/src/Inner.Monitoring.Infrastructure.Security/Inner.Monitoring.Infrastructure.Security.csproj monitoring/src/Inner.Monitoring.Infrastructure.Security/
 
-RUN dotnet restore src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj
+RUN dotnet restore monitoring/src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj
 
 # Copia o resto do codigo e compila
-COPY src/ src/
-RUN dotnet publish src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj \
+COPY monitoring/src/ monitoring/src/
+RUN dotnet publish monitoring/src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj \
     -c Release \
     -o /app/publish \
     --no-restore \
