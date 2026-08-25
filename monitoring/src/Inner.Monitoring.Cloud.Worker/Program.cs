@@ -14,6 +14,7 @@ builder.Logging.AddConsole();
 // Configuração de Database
 // ============================================
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? Environment.GetEnvironmentVariable("Database_ConnectionString")
     ?? "Host=localhost;Database=inner_monitoring;Username=postgres;Password=postgres";
 
 builder.Services.AddDbContext<MonitoringDbContext>(options =>

@@ -41,6 +41,7 @@ builder.Host.UseSerilog();
 // Configuracao de Database (Supabase/PostgreSQL)
 // ============================================
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? Environment.GetEnvironmentVariable("Database_ConnectionString")
     ?? "Host=localhost;Database=inner_monitoring;Username=postgres;Password=postgres";
 
 builder.Services.AddDbContext<MonitoringDbContext>(options =>
