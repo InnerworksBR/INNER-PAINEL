@@ -146,20 +146,10 @@ public class SourcesController : ControllerBase
         // Criar cursor de sequência
         var cursor = SourceSequenceCursor.Create(source.Id);
 
-        using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        try
-        {
-            _db.Sources.Add(source);
-            _db.SourceCredentials.Add(credential);
-            _db.SourceSequenceCursors.Add(cursor);
-            await _db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
+        _db.Sources.Add(source);
+        _db.SourceCredentials.Add(credential);
+        _db.SourceSequenceCursors.Add(cursor);
+        await _db.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Source {SourceId} registrada (company={CompanyId}, site={SiteId}, type={SourceType})",

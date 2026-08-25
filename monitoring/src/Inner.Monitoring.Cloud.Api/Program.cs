@@ -4,6 +4,7 @@ using Inner.Monitoring.Application.QueryServices;
 using Inner.Monitoring.Cloud.Api;
 using Inner.Monitoring.Cloud.Api.Authorization;
 using Inner.Monitoring.Cloud.Api.Infrastructure.HealthChecks;
+using Inner.Monitoring.Cloud.Api.Jwt;
 using Inner.Monitoring.Cloud.Api.Middleware;
 using Inner.Monitoring.Contracts.Interfaces;
 using Inner.Monitoring.Infrastructure.Postgres;
@@ -86,6 +87,7 @@ var jwtSettings = new JwtSettings
 };
 
 builder.Services.AddSingleton(jwtSettings);
+builder.Services.AddSingleton<JwtService>();
 builder.Services.AddSingleton<PortalJwtService>();
 
 // ============================================
