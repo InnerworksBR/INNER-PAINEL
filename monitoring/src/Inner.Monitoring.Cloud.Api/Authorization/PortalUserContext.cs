@@ -67,7 +67,11 @@ public sealed class PortalUserContext
             ? c
             : null;
 
-        Role = principal.FindFirst(PortalClaims.Role)?.Value ?? PortalRoles.Viewer;
+        // JwtBearer pode mapear o claim JWT "role" para ClaimTypes.Role.
+        // Aceitar ambos mantém compatibilidade com tokens emitidos pelo portal.
+        Role = principal.FindFirst(PortalClaims.Role)?.Value
+            ?? principal.FindFirst(ClaimTypes.Role)?.Value
+            ?? PortalRoles.Viewer;
         Email = principal.FindFirst(PortalClaims.Email)?.Value;
     }
 
