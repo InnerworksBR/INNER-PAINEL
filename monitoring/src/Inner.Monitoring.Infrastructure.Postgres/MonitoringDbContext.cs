@@ -130,7 +130,7 @@ public class MonitoringDbContext : DbContext
             entity.Property(e => e.SiteId).HasColumnName("site_id");
             entity.Property(e => e.SourceType).HasColumnName("source_type").HasConversion<string>();
             entity.Property(e => e.TokenHash).HasColumnName("token_hash").IsRequired();
-            entity.Property(e => e.DisplayHint).HasColumnName("display_hint").HasMaxLength(20);
+            entity.Property(e => e.DisplayHint).HasColumnName("display_hint").HasMaxLength(255);
             entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
             entity.Property(e => e.UsedAt).HasColumnName("used_at");
             entity.Property(e => e.RevokedAt).HasColumnName("revoked_at");
