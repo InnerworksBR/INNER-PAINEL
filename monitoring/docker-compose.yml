@@ -1,0 +1,75 @@
+version: '3.8'
+
+# Docker Compose para desenvolvimento do Inner Monitoring
+# PostgreSQL 16 + Redis (para cache futuro)
+
+services:
+  # ============================================
+  # PostgreSQL 16 - Banco de dados principal
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: inner-monitoring-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inner_monitoring
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inner_monitoring"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - inner-monitoring-network
+
+  # ============================================
+  # Redis - Cache e filas (futuro)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: inner-monitoring-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - inner-monitoring-network
+
+  # ============================================
+  # PgAdmin - Interface web para PostgreSQL (dev only)
+  # ============================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: inner-monitoring-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@inner.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - inner-monitoring-network
+    profiles:
+      - dev-tools
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  inner-monitoring-network:
+    driver: bridge

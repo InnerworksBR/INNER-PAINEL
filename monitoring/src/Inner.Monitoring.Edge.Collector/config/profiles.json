@@ -1,0 +1,207 @@
+{
+  "profiles": {
+    "switch-standard": {
+      "profile_id": "switch-standard",
+      "profile_type": "switch",
+      "poll_interval_seconds": 300,
+      "priority": 90,
+      "queries": [
+        {
+          "operation": "get",
+          "oids": ["1.3.6.1.2.1.1.3.0"]
+        },
+        {
+          "operation": "bulk_walk",
+          "root_oid": "1.3.6.1.2.1.2.2",
+          "max_variables": 100
+        },
+        {
+          "operation": "walk",
+          "root_oid": "1.3.6.1.2.1.17"
+        }
+      ]
+    },
+    "router-standard": {
+      "profile_id": "router-standard",
+      "profile_type": "router",
+      "poll_interval_seconds": 300,
+      "priority": 85,
+      "queries": [
+        {
+          "operation": "get",
+          "oids": ["1.3.6.1.2.1.1.3.0"]
+        },
+        {
+          "operation": "bulk_walk",
+          "root_oid": "1.3.6.1.2.1.2.2",
+          "max_variables": 100
+        },
+        {
+          "operation": "bulk_walk",
+          "root_oid": "1.3.6.1.2.1.4.20",
+          "max_variables": 50
+        },
+        {
+          "operation": "walk",
+          "root_oid": "1.3.6.1.2.1.4.21"
+        }
+      ]
+    },
+    "access-point-standard": {
+      "profile_id": "access-point-standard",
+      "profile_type": "access_point",
+      "poll_interval_seconds": 300,
+      "priority": 80,
+      "queries": [
+        {
+          "operation": "get",
+          "oids": ["1.3.6.1.2.1.1.3.0"]
+        },
+        {
+          "operation": "bulk_walk",
+          "root_oid": "1.3.6.1.2.1.2.2",
+          "max_variables": 100
+        }
+      ]
+    },
+    "firewall-standard": {
+      "profile_id": "firewall-standard",
+      "profile_type": "firewall",
+      "poll_interval_seconds": 300,
+      "priority": 95,
+      "queries": [
+        {
+          "operation": "get",
+          "oids": ["1.3.6.1.2.1.1.3.0"]
+        },
+        {
+          "operation": "bulk_walk",
+          "root_oid": "1.3.6.1.2.1.2.2",
+          "max_variables": 100
+        }
+      ]
+    },
+    "ups-standard": {
+      "profile_id": "ups-standard",
+      "profile_type": "ups",
+      "poll_interval_seconds": 60,
+      "priority": 100,
+      "queries": [
+        {
+          "operation": "get",
+          "oids": ["1.3.6.1.2.1.1.3.0"]
+        },
+        {
+          "operation": "walk",
+          "root_oid": "1.3.6.1.2.1.33"
+        }
+      ]
+    },
+    "printer-standard": {
+      "profile_id": "printer-standard",
+      "profile_type": "printer",
+      "poll_interval_seconds": 600,
+      "priority": 50,
+      "queries": [
+        {
+          "operation": "get",
+          "oids": ["1.3.6.1.2.1.1.3.0"]
+        },
+        {
+          "operation": "walk",
+          "root_oid": "1.3.6.1.2.1.43"
+        }
+      ]
+    },
+    "mib2-network-base": {
+      "profile_id": "mib2-network-base",
+      "profile_type": "network_device",
+      "poll_interval_seconds": 300,
+      "priority": 100,
+      "queries": [
+        {
+          "operation": "get",
+          "oids": ["1.3.6.1.2.1.1.3.0"]
+        },
+        {
+          "operation": "bulk_walk",
+          "root_oid": "1.3.6.1.2.1.2.2",
+          "max_variables": 100
+        }
+      ]
+    }
+  },
+  "device_classification": {
+    "oid_prefixes": {
+      "1.3.6.1.4.1.9.1": {
+        "manufacturer": "Cisco",
+        "type": "switch"
+      },
+      "1.3.6.1.4.1.11.2.3.7": {
+        "manufacturer": "HP",
+        "type": "switch"
+      },
+      "1.3.6.1.4.1.14823": {
+        "manufacturer": "Aruba",
+        "type": "access_point"
+      },
+      "1.3.6.1.4.1.2636": {
+        "manufacturer": "Juniper",
+        "type": "router"
+      },
+      "1.3.6.1.4.1.6027": {
+        "manufacturer": "Dell",
+        "type": "switch"
+      },
+      "1.3.6.1.4.1.2011": {
+        "manufacturer": "Huawei",
+        "type": "switch"
+      },
+      "1.3.6.1.4.1.41112": {
+        "manufacturer": "Ubiquiti",
+        "type": "switch"
+      },
+      "1.3.6.1.4.1.14988": {
+        "manufacturer": "MikroTik",
+        "type": "router"
+      },
+      "1.3.6.1.4.1.12356": {
+        "manufacturer": "Fortinet",
+        "type": "firewall"
+      },
+      "1.3.6.1.4.1.25461": {
+        "manufacturer": "Palo Alto",
+        "type": "firewall"
+      },
+      "1.3.6.1.4.1.2620": {
+        "manufacturer": "Check Point",
+        "type": "firewall"
+      },
+      "1.3.6.1.4.1.318.1.1": {
+        "manufacturer": "APC",
+        "type": "ups"
+      }
+    },
+    "sysdescr_patterns": {
+      "catalyst": { "type": "switch" },
+      "nexus": { "type": "switch" },
+      "meraki": { "type": "switch" },
+      "procurve": { "type": "switch" },
+      "aruba": { "type": "access_point" },
+      "isr": { "type": "router" },
+      "asr": { "type": "router" },
+      "junos": { "type": "router" },
+      "fortigate": { "type": "firewall" },
+      "panos": { "type": "firewall" },
+      "laserjet": { "type": "printer" },
+      "smart-ups": { "type": "ups" }
+    }
+  },
+  "concurrency": {
+    "max_identity_probes": 64,
+    "max_polling_devices": 16,
+    "max_requests_per_second": 200,
+    "probe_timeout_ms": 3000,
+    "poll_timeout_ms": 10000
+  }
+}

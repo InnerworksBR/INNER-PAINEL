@@ -1,0 +1,33 @@
+# Binarios
+dist/
+*.exe
+*.dll
+*.pdb
+bin/
+obj/
+
+# .NET
+.vs/
+*.user
+*.suo
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+*.local.json
+
+# Tooling
+.kpaflow/
+docs/.obsidian/workspace.json

@@ -1,0 +1,7 @@
+{
+  "api_base_url": "https://api.innerworks.com.br",
+  "heartbeat_interval_seconds": 60,
+  "collection_interval_seconds": 15,
+  "outbox_max_size_mb": 50,
+  "outbox_retention_days": 7
+}

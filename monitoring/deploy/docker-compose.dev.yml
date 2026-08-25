@@ -1,0 +1,60 @@
+# Inner Monitoring - Desenvolvimento Local
+# Docker Compose para desenvolvimento local com PostgreSQL
+
+services:
+  # PostgreSQL local para desenvolvimento
+  postgres:
+    image: postgres:18-alpine
+    container_name: inner-monitoring-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inner_monitoring
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API do Monitoring
+  api:
+    build:
+      context: ./src/Inner.Monitoring.Cloud.Api
+      dockerfile: Dockerfile
+    container_name: inner-monitoring-api
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      JWT_SECRET_KEY: dev-secret-key-at-least-32-characters-long
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Worker do Monitoring
+  worker:
+    build:
+      context: ./src/Inner.Monitoring.Cloud.Worker
+      dockerfile: Dockerfile
+    container_name: inner-monitoring-worker
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

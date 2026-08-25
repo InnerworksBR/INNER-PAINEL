@@ -1,0 +1,103 @@
+# Inner Monitoring - Produção
+# Docker Compose para deploy em produção com PostgreSQL externo
+
+services:
+  # ==========================================
+  # Monitoring API
+  # ==========================================
+  api:
+    image: innerworks/inner-monitoring-api:latest
+    container_name: inner-monitoring-api
+    restart: unless-stopped
+    environment:
+      # Database - USAR VARIÁVEIS DE AMBIENTE EM PRODUÇÃO!
+      DATABASE_URL: "${DATABASE_URL}"
+      # JWT - GERAR COM: openssl rand -base64 48
+      JWT_SECRET_KEY: "${JWT_SECRET_KEY}"
+      # Environment
+      ASPNETCORE_ENVIRONMENT: Production
+      #Logging
+      Serilog__MinimumLevel: "Warning"
+      Serilog__WriteTo__0__Args__outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    networks:
+      - monitoring-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ==========================================
+  # Monitoring Worker
+  # ==========================================
+  worker:
+    image: innerworks/inner-monitoring-worker:latest
+    container_name: inner-monitoring-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      WORKER_ID: "${WORKER_ID:-worker-01}"
+      WORKER_POLL_INTERVAL: "${WORKER_POLL_INTERVAL:-5}"
+      WORKER_LEASE_DURATION: "${WORKER_LEASE_DURATION:-60}"
+      WORKER_MAX_ATTEMPTS: "${WORKER_MAX_ATTEMPTS:-10}"
+      ASPNETCORE_ENVIRONMENT: Production
+      Serilog__MinimumLevel: "Warning"
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+      - monitoring-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+  # ==========================================
+  # Proxy Reverso (opcional - usar existente)
+  # ==========================================
+  # Descomente se não tiver nginx/caddy externo
+  #
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: inner-monitoring-proxy
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./certs:/etc/nginx/certs:ro
+  #   depends_on:
+  #     - api
+  #   networks:
+  #     - monitoring-network
+
+networks:
+  monitoring-network:
+    driver: bridge
+    name: inner-monitoring-network
