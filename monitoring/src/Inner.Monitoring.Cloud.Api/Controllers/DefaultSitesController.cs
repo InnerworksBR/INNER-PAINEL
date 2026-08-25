@@ -22,7 +22,9 @@ public sealed class DefaultSitesController : PortalControllerBase
     [HttpPost]
     public async Task<IActionResult> EnsureDefaultSite(Guid companyId, CancellationToken cancellationToken)
     {
-        if (GetCompanyId() != companyId && !GetUserContext().IsPlatformAdmin)
+        var userContext = GetUserContext();
+        if (!userContext.IsPlatformAdmin &&
+            (!userContext.CompanyId.HasValue || userContext.CompanyId.Value != companyId))
         {
             return Forbid();
         }

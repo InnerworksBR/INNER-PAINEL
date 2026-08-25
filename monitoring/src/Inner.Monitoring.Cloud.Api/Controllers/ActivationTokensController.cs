@@ -43,8 +43,9 @@ public class ActivationTokensController : PortalControllerBase
         [FromBody] CreateActivationTokenRequest request,
         CancellationToken cancellationToken)
     {
-        var tokenCompanyId = GetCompanyId();
-        if (tokenCompanyId != companyId && !GetUserContext().IsPlatformAdmin)
+        var userContext = GetUserContext();
+        if (!userContext.IsPlatformAdmin &&
+            (!userContext.CompanyId.HasValue || userContext.CompanyId.Value != companyId))
         {
             return Forbid();
         }
