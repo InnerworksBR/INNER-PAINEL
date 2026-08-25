@@ -23,6 +23,7 @@ $ServiceName = "Inner Monitoring Agent"
 $ServiceDisplayName = "Inner Monitoring Agent"
 $ProgramFilesPath = "$env:ProgramFiles\InnerWorks\MonitoringAgent"
 $ProgramDataPath = "$env:ProgramData\InnerWorks\MonitoringAgent"
+$InstallerDirectory = $PSScriptRoot
 
 function Write-Banner {
     Write-Host ""
@@ -59,8 +60,12 @@ function New-Directories {
 }
 
 function Copy-Files {
-    $srcDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    $exeFiles = Get-ChildItem -Path $srcDir -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
+    $srcDir = $InstallerDirectory
+    if ([string]::IsNullOrWhiteSpace($srcDir) -or -not (Test-Path -LiteralPath $srcDir)) {
+        throw "Não foi possível localizar a pasta do instalador. Execute o script a partir do pacote publicado do agente."
+    }
+
+    $exeFiles = Get-ChildItem -Path $srcDir -Filter "Inner.Monitoring.Agent.Windows.exe" -File -ErrorAction SilentlyContinue
 
     if ($exeFiles.Count -eq 0) {
         throw "No executable found in $srcDir. Build the project first."
@@ -75,8 +80,24 @@ function Copy-Files {
     return $destExe
 }
 
+function Save-ActivationToken {
+    param([string]$Token)
+
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        throw "Informe o token de ativação gerado no Portal."
+    }
+
+    $tokenPath = "$ProgramDataPath\data\secrets\activation.token"
+    Set-Content -Path $tokenPath -Value $Token.Trim() -Encoding UTF8 -NoNewline
+    Write-Host "  [CREATED] activation.token" -ForegroundColor Green
+}
+
 function New-BootstrapConfig {
     param([string]$ApiUrl)
+
+    if ($ApiUrl -match '[\[\]\(\)]' -or -not [Uri]::IsWellFormedUriString($ApiUrl, [UriKind]::Absolute)) {
+        throw "ApiBaseUrl inválida. Informe somente a URL, por exemplo: https://innerworks-painelcloudapi.zvzr4n.easypanel.host"
+    }
 
     $bootstrapPath = "$ProgramDataPath\config\bootstrap.json"
 
@@ -88,7 +109,7 @@ function New-BootstrapConfig {
     }
 
     $config = @{
-        api_base_url = $ApiUrl
+        api_base_url = $ApiUrl.TrimEnd('/')
         heartbeat_interval_seconds = 60
         collection_interval_seconds = 15
         log_level = "Information"
@@ -159,6 +180,10 @@ function Install-Agent {
     Write-Host ""
     Write-Host "[3/4] Creating bootstrap configuration..." -ForegroundColor Cyan
     New-BootstrapConfig -ApiUrl $ApiBaseUrl
+
+    if (-not [string]::IsNullOrWhiteSpace($ActivationToken)) {
+        Save-ActivationToken -Token $ActivationToken
+    }
 
     # Register service
     Write-Host ""

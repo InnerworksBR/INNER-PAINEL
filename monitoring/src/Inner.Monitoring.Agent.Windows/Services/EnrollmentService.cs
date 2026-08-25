@@ -83,7 +83,7 @@ public sealed class EnrollmentService : IEnrollmentService
                 SnmpV3: false));
 
         var response = await _httpClient.PostAsJsonAsync(
-            $"{_apiBaseUrl}/api/sources/register",
+            $"{_apiBaseUrl.TrimEnd('/')}/api/monitoring/v1/sources/register",
             request,
             ct);
 
@@ -121,7 +121,7 @@ public sealed class EnrollmentService : IEnrollmentService
         var request = new TokenRefreshRequest(sourceId.Value, refreshToken);
 
         var response = await _httpClient.PostAsJsonAsync(
-            $"{_apiBaseUrl}/api/sources/refresh",
+            $"{_apiBaseUrl.TrimEnd('/')}/api/monitoring/v1/sources/refresh",
             request,
             ct);
 

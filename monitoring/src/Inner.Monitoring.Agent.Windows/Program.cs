@@ -78,6 +78,8 @@ public static class Program
                 await outbox.InitializeAsync(CancellationToken.None);
             }
 
+            await EnrollFromActivationTokenAsync(host, CancellationToken.None);
+
             await host.RunAsync();
             return 0;
         }
@@ -101,6 +103,39 @@ public static class Program
         Console.WriteLine();
 
         return await RunHostAsync(args);
+    }
+
+    private static async Task EnrollFromActivationTokenAsync(IHost host, CancellationToken cancellationToken)
+    {
+        using var scope = host.Services.CreateScope();
+        var enrollment = scope.ServiceProvider.GetRequiredService<IEnrollmentService>();
+        if (enrollment.IsEnrolled)
+        {
+            return;
+        }
+
+        var tokenPath = Path.Combine(Paths.DataPath, "secrets", "activation.token");
+        if (!File.Exists(tokenPath))
+        {
+            throw new InvalidOperationException("Agente não registrado e nenhum token de ativação foi encontrado.");
+        }
+
+        var activationToken = (await File.ReadAllTextAsync(tokenPath, cancellationToken)).Trim();
+        if (string.IsNullOrWhiteSpace(activationToken))
+        {
+            throw new InvalidOperationException("O token de ativação está vazio.");
+        }
+
+        await enrollment.EnrollAsync(activationToken, cancellationToken);
+
+        try
+        {
+            File.Delete(tokenPath);
+        }
+        catch (IOException ex)
+        {
+            Log.Warning(ex, "Enrollment concluído, mas não foi possível remover o token de ativação");
+        }
     }
 
     private static async Task<int> InstallServiceAsync()
