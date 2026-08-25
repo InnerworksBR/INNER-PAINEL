@@ -59,6 +59,23 @@ function New-Directories {
     }
 }
 
+function Stop-InstalledAgent {
+    $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        return
+    }
+
+    if ($existing.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+        Write-Host "  Stopping existing service before updating files..." -ForegroundColor Yellow
+        Stop-Service -Name $ServiceName -Force
+        $existing.WaitForStatus(
+            [System.ServiceProcess.ServiceControllerStatus]::Stopped,
+            [TimeSpan]::FromSeconds(20))
+        Start-Sleep -Seconds 1
+        Write-Host "  [STOPPED] Existing service" -ForegroundColor Green
+    }
+}
+
 function Copy-Files {
     $srcDir = $InstallerDirectory
     if ([string]::IsNullOrWhiteSpace($srcDir) -or -not (Test-Path -LiteralPath $srcDir)) {
@@ -170,6 +187,10 @@ function Install-Agent {
     # Create directories
     Write-Host "[1/4] Creating directories..." -ForegroundColor Cyan
     New-Directories -Force:$Force
+
+    # Stop the service before replacing its executable. Windows locks a running
+    # service binary and Copy-Item cannot overwrite it while the process is active.
+    Stop-InstalledAgent
 
     # Copy files
     Write-Host ""
