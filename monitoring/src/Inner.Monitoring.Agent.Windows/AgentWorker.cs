@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Inner.Monitoring.Agent.Windows.Collectors;
 using Inner.Monitoring.Agent.Windows.Outbox;
 using Inner.Monitoring.Agent.Windows.Services;
 using Inner.Monitoring.Contracts.Records;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -14,10 +14,14 @@ namespace Inner.Monitoring.Agent.Windows;
 /// </summary>
 public sealed class AgentWorker : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<AgentWorker> _logger;
     private readonly CollectorRegistry _collectorRegistry;
+    private readonly SqliteOutbox _outbox;
+    private readonly IConfigurationService _configService;
+    private readonly IHeartbeatService _heartbeatService;
+    private readonly IEnrollmentService _enrollmentService;
     private readonly TimeProvider _timeProvider;
+    private DateTimeOffset _nextHeartbeatAt = DateTimeOffset.MinValue;
 
     private CollectionStatus _lastCollectionStatus = new(
         LastCycleStartedAt: null,
@@ -31,13 +35,19 @@ public sealed class AgentWorker : BackgroundService
 #pragma warning restore CS0414
 
     public AgentWorker(
-        IServiceProvider serviceProvider,
         ILogger<AgentWorker> logger,
-        CollectorRegistry collectorRegistry)
+        CollectorRegistry collectorRegistry,
+        SqliteOutbox outbox,
+        IConfigurationService configService,
+        IHeartbeatService heartbeatService,
+        IEnrollmentService enrollmentService)
     {
-        _serviceProvider = serviceProvider;
         _logger = logger;
         _collectorRegistry = collectorRegistry;
+        _outbox = outbox;
+        _configService = configService;
+        _heartbeatService = heartbeatService;
+        _enrollmentService = enrollmentService;
         _timeProvider = TimeProvider.System;
     }
 
@@ -56,37 +66,31 @@ public sealed class AgentWorker : BackgroundService
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
-                var outbox = scope.ServiceProvider.GetRequiredService<SqliteOutbox>();
-                var configService = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
-                var heartbeatService = scope.ServiceProvider.GetRequiredService<HeartbeatService>();
+                if (!await _enrollmentService.EnsureValidTokenAsync(stoppingToken))
+                {
+                    _logger.LogWarning("Agent has no valid access token");
+                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                    continue;
+                }
 
                 // Update collection interval from config
-                var config = configService.CurrentConfiguration;
+                var config = _configService.CurrentConfiguration;
                 if (config?.Agent != null)
                 {
                     _collectionIntervalSeconds = config.Agent.CollectionIntervalSeconds;
                 }
 
                 // Run collection cycle
-                await RunCollectionCycleAsync(scope.ServiceProvider, stoppingToken);
+                await RunCollectionCycleAsync(stoppingToken);
 
-                // Wait for next collection or heartbeat
-                var waitTime = TimeSpan.FromSeconds(_collectionIntervalSeconds);
-                var heartbeatInterval = TimeSpan.FromSeconds(heartbeatService.HeartbeatIntervalSeconds);
-
-                // Send heartbeat if needed
-                if (heartbeatInterval < waitTime)
+                if (_timeProvider.GetUtcNow() >= _nextHeartbeatAt)
                 {
-                    await Task.Delay(heartbeatInterval, stoppingToken);
-                    await heartbeatService.SendHeartbeatAsync(stoppingToken);
-                    waitTime -= heartbeatInterval;
+                    await _heartbeatService.SendHeartbeatAsync(stoppingToken);
+                    _nextHeartbeatAt = _timeProvider.GetUtcNow().AddSeconds(
+                        _heartbeatService.HeartbeatIntervalSeconds);
                 }
 
-                if (waitTime > TimeSpan.Zero)
-                {
-                    await Task.Delay(waitTime, stoppingToken);
-                }
+                await Task.Delay(TimeSpan.FromSeconds(_collectionIntervalSeconds), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -108,7 +112,7 @@ public sealed class AgentWorker : BackgroundService
         _logger.LogInformation("Agent worker stopping");
     }
 
-    private async Task RunCollectionCycleAsync(IServiceProvider services, CancellationToken ct)
+    private async Task RunCollectionCycleAsync(CancellationToken ct)
     {
         var startedAt = DateTimeOffset.UtcNow;
         _lastCollectionStatus = _lastCollectionStatus with
@@ -118,12 +122,9 @@ public sealed class AgentWorker : BackgroundService
 
         try
         {
-            var outbox = services.GetRequiredService<SqliteOutbox>();
-            var configService = services.GetRequiredService<IConfigurationService>();
-
             var context = new CollectionContext
             {
-                SourceId = Guid.Empty, // Will be set after enrollment
+                SourceId = _enrollmentService.SourceId ?? Guid.Empty,
                 SourceVersion = "1.0.0",
                 Hostname = Environment.MachineName,
                 CollectedAt = startedAt,
@@ -133,7 +134,7 @@ public sealed class AgentWorker : BackgroundService
             };
 
             // Get enabled collectors
-            var enabledCollectors = GetEnabledCollectors(configService.CurrentConfiguration);
+            var enabledCollectors = GetEnabledCollectors(_configService.CurrentConfiguration);
             var allRecords = new List<BatchRecord>();
 
             foreach (var collector in enabledCollectors)
@@ -160,7 +161,7 @@ public sealed class AgentWorker : BackgroundService
             if (allRecords.Count > 0)
             {
                 var completedAt = DateTimeOffset.UtcNow;
-                var batch = await outbox.CreateBatchAsync(
+                var batch = await _outbox.CreateBatchAsync(
                     allRecords,
                     startedAt,
                     completedAt,
@@ -170,7 +171,7 @@ public sealed class AgentWorker : BackgroundService
                     batch.BatchId, allRecords.Count);
 
                 // Try to send pending batches
-                await SendPendingBatchesAsync(services, ct);
+                await SendPendingBatchesAsync(ct);
             }
 
             _lastCollectionStatus = _lastCollectionStatus with
@@ -193,17 +194,14 @@ public sealed class AgentWorker : BackgroundService
         }
     }
 
-    private async Task SendPendingBatchesAsync(IServiceProvider services, CancellationToken ct)
+    private async Task SendPendingBatchesAsync(CancellationToken ct)
     {
         try
         {
-            var outbox = services.GetRequiredService<SqliteOutbox>();
-            var enrollment = services.GetRequiredService<IEnrollmentService>();
-
-            if (!enrollment.IsEnrolled || enrollment.Endpoints == null)
+            if (!_enrollmentService.IsEnrolled || _enrollmentService.Endpoints == null)
                 return;
 
-            var pending = await outbox.GetPendingBatchesAsync(ct);
+            var pending = await _outbox.GetPendingBatchesAsync(ct);
 
             foreach (var (batch, payload) in pending)
             {
@@ -211,20 +209,21 @@ public sealed class AgentWorker : BackgroundService
 
                 try
                 {
-                    var client = CreateHttpClient(enrollment.AccessToken);
+                    var client = CreateHttpClient(_enrollmentService.AccessToken);
                     var response = await client.PostAsJsonAsync(
-                        enrollment.Endpoints.Batches,
-                        JsonContent.Create(batch),
+                        _enrollmentService.Endpoints.Batches,
+                        batch,
+                        ApiJsonOptions,
                         ct);
 
                     if (response.IsSuccessStatusCode)
                     {
-                        var ack = await response.Content.ReadFromJsonAsync<BatchSubmissionResponse>(ct);
+                        var ack = await response.Content.ReadFromJsonAsync<BatchSubmissionResponse>(ApiJsonOptions, ct);
                         if (ack != null)
                         {
-                            await outbox.MarkBatchSentAsync(batch.BatchId,
+                            await _outbox.MarkBatchSentAsync(batch.BatchId,
                                 await response.Content.ReadAsStringAsync(ct), ct);
-                            await outbox.UpdateAckedSequenceAsync(ack.HighestContiguousSequence, ct);
+                            await _outbox.UpdateAckedSequenceAsync(ack.HighestContiguousSequence, ct);
                         }
                     }
                 }
@@ -292,4 +291,9 @@ public sealed class AgentWorker : BackgroundService
         }
         return client;
     }
+
+    private static readonly JsonSerializerOptions ApiJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
 }

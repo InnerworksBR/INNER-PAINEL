@@ -35,10 +35,8 @@ public sealed class SourceCredential
         };
     }
 
-    public void Rotate(string newRefreshTokenHash)
+    public SourceCredential Rotate(string newRefreshTokenHash)
     {
-        RevokedAt = DateTimeOffset.UtcNow;
-
         var newCredential = new SourceCredential
         {
             Id = Guid.NewGuid(),
@@ -47,9 +45,13 @@ public sealed class SourceCredential
             CredentialVersion = CredentialVersion + 1,
             RefreshTokenHash = newRefreshTokenHash,
             IssuedAt = DateTimeOffset.UtcNow,
-            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7),
-            ReplacedById = Id
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(7)
         };
+
+        RevokedAt = DateTimeOffset.UtcNow;
+        ReplacedById = newCredential.Id;
+
+        return newCredential;
     }
 
     public void MarkAsUsed()

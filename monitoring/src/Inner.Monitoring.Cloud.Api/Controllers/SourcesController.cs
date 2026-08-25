@@ -159,6 +159,63 @@ public class SourcesController : ControllerBase
     }
 
     /// <summary>
+    ///     Renova o access token e rotaciona o refresh token de uma source.
+    /// </summary>
+    [HttpPost("refresh")]
+    [EnableRateLimiting("registration")]
+    [ProducesResponseType(typeof(TokenRefreshResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RefreshToken(
+        [FromBody] TokenRefreshRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.SourceId == Guid.Empty || string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            return BadRequest(new ErrorResponse("Source id and refresh token are required"));
+        }
+
+        var refreshTokenHash = ComputeTokenHash(request.RefreshToken);
+        var credential = await _db.SourceCredentials
+            .FirstOrDefaultAsync(c =>
+                c.SourceId == request.SourceId &&
+                c.RefreshTokenHash == refreshTokenHash &&
+                c.RevokedAt == null &&
+                c.ExpiresAt > DateTimeOffset.UtcNow,
+                cancellationToken);
+
+        if (credential == null)
+        {
+            return Unauthorized(new ErrorResponse("Invalid or expired refresh token"));
+        }
+
+        var source = await _db.Sources
+            .FirstOrDefaultAsync(s =>
+                s.Id == request.SourceId &&
+                s.DeletedAt == null &&
+                s.RevokedAt == null,
+                cancellationToken);
+
+        if (source == null)
+        {
+            return Unauthorized(new ErrorResponse("Source not found or revoked"));
+        }
+
+        var newAccessToken = _jwtService.GenerateAccessToken(source.Id, source.CompanyId);
+        var newRefreshToken = GenerateRefreshToken();
+        var newCredential = credential.Rotate(ComputeTokenHash(newRefreshToken));
+
+        _db.SourceCredentials.Add(newCredential);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return Ok(new TokenRefreshResponse(
+            AccessToken: newAccessToken,
+            AccessTokenExpiresAt: DateTimeOffset.UtcNow.AddMinutes(15),
+            RefreshToken: newRefreshToken,
+            RefreshTokenExpiresAt: newCredential.ExpiresAt));
+    }
+
+    /// <summary>
     ///     Recebe batches de métricas da source.
     ///     Idempotency: usa batch_id como chave.
     /// </summary>
@@ -245,100 +302,83 @@ public class SourcesController : ControllerBase
         // Calcular hash do conteúdo
         var contentHash = ComputeSha256(bodyBytes);
 
-        // Iniciar transação para INSERT batch + INSERT job
-        using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        try
+        // Verificar sequência
+        var cursor = await _db.SourceSequenceCursors
+            .FirstOrDefaultAsync(c => c.SourceId == sourceId, cancellationToken);
+
+        if (cursor == null)
         {
-            // Verificar sequência
-            var cursor = await _db.SourceSequenceCursors
-                .FromSqlRaw(
-                    "SELECT source_id, highest_received_sequence, highest_contiguous_sequence, updated_at FROM monitoring.source_sequence_cursors WHERE source_id = {0} FOR UPDATE",
-                    sourceId)
-                .FirstOrDefaultAsync(cancellationToken);
+            cursor = SourceSequenceCursor.Create(sourceId);
+            _db.SourceSequenceCursors.Add(cursor);
+        }
 
-            if (cursor == null)
-            {
-                cursor = SourceSequenceCursor.Create(sourceId);
-                _db.SourceSequenceCursors.Add(cursor);
-            }
+        // Verificar sequência duplicada
+        var duplicateSequence = await _db.IngestBatches
+            .AnyAsync(b => b.SourceId == sourceId && b.Sequence == submission.Sequence, cancellationToken);
 
-            // Verificar sequência duplicada
-            var duplicateSequence = await _db.IngestBatches
-                .AnyAsync(b => b.SourceId == sourceId && b.Sequence == submission.Sequence, cancellationToken);
-
-            if (duplicateSequence)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return Ok(new BatchSubmissionResponse(
-                    Status: "duplicate",
-                    BatchId: batchId.Value,
-                    Sequence: submission.Sequence,
-                    PersistedAt: DateTimeOffset.UtcNow,
-                    HighestContiguousSequence: cursor.HighestContiguousSequence,
-                    ProcessingStatus: "received",
-                    RequestId: Guid.NewGuid()));
-            }
-
-            // Criar batch
-            var batch = IngestBatch.Create(
-                companyId,
-                sourceId,
-                batchId.Value,
-                submission.Sequence,
-                submission.SchemaVersion,
-                submission.SourceVersion,
-                contentHash,
-                submission.Records.Count,
-                bodyBytes.Length,
-                bodyBytes.Length,
-                submission.CollectedFrom,
-                submission.CollectedTo,
-                submission.SentAt,
-                JsonDocument.Parse(bodyBytes));
-
-            // Criar job de processamento
-            var job = ProcessingJob.Create(
-                batch.Id,
-                companyId,
-                sourceId,
-                priority: submission.CollectedTo > DateTimeOffset.UtcNow.AddMinutes(-5) ? 50 : 100);
-
-            _db.IngestBatches.Add(batch);
-            _db.ProcessingJobs.Add(job);
-
-            // Atualizar cursor
-            cursor.UpdateReceived(submission.Sequence);
-            if (submission.Sequence > cursor.HighestContiguousSequence)
-            {
-                cursor.UpdateContiguous(submission.Sequence);
-            }
-
-            // Atualizar source
-            source.RecordIngest();
-
-            await _db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-
-            _logger.LogInformation(
-                "Batch {BatchId} persistido (source={SourceId}, seq={Sequence}, records={RecordCount})",
-                batchId, sourceId, submission.Sequence, submission.Records.Count);
-
-            // CONFIRMAÇÃO APÓS COMMIT
+        if (duplicateSequence)
+        {
             return Ok(new BatchSubmissionResponse(
-                Status: "accepted",
+                Status: "duplicate",
                 BatchId: batchId.Value,
                 Sequence: submission.Sequence,
-                PersistedAt: batch.ReceivedAt,
+                PersistedAt: DateTimeOffset.UtcNow,
                 HighestContiguousSequence: cursor.HighestContiguousSequence,
                 ProcessingStatus: "received",
                 RequestId: Guid.NewGuid()));
         }
-        catch (Exception ex)
+
+        // Criar batch
+        var batch = IngestBatch.Create(
+            companyId,
+            sourceId,
+            batchId.Value,
+            submission.Sequence,
+            submission.SchemaVersion,
+            submission.SourceVersion,
+            contentHash,
+            submission.Records.Count,
+            bodyBytes.Length,
+            bodyBytes.Length,
+            submission.CollectedFrom,
+            submission.CollectedTo,
+            submission.SentAt,
+            JsonDocument.Parse(bodyBytes));
+
+        // Criar job de processamento
+        var job = ProcessingJob.Create(
+            batch.Id,
+            companyId,
+            sourceId,
+            priority: submission.CollectedTo > DateTimeOffset.UtcNow.AddMinutes(-5) ? 50 : 100);
+
+        _db.IngestBatches.Add(batch);
+        _db.ProcessingJobs.Add(job);
+
+        // Atualizar cursor
+        cursor.UpdateReceived(submission.Sequence);
+        if (submission.Sequence > cursor.HighestContiguousSequence)
         {
-            await transaction.RollbackAsync(cancellationToken);
-            _logger.LogError(ex, "Erro ao persistir batch {BatchId}", batchId);
-            throw;
+            cursor.UpdateContiguous(submission.Sequence);
         }
+
+        // Atualizar source
+        source.RecordIngest();
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Batch {BatchId} persistido (source={SourceId}, seq={Sequence}, records={RecordCount})",
+            batchId, sourceId, submission.Sequence, submission.Records.Count);
+
+        return Ok(new BatchSubmissionResponse(
+            Status: "accepted",
+            BatchId: batchId.Value,
+            Sequence: submission.Sequence,
+            PersistedAt: batch.ReceivedAt,
+            HighestContiguousSequence: cursor.HighestContiguousSequence,
+            ProcessingStatus: "received",
+            RequestId: Guid.NewGuid()));
     }
 
     /// <summary>
@@ -577,8 +617,9 @@ public class SourcesController : ControllerBase
         var newAccessToken = _jwtService.GenerateAccessToken(source.Id, source.CompanyId);
         var newRefreshToken = GenerateRefreshToken();
 
-        credential.Rotate(ComputeTokenHash(newRefreshToken));
+        var newCredential = credential.Rotate(ComputeTokenHash(newRefreshToken));
 
+        _db.SourceCredentials.Add(newCredential);
         await _db.SaveChangesAsync(cancellationToken);
 
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
@@ -590,7 +631,7 @@ public class SourcesController : ControllerBase
             AccessToken: newAccessToken,
             AccessTokenExpiresAt: DateTimeOffset.UtcNow.AddMinutes(15),
             RefreshToken: newRefreshToken,
-            RefreshTokenExpiresAt: DateTimeOffset.UtcNow.AddDays(7),
+            RefreshTokenExpiresAt: newCredential.ExpiresAt,
             HeartbeatIntervalSeconds: source.HeartbeatIntervalSeconds,
             ConfigVersion: source.ConfigVersion,
             Endpoints: new SourceEndpoints(

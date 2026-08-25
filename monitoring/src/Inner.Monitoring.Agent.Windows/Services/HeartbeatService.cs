@@ -10,6 +10,11 @@ namespace Inner.Monitoring.Agent.Windows.Services;
 /// </summary>
 public sealed class HeartbeatService : IHeartbeatService
 {
+    private static readonly JsonSerializerOptions ApiJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     private readonly IEnrollmentService _enrollmentService;
     private readonly IOutbox _outbox;
     private readonly ILogger<HeartbeatService> _logger;
@@ -82,6 +87,7 @@ public sealed class HeartbeatService : IHeartbeatService
             var response = await client.PostAsJsonAsync(
                 endpoints.Heartbeat,
                 request,
+                ApiJsonOptions,
                 ct);
 
             if (!response.IsSuccessStatusCode)
@@ -90,7 +96,7 @@ public sealed class HeartbeatService : IHeartbeatService
                 return null;
             }
 
-            var result = await response.Content.ReadFromJsonAsync<HeartbeatResponse>(ct);
+            var result = await response.Content.ReadFromJsonAsync<HeartbeatResponse>(ApiJsonOptions, ct);
 
             if (result != null)
             {

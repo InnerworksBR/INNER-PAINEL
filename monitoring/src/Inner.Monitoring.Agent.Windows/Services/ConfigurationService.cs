@@ -19,7 +19,12 @@ public sealed class ConfigurationService : IConfigurationService
     private SourceConfiguration? _currentConfiguration;
     private string? _currentETag;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions ApiJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
+    private static readonly JsonSerializerOptions CacheJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
@@ -67,7 +72,7 @@ public sealed class ConfigurationService : IConfigurationService
             response.EnsureSuccessStatusCode();
 
             var etag = response.Headers.ETag?.Tag?.Trim('"');
-            var config = await response.Content.ReadFromJsonAsync<SourceConfiguration>(JsonOptions, ct);
+            var config = await response.Content.ReadFromJsonAsync<SourceConfiguration>(ApiJsonOptions, ct);
 
             if (config != null && etag != null)
             {
@@ -89,7 +94,7 @@ public sealed class ConfigurationService : IConfigurationService
     {
         try
         {
-            var json = JsonSerializer.Serialize(config, JsonOptions);
+            var json = JsonSerializer.Serialize(config, CacheJsonOptions);
             var hash = ComputeHash(json);
 
             var cacheEntry = new ConfigCacheEntry
@@ -99,7 +104,7 @@ public sealed class ConfigurationService : IConfigurationService
                 UpdatedAt = DateTimeOffset.UtcNow
             };
 
-            var cacheJson = JsonSerializer.Serialize(cacheEntry, JsonOptions);
+            var cacheJson = JsonSerializer.Serialize(cacheEntry, CacheJsonOptions);
             await File.WriteAllTextAsync(_cachePath, cacheJson, ct);
 
             _logger.LogInformation("Configuration saved locally. Version: {Version}", config.ConfigVersion);
@@ -121,7 +126,7 @@ public sealed class ConfigurationService : IConfigurationService
             }
 
             var json = await File.ReadAllTextAsync(_cachePath, ct);
-            var cacheEntry = JsonSerializer.Deserialize<ConfigCacheEntry>(json, JsonOptions);
+            var cacheEntry = JsonSerializer.Deserialize<ConfigCacheEntry>(json, CacheJsonOptions);
 
             if (cacheEntry?.Config != null)
             {
