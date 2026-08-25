@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/out/
+dist/
+tests/
+*.md
+.git/
+.github/
+.vs/
+.vscode/

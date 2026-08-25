@@ -1,0 +1,33 @@
+# Estagio 1: build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copia apenas os csproj primeiro (cache de dependencias)
+COPY src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj src/Inner.Monitoring.Cloud.Api/
+COPY src/Inner.Monitoring.Domain/Inner.Monitoring.Domain.csproj src/Inner.Monitoring.Domain/
+COPY src/Inner.Monitoring.Contracts/Inner.Monitoring.Contracts.csproj src/Inner.Monitoring.Contracts/
+COPY src/Inner.Monitoring.Application/Inner.Monitoring.Application.csproj src/Inner.Monitoring.Application/
+COPY src/Inner.Monitoring.Infrastructure/Inner.Monitoring.Infrastructure.csproj src/Inner.Monitoring.Infrastructure/
+COPY src/Inner.Monitoring.Infrastructure.Postgres/Inner.Monitoring.Infrastructure.Postgres.csproj src/Inner.Monitoring.Infrastructure.Postgres/
+COPY src/Inner.Monitoring.Infrastructure.Security/Inner.Monitoring.Infrastructure.Security.csproj src/Inner.Monitoring.Infrastructure.Security/
+
+RUN dotnet restore src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj
+
+# Copia o resto do codigo e compila
+COPY src/ src/
+RUN dotnet publish src/Inner.Monitoring.Cloud.Api/Inner.Monitoring.Cloud.Api.csproj \
+    -c Release \
+    -o /app/publish \
+    --no-restore \
+    /p:UseAppHost=false
+
+# Estagio 2: runtime (imagem final menor)
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+
+ENV ASPNETCORE_URLS=http://+:8080
+ENV DOTNET_RUNNING_IN_CONTAINER=true
+EXPOSE 8080
+
+ENTRYPOINT ["dotnet", "Inner.Monitoring.Cloud.Api.dll"]
