@@ -8,6 +8,7 @@ import adminCompaniesRoutes from './routes/admin/companies-routes';
 import adminDashboardRoutes from './routes/admin/dashboard-routes';
 import adminDocsRoutes from './routes/admin/docs-routes';
 import adminInventoryRoutes from './routes/admin/inventory-routes';
+import adminMonitoringRoutes from './routes/admin/monitoring-routes';
 import adminMs365Routes from './routes/admin/ms365-routes';
 import adminSettingsRoutes from './routes/admin/settings-routes';
 import adminUserRoutes from './routes/admin/users-routes';
@@ -48,6 +49,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(adminSettingsRoutes, { prefix: '/api/admin/settings' });
   fastify.register(adminAuditRoutes, { prefix: '/api/admin/audit-logs' });
   fastify.register(adminInventoryRoutes, { prefix: '/api/admin/inventory' });
+  fastify.register(adminMonitoringRoutes, { prefix: '/api/admin/monitoring' });
   fastify.register(adminMs365Routes, { prefix: '/api/admin/ms365' });
   fastify.register(adminSecurityRoutes, { prefix: '/api/admin/security' });
 

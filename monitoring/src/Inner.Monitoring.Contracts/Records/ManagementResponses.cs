@@ -12,7 +12,8 @@ public sealed record ActivationTokenResponse(
     Guid SiteId,
     string SourceType,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? UsedAt);
+    DateTimeOffset? UsedAt,
+    string? Token = null);
 
 /// <summary>
 /// Requisição para criar token de ativação.

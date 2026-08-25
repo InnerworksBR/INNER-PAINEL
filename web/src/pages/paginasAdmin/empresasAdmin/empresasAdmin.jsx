@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle, Eye } from 'lucide-react';
+import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle, Eye, Monitor, Copy } from 'lucide-react';
 import { useCompanies } from '../../../context/CompanyContext';
 import api from '../../../services/api';
 import { useNavigate } from 'react-router-dom';
@@ -31,6 +31,8 @@ const EmpresasAdmin = () => {
         setSaveError('');
         setSaveSuccess('');
         setSyncStatus({ loading: false, result: null });
+        setAgentToken(null);
+        setAgentTokenError('');
         const ints = Array.isArray(company.company_integrations)
             ? (company.company_integrations[0] || {})
             : (company.company_integrations || {});
@@ -47,6 +49,33 @@ const EmpresasAdmin = () => {
     const [saveError, setSaveError] = useState('');
     const [saveSuccess, setSaveSuccess] = useState('');
     const [formError, setFormError] = useState('');
+    const [agentToken, setAgentToken] = useState(null);
+    const [agentTokenError, setAgentTokenError] = useState('');
+    const [agentTokenLoading, setAgentTokenLoading] = useState(false);
+
+    const handleCreateAgentToken = async () => {
+        if (!integrationsCompany) return;
+        setAgentTokenLoading(true);
+        setAgentTokenError('');
+        setAgentToken(null);
+        try {
+            const response = await api.post(`/admin/monitoring/companies/${integrationsCompany.id}/activation-tokens`, {
+                display_hint: `Agente Windows — ${integrationsCompany.name}`,
+                validity_minutes: 60,
+            });
+            setAgentToken(response.data);
+        } catch (error) {
+            setAgentTokenError(error.response?.data?.error || 'Não foi possível gerar o token.');
+        } finally {
+            setAgentTokenLoading(false);
+        }
+    };
+
+    const copyAgentToken = async () => {
+        if (agentToken?.token) {
+            await navigator.clipboard.writeText(agentToken.token);
+        }
+    };
 
     const handleIntegrationsSubmit = async (e) => {
         e.preventDefault();
@@ -452,6 +481,26 @@ const EmpresasAdmin = () => {
                                     <CheckCircle size={14} className="text-emerald-500" />
                                     <span>Agentes registrados aparecem automaticamente</span>
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={handleCreateAgentToken}
+                                    disabled={agentTokenLoading}
+                                    className="mt-4 px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {agentTokenLoading ? <RefreshCw size={14} className="animate-spin" /> : <Monitor size={14} />}
+                                    Gerar token de ativação
+                                </button>
+                                {agentTokenError && <p className="mt-3 text-xs text-red-700">{agentTokenError}</p>}
+                                {agentToken?.token && (
+                                    <div className="mt-3 p-3 rounded-xl bg-white border border-blue-200">
+                                        <p className="text-xs font-semibold text-slate-700">Copie agora — este token não será exibido novamente.</p>
+                                        <code className="block mt-2 break-all text-xs text-slate-800">{agentToken.token}</code>
+                                        <button type="button" onClick={copyAgentToken} className="mt-2 text-xs text-blue-700 hover:text-blue-900 flex items-center gap-1">
+                                            <Copy size={13} /> Copiar token
+                                        </button>
+                                        <p className="mt-2 text-[11px] text-slate-500">Expira em {new Date(agentToken.expires_at).toLocaleString('pt-BR')}.</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Microsoft 365 */}

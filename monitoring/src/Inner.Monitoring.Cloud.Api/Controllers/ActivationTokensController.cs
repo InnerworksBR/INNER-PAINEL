@@ -97,7 +97,8 @@ public class ActivationTokensController : PortalControllerBase
                 SiteId: token.SiteId ?? Guid.Empty,
                 SourceType: token.SourceType.ToString(),
                 CreatedAt: token.CreatedAt,
-                UsedAt: token.UsedAt));
+                UsedAt: token.UsedAt,
+                Token: plainToken));
     }
 
     /// <summary>
