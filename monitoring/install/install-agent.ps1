@@ -74,6 +74,23 @@ function Stop-InstalledAgent {
         Start-Sleep -Seconds 1
         Write-Host "  [STOPPED] Existing service" -ForegroundColor Green
     }
+
+    $existing.Dispose()
+}
+
+function Wait-ServiceRemoval {
+    param([int]$TimeoutSeconds = 30)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $queryResult = & sc.exe query $ServiceName 2>&1
+        if ($LASTEXITCODE -ne 0 -and $queryResult -match "1060") {
+            return $true
+        }
+        Start-Sleep -Seconds 1
+    }
+
+    return $false
 }
 
 function Copy-Files {
@@ -140,31 +157,48 @@ function Register-Service {
     param([string]$ExePath)
 
     $scPath = "sc.exe"
-
-    # Stop existing service if running
     $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+
     if ($existing) {
-        Write-Host "  Stopping existing service..." -ForegroundColor Yellow
-        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        $existing.Dispose()
+
+        # Keep the existing registration during upgrades. Deleting and immediately
+        # recreating a service can leave it in Windows state 1072 (marked for deletion).
+        Write-Host "  Updating existing Windows service..." -ForegroundColor Gray
+        $configResult = & $scPath config $ServiceName binPath= "`"$ExePath`"" start= auto DisplayName= "$ServiceDisplayName" 2>&1
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  [UPDATED] Windows service" -ForegroundColor Green
+        }
+        elseif ($configResult -match "1072") {
+            Write-Host "  Waiting for Windows to finish removing the previous service..." -ForegroundColor Yellow
+            if (-not (Wait-ServiceRemoval -TimeoutSeconds 30)) {
+                throw "O serviço continua marcado para exclusão. Feche o Services.msc e execute o instalador novamente; se persistir, reinicie o Windows."
+            }
+            $existing = $null
+        }
+        else {
+            throw "Failed to update service: $configResult"
+        }
     }
 
-    # Delete existing service
-    $deleteResult = & $scPath delete $ServiceName 2>&1
-    if ($LASTEXITCODE -eq 0 -or $deleteResult -match "marked for deletion") {
-        Write-Host "  [REMOVED] Existing service" -ForegroundColor Green
-        Start-Sleep -Seconds 2
+    if (-not $existing) {
+        Write-Host "  Creating Windows service..." -ForegroundColor Gray
+        $createResult = & $scPath create $ServiceName binPath= "`"$ExePath`"" start= auto DisplayName= "$ServiceDisplayName" 2>&1
+
+        if ($LASTEXITCODE -ne 0 -and $createResult -match "1072") {
+            Write-Host "  Waiting for Windows to release the service name..." -ForegroundColor Yellow
+            if (Wait-ServiceRemoval -TimeoutSeconds 30) {
+                $createResult = & $scPath create $ServiceName binPath= "`"$ExePath`"" start= auto DisplayName= "$ServiceDisplayName" 2>&1
+            }
+        }
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to create service: $createResult"
+        }
+
+        Write-Host "  [CREATED] Windows service" -ForegroundColor Green
     }
-
-    # Create new service
-    Write-Host "  Creating Windows service..." -ForegroundColor Gray
-    $createResult = & $scPath create $ServiceName binPath= "`"$ExePath`"" start= auto DisplayName= "$ServiceDisplayName" 2>&1
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to create service: $createResult"
-    }
-
-    Write-Host "  [CREATED] Windows service" -ForegroundColor Green
 
     # Configure recovery actions
     Write-Host "  Configuring recovery actions..." -ForegroundColor Gray
