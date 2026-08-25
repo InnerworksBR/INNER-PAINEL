@@ -54,7 +54,12 @@ public sealed class JwtService
         {
             var jwt = handler.ReadJwtToken(token);
             var expires = jwt.ValidTo;
-            return expires > DateTime.UtcNow && expires < DateTime.UtcNow + threshold;
+            var refreshBefore = DateTime.UtcNow.Add(threshold);
+
+            // Tokens that have already expired must also be refreshed. The old
+            // condition returned false for them, so the agent kept sending an
+            // expired access token and received 401 indefinitely.
+            return expires <= refreshBefore;
         }
         catch
         {
