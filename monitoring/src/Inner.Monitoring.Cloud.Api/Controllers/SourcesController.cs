@@ -51,6 +51,22 @@ public class SourcesController : ControllerBase
         [FromBody] SourceRegistrationRequest request,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.ActivationToken))
+        {
+            return BadRequest(new ErrorResponse("Activation token is required"));
+        }
+
+        if (request.InstallationId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(request.SourceType) ||
+            string.IsNullOrWhiteSpace(request.DisplayName) ||
+            string.IsNullOrWhiteSpace(request.Platform) ||
+            string.IsNullOrWhiteSpace(request.Architecture) ||
+            string.IsNullOrWhiteSpace(request.SourceVersion) ||
+            request.Capabilities == null)
+        {
+            return BadRequest(new ErrorResponse("Invalid source registration payload"));
+        }
+
         // Validar token de ativação
         var tokenHash = ComputeTokenHash(request.ActivationToken);
         var activationToken = await _db.ActivationTokens

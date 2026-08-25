@@ -24,6 +24,13 @@ public sealed class EnrollmentService : IEnrollmentService
     private const string KeyEndpoints = "endpoints";
     private const string KeyAccessTokenExpiry = "access_token_expiry";
 
+    // The Monitoring API uses snake_case JSON globally. Keep the agent contract
+    // aligned for both enrollment and refresh requests/responses.
+    private static readonly JsonSerializerOptions ApiJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     public EnrollmentService(
         HttpClient httpClient,
         SecureStorage secureStorage,
@@ -85,11 +92,12 @@ public sealed class EnrollmentService : IEnrollmentService
         var response = await _httpClient.PostAsJsonAsync(
             $"{_apiBaseUrl.TrimEnd('/')}/api/monitoring/v1/sources/register",
             request,
+            ApiJsonOptions,
             ct);
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<SourceRegistrationResponse>(ct);
+        var result = await response.Content.ReadFromJsonAsync<SourceRegistrationResponse>(ApiJsonOptions, ct);
 
         if (result == null)
             throw new InvalidOperationException("Invalid enrollment response");
@@ -123,11 +131,12 @@ public sealed class EnrollmentService : IEnrollmentService
         var response = await _httpClient.PostAsJsonAsync(
             $"{_apiBaseUrl.TrimEnd('/')}/api/monitoring/v1/sources/refresh",
             request,
+            ApiJsonOptions,
             ct);
 
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<TokenRefreshResponse>(ct);
+        var result = await response.Content.ReadFromJsonAsync<TokenRefreshResponse>(ApiJsonOptions, ct);
 
         if (result == null)
             throw new InvalidOperationException("Invalid refresh response");
