@@ -1,5 +1,5 @@
 {
-  "api_base_url": "https://api.innerworks.com.br",
+  "api_base_url": "https://innerworks-painelcloudapi.zvzr4n.easypanel.host",
   "heartbeat_interval_seconds": 60,
   "collection_interval_seconds": 15,
   "outbox_max_size_mb": 50,

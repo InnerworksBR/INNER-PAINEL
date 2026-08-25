@@ -6,7 +6,7 @@ param(
     [string]$ActivationToken,
 
     [Parameter(Mandatory=$false)]
-    [string]$ApiBaseUrl = "https://api.innerworks.com.br",
+    [string]$ApiBaseUrl = "https://innerworks-painelcloudapi.zvzr4n.easypanel.host",
 
     [Parameter(Mandatory=$false)]
     [int]$HeartbeatIntervalSeconds = 60,

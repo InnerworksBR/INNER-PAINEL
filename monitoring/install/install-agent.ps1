@@ -12,7 +12,7 @@ param(
     [string]$ActivationToken = "",
 
     [Parameter(ParameterSetName = "Install")]
-    [string]$ApiBaseUrl = "https://api.innerworks.com.br",
+    [string]$ApiBaseUrl = "https://innerworks-painelcloudapi.zvzr4n.easypanel.host",
 
     [switch]$Force
 )

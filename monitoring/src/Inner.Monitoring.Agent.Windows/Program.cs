@@ -150,7 +150,7 @@ public static class Program
             {
                 var bootstrap = new
                 {
-                    api_base_url = "https://api.innerworks.com.br",
+                    api_base_url = "https://innerworks-painelcloudapi.zvzr4n.easypanel.host",
                     heartbeat_interval_seconds = 60,
                     collection_interval_seconds = 15
                 };
@@ -267,7 +267,7 @@ public static class Program
             try
             {
                 var json = File.ReadAllText(bootstrapPath);
-                bootstrap = JsonSerializer.Deserialize<BootstrapConfig>(json);
+                bootstrap = JsonSerializer.Deserialize<BootstrapConfig>(json, BootstrapJsonOptions);
             }
             catch
             {
@@ -277,7 +277,7 @@ public static class Program
 
         bootstrap ??= new BootstrapConfig
         {
-            ApiBaseUrl = "https://api.innerworks.com.br",
+            ApiBaseUrl = "https://innerworks-painelcloudapi.zvzr4n.easypanel.host",
             HeartbeatIntervalSeconds = 60,
             CollectionIntervalSeconds = 15
         };
@@ -348,9 +348,14 @@ public static class Program
         return builder.Build();
     }
 
+    private static readonly JsonSerializerOptions BootstrapJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     private class BootstrapConfig
     {
-        public string ApiBaseUrl { get; set; } = "https://api.innerworks.com.br";
+        public string ApiBaseUrl { get; set; } = "https://innerworks-painelcloudapi.zvzr4n.easypanel.host";
         public int HeartbeatIntervalSeconds { get; set; } = 60;
         public int CollectionIntervalSeconds { get; set; } = 15;
     }
