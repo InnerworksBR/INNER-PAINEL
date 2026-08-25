@@ -1,17 +1,18 @@
+# Build Path esperado: monitoring/
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-COPY monitoring/src/Inner.Monitoring.Cloud.Worker/Inner.Monitoring.Cloud.Worker.csproj monitoring/src/Inner.Monitoring.Cloud.Worker/
-COPY monitoring/src/Inner.Monitoring.Domain/Inner.Monitoring.Domain.csproj monitoring/src/Inner.Monitoring.Domain/
-COPY monitoring/src/Inner.Monitoring.Contracts/Inner.Monitoring.Contracts.csproj monitoring/src/Inner.Monitoring.Contracts/
-COPY monitoring/src/Inner.Monitoring.Application/Inner.Monitoring.Application.csproj monitoring/src/Inner.Monitoring.Application/
-COPY monitoring/src/Inner.Monitoring.Infrastructure/Inner.Monitoring.Infrastructure.csproj monitoring/src/Inner.Monitoring.Infrastructure/
-COPY monitoring/src/Inner.Monitoring.Infrastructure.Postgres/Inner.Monitoring.Infrastructure.Postgres.csproj monitoring/src/Inner.Monitoring.Infrastructure.Postgres/
+COPY src/Inner.Monitoring.Cloud.Worker/Inner.Monitoring.Cloud.Worker.csproj src/Inner.Monitoring.Cloud.Worker/
+COPY src/Inner.Monitoring.Domain/Inner.Monitoring.Domain.csproj src/Inner.Monitoring.Domain/
+COPY src/Inner.Monitoring.Contracts/Inner.Monitoring.Contracts.csproj src/Inner.Monitoring.Contracts/
+COPY src/Inner.Monitoring.Application/Inner.Monitoring.Application.csproj src/Inner.Monitoring.Application/
+COPY src/Inner.Monitoring.Infrastructure/Inner.Monitoring.Infrastructure.csproj src/Inner.Monitoring.Infrastructure/
+COPY src/Inner.Monitoring.Infrastructure.Postgres/Inner.Monitoring.Infrastructure.Postgres.csproj src/Inner.Monitoring.Infrastructure.Postgres/
 
-RUN dotnet restore monitoring/src/Inner.Monitoring.Cloud.Worker/Inner.Monitoring.Cloud.Worker.csproj
+RUN dotnet restore src/Inner.Monitoring.Cloud.Worker/Inner.Monitoring.Cloud.Worker.csproj
 
-COPY monitoring/src/ monitoring/src/
-RUN dotnet publish monitoring/src/Inner.Monitoring.Cloud.Worker/Inner.Monitoring.Cloud.Worker.csproj \
+COPY src/ src/
+RUN dotnet publish src/Inner.Monitoring.Cloud.Worker/Inner.Monitoring.Cloud.Worker.csproj \
     -c Release \
     -o /app/publish \
     --no-restore \
