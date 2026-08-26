@@ -56,21 +56,25 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     }
 
     // 2. Buscar tickets com paginação por range.
-    const pageSize = 200;
+    // IMPORTANTE: NÃO usar expand_dropdowns=true com range grande porque a URL
+    // ultrapassa o limite HTTP (~8KB) e retorna "URI too long".
+    // Solução: usar POST /search com body para evitar o limite de URL.
+    const pageSize = 100;
     const maxTickets = 5000;
     const tickets: any[] = [];
 
     for (let start = 0; start < maxTickets; start += pageSize) {
       const end = start + pageSize - 1;
-      const response = await glpiApi.get('/Ticket', {
-        params: {
-          expand_dropdowns: true,
-          range: `${start}-${end}`,
-          order: 'DESC',
-          sort: 'id',
-        },
+      // POST /search evita o limite de URI e ainda permite expandir dropdowns
+      const response = await glpiApi.post('/Ticket/search', {
+        range: `${start}-${end}`,
+        order: 'DESC',
+        sort: 'id',
+        expand_dropdowns: true,
+        get_hateoas: false,
+        // Filtrar apenas campos relevantes para reduzir tamanho da resposta
+        forcedisplay: [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 18, 19, 20, 21, 24, 82, 83],
       });
-
       const page = Array.isArray(response.data) ? response.data : [];
       tickets.push(...page);
       if (page.length < pageSize) break;
