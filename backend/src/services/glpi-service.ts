@@ -168,24 +168,45 @@ function mapGLPIPriority(priority: number | string): string {
 }
 
 function calculateSLA(t: any): string {
-  if (t.sla_ttr_state !== undefined && t.sla_ttr_state !== null) {
+  // 1. Se o GLPI retorna o estado do SLA explicitamente, usa ele
+  if (t.sla_ttr_state !== undefined && t.sla_ttr_state !== null && t.sla_ttr_state !== '') {
     return String(t.sla_ttr_state) === '1' ? 'Fora do SLA' : 'Dentro do SLA';
   }
-  if (!t.time_to_resolve || t.time_to_resolve === 'null') {
-    return 'N/A';
+
+  // 2. Se tem time_to_resolve, calcula baseado em resolvedate ou now
+  if (t.time_to_resolve && t.time_to_resolve !== 'null' && t.time_to_resolve !== '0000-00-00 00:00:00') {
+    const limitDate = new Date(t.time_to_resolve);
+    if (!isNaN(limitDate.getTime())) {
+      // Se resolvido/fechado, compara com solvedate
+      if (['5', '6'].includes(String(t.status))) {
+        const solveDate = t.solvedate
+          ? new Date(t.solvedate)
+          : (t.closedate ? new Date(t.closedate) : (t.date_mod ? new Date(t.date_mod) : null));
+        if (solveDate) return solveDate > limitDate ? 'Fora do SLA' : 'Dentro do SLA';
+        return 'N/A';
+      }
+      // Aberto: compara com now
+      return new Date() > limitDate ? 'Fora do SLA' : 'Dentro do SLA';
+    }
   }
 
-  const limitDate = new Date(t.time_to_resolve);
-  if (isNaN(limitDate.getTime())) return 'N/A';
-
-  // Resolvido ou Fechado
-  if (['5', '6'].includes(String(t.status))) {
-    const solveDate = t.solvedate ? new Date(t.solvedate) : (t.closedate ? new Date(t.closedate) : new Date(t.date_mod));
-    return solveDate > limitDate ? 'Fora do SLA' : 'Dentro do SLA';
+  // 3. Fallback inteligente: usa heurística baseada em prioridade + idade do ticket
+  // Se é crítico (Alta/Muito Alta) e está aberto há mais de 7 dias, considera fora do SLA
+  if (['4', '5', '6'].includes(String(t.priority))) {
+    const created = t.date_creation ? new Date(t.date_creation) : null;
+    if (created && !isNaN(created.getTime())) {
+      const ageInDays = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
+      // SLA típico: Alta=24h, Muito Alta=4h
+      const limitDays = String(t.priority) === '5' ? 0.16 : (String(t.priority) === '6' ? 0.04 : 1);
+      if (ageInDays > limitDays && !['5', '6'].includes(String(t.status))) {
+        return 'Fora do SLA';
+      }
+    }
   }
 
-  // Ainda aberto
-  return new Date() > limitDate ? 'Fora do SLA' : 'Dentro do SLA';
+  // 4. Sem dados suficientes para calcular — não classifica como N/A
+  // para não poluir as métricas
+  return 'Em Análise';
 }
 
 export async function getTicketDetails(supabase: SupabaseClient, company_id: string, ticket_id: number): Promise<any> {

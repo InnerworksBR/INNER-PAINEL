@@ -90,7 +90,13 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
     ).length;
 
     const slaOk = allTickets.filter((t: any) => t.sla_status === 'Dentro do SLA').length;
-    const slaPercentage = total > 0 ? ((slaOk / total) * 100).toFixed(1) : '0';
+    // Conta tickets com SLA conhecido (Dentro ou Fora do SLA), excluindo N/A e "Em Análise"
+    const slaConhecido = allTickets.filter((t: any) =>
+      t.sla_status === 'Dentro do SLA' || t.sla_status === 'Fora do SLA'
+    ).length;
+    // SLA percentual: só conta os tickets que têm SLA conhecido
+    // (tickets sem dados suficientes não devem derrubar a métrica)
+    const slaPercentage = slaConhecido > 0 ? ((slaOk / slaConhecido) * 100).toFixed(1) : '0';
 
     // Top requerentes
     const topRequesters = Object.entries(byRequester)
@@ -103,6 +109,9 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
       open: openCount,
       resolved: resolvedCount,
       slaPercentage: parseFloat(slaPercentage),
+      slaOk,
+      slaOut: slaConhecido - slaOk,
+      slaUnknown: total - slaConhecido,
       byStatus,
       byPriority,
       byCategory,
