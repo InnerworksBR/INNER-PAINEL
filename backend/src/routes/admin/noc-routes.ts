@@ -29,10 +29,10 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
       const integrations = integrationsRes.data || [];
 
-      // Fetch recent tickets (GLPI) - with company_id
+      // Fetch recent tickets (GLPI) - with correct columns
       const ticketsRes = await supabaseAdmin
         .from('glpi_tickets')
-        .select('id, company_id, name, status, urgency, created_at')
+        .select('id, company_id, glpi_id, title, status, sla_status, priority, created_at')
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -58,7 +58,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           (t: any) => ['open', 'pending', 'in_progress', 'new'].includes(String(t.status).toLowerCase())
         );
         const criticalTickets = companyTickets.filter(
-          (t: any) => t.urgency === 'critical' || t.urgency === 'high'
+          (t: any) => t.sla_status === 'Fora do SLA' || t.priority === 'Alta' || t.priority === 'Muito Alta'
         );
 
         // Get last alert for this company
@@ -132,12 +132,13 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
       // Format recent tickets - resolve company name from company_id
       const recentTickets = (ticketsRes.data || []).map((ticket: any) => ({
-        id: ticket.id,
+        id: ticket.glpi_id || ticket.id,
         companyId: ticket.company_id,
         companyName: companyMap.get(ticket.company_id) || 'N/A',
-        title: ticket.name,
+        title: ticket.title || '(sem título)',
         status: ticket.status,
-        urgency: ticket.urgency,
+        urgency: ticket.sla_status === 'Fora do SLA' ? 'critical' :
+          (ticket.priority === 'Alta' || ticket.priority === 'Muito Alta') ? 'high' : 'info',
         createdAt: ticket.created_at,
       }));
 

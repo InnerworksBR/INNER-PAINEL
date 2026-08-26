@@ -36,6 +36,14 @@ export const router = createBrowserRouter([
     element: <Login />,
   },
   {
+    path: "/noc",
+    element: (
+      <AdminRoute>
+        <NOC />
+      </AdminRoute>
+    ),
+  },
+  {
     path: "/recuperar-senha",
     element: <RecuperarSenha />,
   },

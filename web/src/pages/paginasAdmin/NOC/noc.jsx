@@ -12,7 +12,7 @@ const NOC = () => {
 
     // Open NOC in new tab for fullscreen
     const openInNewTab = useCallback(() => {
-        window.open('/admin/noc', '_blank');
+        window.open('/noc', '_blank');
     }, []);
 
     // Update clock every second
@@ -344,7 +344,8 @@ const NOC = () => {
                                                 ticket.urgency === 'high' ? 'bg-amber-500/20 text-amber-400' :
                                                     'bg-blue-500/20 text-blue-400'
                                             }`}>
-                                            {ticket.urgency}
+                                            {ticket.urgency === 'critical' ? 'Crítico' :
+                                                ticket.urgency === 'high' ? 'Alto' : 'Info'}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-center text-slate-400">
