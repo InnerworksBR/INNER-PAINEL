@@ -56,23 +56,23 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     }
 
     // 2. Buscar tickets com paginação por range.
-    // IMPORTANTE: NÃO usar GET com range grande + expand_dropdowns porque a URL
-    // ultrapassa o limite HTTP (~8KB) e retorna "URI too long".
-    // Solução: usar POST /search com body para evitar o limite de URL.
-    // Sem forcedisplay (em POST /search causa ERROR_BAD_ARRAY se nao for array de objetos).
+    // O endpoint GLPI /search é GET (não POST) - usar POST causa ERROR_BAD_ARRAY.
+    // Para evitar URI too long, mantemos range simples e pageSize=100.
+    // Dropdowns (status, prioridade) são resolvidos manualmente via mapeamento.
     const pageSize = 100;
     const maxTickets = 5000;
     const tickets: any[] = [];
 
     for (let start = 0; start < maxTickets; start += pageSize) {
       const end = start + pageSize - 1;
-      const response = await glpiApi.post('/Ticket/search', {
-        range: `${start}-${end}`,
-        order: 'DESC',
-        sort: 'id',
-        expand_dropdowns: true,
-        get_hateoas: false,
+      const response = await glpiApi.get('/Ticket', {
+        params: {
+          range: `${start}-${end}`,
+          order: 'DESC',
+          sort: 'id',
+        },
       });
+
       const page = Array.isArray(response.data) ? response.data : [];
       tickets.push(...page);
       if (page.length < pageSize) break;
@@ -179,8 +179,8 @@ function calculateSLA(t: any): string {
   if (t.time_to_resolve && t.time_to_resolve !== 'null' && t.time_to_resolve !== '0000-00-00 00:00:00') {
     const limitDate = new Date(t.time_to_resolve);
     if (!isNaN(limitDate.getTime())) {
-      // Se resolvido/fechado, compara com solvedate
-      if (['5', '6'].includes(String(t.status))) {
+      // Se resolvido/fechado (status 5 ou 6), compara com solvedate
+      if (['5', '6', 'Resolvido', 'Fechado'].includes(String(t.status))) {
         const solveDate = t.solvedate
           ? new Date(t.solvedate)
           : (t.closedate ? new Date(t.closedate) : (t.date_mod ? new Date(t.date_mod) : null));
