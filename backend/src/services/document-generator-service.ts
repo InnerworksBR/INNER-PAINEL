@@ -2,7 +2,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_API_URL = process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5';
 
 const SYSTEM_PROMPT = `Você é um assistente especializado em formatar documentos comerciais profissionais. Sua tarefa é transformar dados brutos em documentos HTML bem formatados e profissionais.
 
@@ -146,7 +147,7 @@ export async function generateDocumentContent(
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: ANTHROPIC_MODEL,
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [
