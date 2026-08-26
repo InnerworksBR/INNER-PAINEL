@@ -13,7 +13,10 @@ import {
   Eye,
   EyeOff,
   ChevronDown,
-  AlertCircle
+  AlertCircle,
+  TrendingUp,
+  BadgeCheck,
+  Sparkles
 } from 'lucide-react';
 import {
   PieChart as RechartsPieChart,
@@ -32,7 +35,6 @@ import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 import { useClientPreview } from '../../../context/ClientPreviewContext';
 import api from '../../../services/api';
 
-// Licenças relevantes pré-selecionadas (case-insensitive match parcial)
 const RELEVANT_KEYWORDS = [
   'BUSINESS', 'EXCHANGE', 'POWER_BI', 'POWERBI', 'POWER BI',
   'OFFICE', 'O365', 'M365', 'MICROSOFT_365',
@@ -49,7 +51,6 @@ function isRelevantLicense(licenseName) {
   return RELEVANT_KEYWORDS.some(kw => upper.includes(kw));
 }
 
-// Nomes amigáveis para SKUs comuns
 const FRIENDLY_NAMES = {
   'O365_BUSINESS_ESSENTIALS': 'Microsoft 365 Business Basic',
   'O365_BUSINESS_PREMIUM': 'Microsoft 365 Business Standard',
@@ -97,12 +98,10 @@ const Microsoft365 = () => {
     { intervalMs: 300000 }
   );
 
-  // Chaves de armazenamento no localStorage para persistir as escolhas (por empresa)
   const storageCompanyId = preview?.companyId || user?.company_id || 'default';
   const STORAGE_KEY_HIDDEN = `ms365_hidden_${storageCompanyId}`;
   const STORAGE_KEY_SHOW_ALL = `ms365_showall_${storageCompanyId}`;
 
-  // Filtro de licenças - inicializa com os valores salvos no localStorage
   const [showAllLicenses, setShowAllLicenses] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_SHOW_ALL);
@@ -116,11 +115,10 @@ const Microsoft365 = () => {
       return saved ? new Set(JSON.parse(saved)) : new Set();
     } catch { return new Set(); }
   });
-  
+
   const [filterOpen, setFilterOpen] = useState(false);
   const [savingLicenseId, setSavingLicenseId] = useState(null);
 
-  // Persistir seleções no localStorage sempre que mudarem
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_SHOW_ALL, JSON.stringify(showAllLicenses));
   }, [showAllLicenses, STORAGE_KEY_SHOW_ALL]);
@@ -129,7 +127,6 @@ const Microsoft365 = () => {
     localStorage.setItem(STORAGE_KEY_HIDDEN, JSON.stringify(Array.from(hiddenLicenses)));
   }, [hiddenLicenses, STORAGE_KEY_HIDDEN]);
 
-  // Separar licenças relevantes das "outras"
   const { relevantLicenses, otherLicenses } = useMemo(() => {
     const relevant = [];
     const other = [];
@@ -143,7 +140,6 @@ const Microsoft365 = () => {
     return { relevantLicenses: relevant, otherLicenses: other };
   }, [metricsData]);
 
-  // Licenças visíveis (aplicando filtro)
   const visibleLicenses = useMemo(() => {
     const base = showAllLicenses ? metricsData : relevantLicenses;
     return base.filter(item => !hiddenLicenses.has(item.license_name));
@@ -178,7 +174,6 @@ const Microsoft365 = () => {
     }
   };
 
-  // Métricas executivas: usam exatamente a mesma seleção do dashboard geral.
   const totalLicenças = dashboardLicenses.reduce((acc, curr) => acc + curr.total, 0);
   const totalUsado = dashboardLicenses.reduce((acc, curr) => acc + curr.used, 0);
   const totalDisponivel = dashboardLicenses.reduce((acc, curr) => acc + curr.available, 0);
@@ -192,10 +187,38 @@ const Microsoft365 = () => {
   ];
 
   const metrics = [
-    { title: 'Licenças Atribuídas', value: totalUsado.toString(), subtitle: 'Assentos em uso no tenant', icon: Users, color: 'bg-blue-50 text-blue-600', status: metricsData.length > 0 ? 'Ativo' : 'Sem dados' },
-    { title: 'Total de Licenças', value: totalLicenças.toString(), subtitle: 'Licenças contratadas', icon: PieChart, color: 'bg-indigo-50 text-indigo-600' },
-    { title: 'Taxa de Utilização', value: `${taxaUtilizacao}%`, subValue: `Livre: ${totalDisponivel}`, subtitle: 'Eficiência de consumo', icon: Activity, color: 'bg-purple-50 text-purple-600' },
-    { title: 'Atualização', value: metricsData.length > 0 ? new Date(metricsData[0].last_updated).toLocaleDateString() : '--', subtitle: lastUpdated ? `Tela atualizada ${lastUpdated.toLocaleTimeString('pt-BR')}` : 'Última sincronização', icon: Clock, color: 'bg-orange-50 text-orange-600' },
+    {
+      title: 'Licenças Atribuídas',
+      value: totalUsado,
+      subValue: `de ${totalLicenças} total`,
+      subtitle: 'Assentos em uso no tenant',
+      icon: Users,
+      color: { from: '#3b82f6', to: '#2563eb' }
+    },
+    {
+      title: 'Total de Licenças',
+      value: totalLicenças,
+      subValue: 'contratadas',
+      subtitle: 'Planos ativos',
+      icon: PieChart,
+      color: { from: '#8b5cf6', to: '#7c3aed' }
+    },
+    {
+      title: 'Taxa de Utilização',
+      value: `${taxaUtilizacao}%`,
+      subValue: `${totalDisponivel} disponíveis`,
+      subtitle: 'Eficiência de consumo',
+      icon: Activity,
+      color: { from: '#10b981', to: '#059669' }
+    },
+    {
+      title: 'Última Sincronização',
+      value: metricsData.length > 0 ? new Date(metricsData[0].last_updated).toLocaleDateString('pt-BR') : '--',
+      subValue: lastUpdated ? lastUpdated.toLocaleTimeString('pt-BR') : '',
+      subtitle: 'Atualização dos dados',
+      icon: Clock,
+      color: { from: '#f59e0b', to: '#d97706' }
+    },
   ];
 
   const licenciasData = [
@@ -203,7 +226,6 @@ const Microsoft365 = () => {
     { name: 'Disponível', value: totalDisponivel, color: '#e5e7eb' },
   ];
 
-  // Dados para o gráfico de barras por licença
   const barChartData = dashboardLicenses.map(item => ({
     name: getFriendlyName(item.license_name).length > 20
       ? getFriendlyName(item.license_name).substring(0, 20) + '...'
@@ -214,80 +236,105 @@ const Microsoft365 = () => {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-[400px]">
-        <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
-        <span className="ml-3 text-gray-500 font-medium">Carregando métricas do Microsoft 365...</span>
+      <div className="max-w-7xl mx-auto p-6 lg:p-8">
+        <div className="animate-pulse space-y-6">
+          <div className="h-10 bg-neutral-200 rounded-xl w-64" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-32 bg-neutral-200 rounded-2xl" />)}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Cabeçalho */}
-      <div className="flex justify-between items-end">
+    <div className="max-w-7xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Microsoft 365</h1>
-          <p className="text-gray-500 mt-1">Visão completa do tenant e gerenciamento de licenças</p>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-1.5 h-6 rounded-full" style={{ background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)' }} />
+            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Microsoft 365</h1>
+          </div>
+          <p className="text-neutral-500 ml-3.5">Visão completa do tenant e gerenciamento de licenças</p>
         </div>
         <div className="flex items-center gap-2">
           {otherLicenses.length > 0 && (
             <button
               onClick={() => setShowAllLicenses(!showAllLicenses)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${showAllLicenses
-                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                }`}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all border
+                ${showAllLicenses
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+                } shadow-sm`}
             >
               {showAllLicenses ? <Eye size={14} /> : <EyeOff size={14} />}
               {showAllLicenses ? `Todas (${metricsData.length})` : `Relevantes (${relevantLicenses.length})`}
             </button>
           )}
           <button
-            onClick={refresh}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-          >
-            <RefreshCw size={14} />
-            Atualizar
-          </button>
-          <button
             onClick={() => setFilterOpen(!filterOpen)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${filterOpen ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all border shadow-sm
+              ${filterOpen
+                ? 'bg-violet-50 text-violet-700 border-violet-200'
+                : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50'
+              }`}
           >
             <Filter size={14} />
             Filtrar
             <ChevronDown size={12} className={`transition-transform ${filterOpen ? 'rotate-180' : ''}`} />
           </button>
+          <button
+            onClick={refresh}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all
+              bg-white text-neutral-600 border border-neutral-200 hover:bg-neutral-50 shadow-sm"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Atualizar
+          </button>
         </div>
       </div>
 
-      {/* Banner de ausência de dados */}
+      {/* Warning Banner */}
       {!loading && metricsData.length === 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-center gap-2 mb-4">
-          <AlertCircle size={16} />
-          Nenhuma licença sincronizada. Configure a integração Microsoft 365 em Empresas &rsaquo; Integrações ou aguarde a próxima sincronização.
+        <div className="flex items-start gap-4 p-4 rounded-2xl bg-amber-50/50 border border-amber-200/50">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <AlertCircle size={20} className="text-amber-600" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-amber-900">Nenhuma licença sincronizada</h4>
+            <p className="text-sm text-amber-700/80 mt-1">
+              Configure a integração Microsoft 365 em Empresas &rsaquo; Integrações ou aguarde a próxima sincronização.
+            </p>
+          </div>
         </div>
       )}
 
-      {/* Painel de Filtro de Licenças */}
+      {/* Filter Panel */}
       {filterOpen && (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-sm font-semibold text-gray-700">Selecionar licenças visíveis</h3>
-            <div className="flex gap-2">
-              <button onClick={() => setHiddenLicenses(new Set())} className="text-[10px] text-blue-600 hover:underline">Mostrar todas</button>
-              <button onClick={() => setHiddenLicenses(new Set(metricsData.map(m => m.license_name)))} className="text-[10px] text-gray-500 hover:underline">Esconder todas</button>
+        <div className="bg-white rounded-2xl border border-neutral-200/60 shadow-sm p-6 animate-slide-up">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-sm font-semibold text-neutral-700">Selecionar licenças visíveis</h3>
+            <div className="flex gap-3">
+              <button onClick={() => setHiddenLicenses(new Set())} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                Mostrar todas
+              </button>
+              <button onClick={() => setHiddenLicenses(new Set(metricsData.map(m => m.license_name)))} className="text-xs text-neutral-500 hover:text-neutral-700 font-medium">
+                Esconder todas
+              </button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
             {(showAllLicenses ? metricsData : relevantLicenses).map((item) => {
               const isHidden = hiddenLicenses.has(item.license_name);
               return (
                 <button
                   key={item.license_name}
                   onClick={() => toggleLicense(item.license_name)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all ${isHidden
-                    ? 'bg-gray-50 text-gray-400 border-gray-200 line-through'
-                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all
+                    ${isHidden
+                      ? 'bg-neutral-100 text-neutral-400 border-neutral-200 line-through'
+                      : 'bg-blue-50 text-blue-700 border-blue-200'
                     }`}
                 >
                   {getFriendlyName(item.license_name)}
@@ -297,19 +344,23 @@ const Microsoft365 = () => {
             })}
           </div>
           {!showAllLicenses && otherLicenses.length > 0 && (
-            <p className="text-[10px] text-gray-400 mt-2">
+            <p className="text-xs text-neutral-400 mt-3">
               {otherLicenses.length} licença(s) oculta(s) — clique em "Todas" para visualizar
             </p>
           )}
         </div>
       )}
 
+      {/* Admin Dashboard Inclusion Panel */}
       {user?.role === 'admin' && (
-        <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-5">
-          <div className="flex justify-between items-center mb-3">
+        <div className="bg-white rounded-2xl border border-amber-200/50 shadow-sm p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <BadgeCheck size={20} className="text-amber-600" />
+            </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-700">Licenças contabilizadas no dashboard</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Selecione apenas os SKUs que devem compor os totais executivos.</p>
+              <h3 className="text-sm font-semibold text-neutral-900">Licenças no Dashboard</h3>
+              <p className="text-xs text-neutral-500 mt-0.5">Selecione os SKUs que devem compor os totais executivos.</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -318,11 +369,11 @@ const Microsoft365 = () => {
                 key={`dashboard-${item.id}`}
                 onClick={() => toggleDashboardInclusion(item)}
                 disabled={savingLicenseId === item.id}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all disabled:opacity-60 ${
-                  item.include_in_dashboard
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all disabled:opacity-60
+                  ${item.include_in_dashboard
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-gray-50 text-gray-500 border-gray-200'
-                }`}
+                    : 'bg-neutral-50 text-neutral-500 border-neutral-200'
+                  }`}
               >
                 {getFriendlyName(item.license_name)}
                 <span className="ml-1.5 text-[10px] opacity-70">({item.used}/{item.total})</span>
@@ -332,84 +383,130 @@ const Microsoft365 = () => {
         </div>
       )}
 
-      {/* Informações do Tenant */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 sm:p-6">
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">Informações do Tenant</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Tenant Info */}
+      <div className="bg-white rounded-2xl border border-neutral-200/60 shadow-sm p-6">
+        <h2 className="text-lg font-semibold text-neutral-900 mb-5">Informações do Tenant</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {tenantInfo.map((info, index) => (
-            <div key={index} className="flex items-start space-x-3">
-              <div className="mt-0.5 p-2 bg-gray-50 text-gray-400 rounded-lg">
-                <info.icon className="w-5 h-5" />
+            <div key={index} className="p-4 rounded-xl bg-neutral-50/50 border border-neutral-100">
+              <div className="flex items-center gap-2 mb-2">
+                <info.icon size={16} className="text-neutral-400" />
+                <span className="text-xs font-medium text-neutral-500">{info.label}</span>
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">{info.label}</p>
-                <p className="font-semibold text-gray-800 mt-0.5">{info.value}</p>
-              </div>
+              <p className="font-semibold text-neutral-900 text-sm">{info.value}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Cards de métricas */}
+      {/* Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {metrics.map((metric, index) => (
-          <div key={index} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
-            <div className="flex justify-between items-start mb-4">
-              <div className={`p-3 rounded-lg ${metric.color}`}>
-                <metric.icon className="w-6 h-6" />
+          <div
+            key={index}
+            className="group relative overflow-hidden rounded-2xl bg-white border border-neutral-200/60 shadow-sm
+              hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
+          >
+            {/* Gradient accent */}
+            <div
+              className="absolute top-0 left-0 right-0 h-1"
+              style={{ background: `linear-gradient(90deg, ${metric.color.from}, ${metric.color.to})` }}
+            />
+
+            {/* Glow */}
+            <div
+              className="absolute -top-16 -right-16 w-32 h-32 rounded-full opacity-0 group-hover:opacity-15 transition-opacity duration-500"
+              style={{ background: `radial-gradient(circle, ${metric.color.from} 0%, transparent 70%)` }}
+            />
+
+            <div className="p-5">
+              <div className="flex justify-between items-start mb-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center"
+                  style={{
+                    background: `linear-gradient(135deg, ${metric.color.from}15, ${metric.color.to}08)`,
+                    border: `1px solid ${metric.color.from}20`
+                  }}
+                >
+                  <metric.icon size={20} style={{ color: metric.color.from }} />
+                </div>
+                {index === 2 && metricsData.length > 0 && (
+                  <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <TrendingUp size={10} />
+                    Ótimo
+                  </span>
+                )}
               </div>
-              {metric.status && (
-                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full flex items-center gap-1.5 border border-emerald-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  {metric.status}
-                </span>
-              )}
-            </div>
-            <div>
-              <div className="flex items-baseline gap-2">
-                <h3 className="text-3xl font-bold text-gray-800">{metric.value}</h3>
-                {metric.subValue && <span className="text-sm font-medium text-gray-500">{metric.subValue}</span>}
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-neutral-900">{metric.value}</span>
+                  {metric.subValue && <span className="text-sm text-neutral-500">{metric.subValue}</span>}
+                </div>
+                <p className="text-sm font-medium text-neutral-700 mt-1">{metric.title}</p>
+                <p className="text-xs text-neutral-400 mt-1">{metric.subtitle}</p>
               </div>
-              <p className="font-medium text-gray-700 mt-1">{metric.title}</p>
-              <p className="text-xs text-gray-500 mt-2">{metric.subtitle}</p>
             </div>
           </div>
         ))}
       </div>
 
+      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Donut — Distribuição */}
-        <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm flex flex-col hover:shadow-md transition-shadow">
-          <h2 className="text-lg font-semibold text-gray-800 mb-6">Distribuição de Licenças</h2>
-          <div className="relative h-48 w-full flex-grow flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <RechartsPieChart>
-                <Pie data={licenciasData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
-                  {licenciasData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </RechartsPieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-2xl font-bold text-gray-800">{taxaUtilizacao}%</span>
-              <span className="text-xs text-gray-500">em uso</span>
+        {/* Distribution Donut */}
+        <div className="bg-white rounded-2xl border border-neutral-200/60 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-neutral-100">
+            <h2 className="text-lg font-semibold text-neutral-900">Distribuição de Licenças</h2>
+            <p className="text-sm text-neutral-500 mt-0.5">Uso vs disponível</p>
+          </div>
+          <div className="p-6">
+            <div className="relative h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPieChart>
+                  <Pie
+                    data={licenciasData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={65}
+                    outerRadius={90}
+                    paddingAngle={4}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {licenciasData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </RechartsPieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-3xl font-bold text-neutral-900">{taxaUtilizacao}%</span>
+                <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">em uso</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Barras — Por Licença */}
+        {/* Bar Chart */}
         {barChartData.length > 0 && (
-          <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-            <h2 className="text-lg font-semibold text-gray-800 mb-6">Uso por Licença</h2>
-            <div className="h-48">
+          <div className="bg-white rounded-2xl border border-neutral-200/60 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-neutral-100">
+              <h2 className="text-lg font-semibold text-neutral-900">Uso por Licença</h2>
+              <p className="text-sm text-neutral-500 mt-0.5">Comparativo de consumo</p>
+            </div>
+            <div className="p-6 h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barChartData} layout="vertical" margin={{ left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <BarChart data={barChartData} layout="vertical" margin={{ left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: '#78716c' }} />
+                  <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10, fill: '#57534e' }} />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid #e5e7eb',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                    }}
+                  />
                   <Bar dataKey="Em Uso" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="Disponível" fill="#e5e7eb" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -419,45 +516,59 @@ const Microsoft365 = () => {
         )}
       </div>
 
-      {/* Tabela Detalhada */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-gray-100 flex justify-between items-center">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">Planos e SKUs Detalhados</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Exibindo {visibleLicenses.length} de {metricsData.length} licença(s)
-              {' '}· {dashboardLicenses.length} contabilizada(s) nos indicadores
-            </p>
+      {/* Detailed Table */}
+      <div className="bg-white rounded-2xl border border-neutral-200/60 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-neutral-100">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900">Planos e SKUs Detalhados</h2>
+              <p className="text-xs text-neutral-500 mt-1">
+                Exibindo {visibleLicenses.length} de {metricsData.length} licença(s)
+                {' '}· {dashboardLicenses.length} contabilizada(s) nos indicadores
+              </p>
+            </div>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+            <thead className="bg-neutral-50/50">
               <tr>
-                <th className="px-6 py-3">Licença</th>
-                <th className="px-6 py-3">SKU</th>
-                <th className="px-6 py-3 text-center">Total</th>
-                <th className="px-6 py-3 text-center">Em Uso</th>
-                <th className="px-6 py-3 text-center">Disponível</th>
-                <th className="px-6 py-3 text-center">Uso %</th>
+                <th className="px-6 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider">Licença</th>
+                <th className="px-6 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider">SKU</th>
+                <th className="px-6 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider text-center">Total</th>
+                <th className="px-6 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider text-center">Em Uso</th>
+                <th className="px-6 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider text-center">Disponível</th>
+                <th className="px-6 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider text-center">Uso %</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-neutral-100">
               {visibleLicenses.map((item, idx) => {
                 const usagePercent = item.total > 0 ? ((item.used / item.total) * 100).toFixed(0) : 0;
                 const usageColor = usagePercent > 90 ? 'text-red-600' : usagePercent > 70 ? 'text-amber-600' : 'text-emerald-600';
+                const usageBarColor = usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-amber-500' : 'bg-emerald-500';
 
                 return (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-800">{getFriendlyName(item.license_name)}</td>
-                    <td className="px-6 py-4 text-xs text-gray-400 font-mono">{item.license_name}</td>
-                    <td className="px-6 py-4 text-center">{item.total}</td>
-                    <td className="px-6 py-4 text-center text-blue-600 font-semibold">{item.used}</td>
-                    <td className="px-6 py-4 text-center text-gray-500">{item.available}</td>
+                  <tr key={idx} className="hover:bg-neutral-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <span className="font-medium text-neutral-900 text-sm">{getFriendlyName(item.license_name)}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <code className="text-xs text-neutral-500 bg-neutral-100 px-2 py-1 rounded font-mono">{item.license_name}</code>
+                    </td>
+                    <td className="px-6 py-4 text-center text-sm text-neutral-600">{item.total}</td>
                     <td className="px-6 py-4 text-center">
-                      <span className={`font-bold ${usageColor}`}>{usagePercent}%</span>
-                      <div className="w-full bg-gray-100 h-1 rounded-full mt-1">
-                        <div className={`h-full rounded-full ${usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(usagePercent, 100)}%` }}></div>
+                      <span className="font-semibold text-blue-600 text-sm">{item.used}</span>
+                    </td>
+                    <td className="px-6 py-4 text-center text-sm text-neutral-500">{item.available}</td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className={`font-bold text-sm ${usageColor}`}>{usagePercent}%</span>
+                        <div className="w-16 bg-neutral-100 rounded-full h-1.5">
+                          <div
+                            className={`h-1.5 rounded-full ${usageBarColor}`}
+                            style={{ width: `${Math.min(usagePercent, 100)}%` }}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -465,11 +576,17 @@ const Microsoft365 = () => {
               })}
               {visibleLicenses.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="px-6 py-10 text-center text-gray-400">
-                    {metricsData.length > 0
-                      ? 'Todas as licenças estão ocultas. Clique em "Filtrar" para selecionar.'
-                      : 'Nenhuma licença encontrada. Sincronize via Integrações.'
-                    }
+                  <td colSpan="6" className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center">
+                      <div className="w-12 h-12 rounded-xl bg-neutral-100 flex items-center justify-center mb-3">
+                        <Sparkles size={20} className="text-neutral-300" />
+                      </div>
+                      <p className="text-sm text-neutral-500">
+                        {metricsData.length > 0
+                          ? 'Todas as licenças estão ocultas. Clique em "Filtrar" para selecionar.'
+                          : 'Nenhuma licença encontrada. Sincronize via Integrações.'}
+                      </p>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -477,6 +594,9 @@ const Microsoft365 = () => {
           </table>
         </div>
       </div>
+
+      {/* Bottom spacing */}
+      <div className="h-8" />
     </div>
   );
 };

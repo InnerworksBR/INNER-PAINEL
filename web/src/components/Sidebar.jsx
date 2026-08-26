@@ -1,4 +1,4 @@
-import { LayoutDashboard, Cloud, Server, Network, FileText, Ticket, LogOut, UserRound, X, Shield } from "lucide-react";
+import { LayoutDashboard, Cloud, Server, Network, FileText, Ticket, LogOut, UserRound, X, Shield, ChevronRight, Settings } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useClientPortalPath, useClientPreview } from "../context/ClientPreviewContext";
@@ -9,100 +9,241 @@ const Sidebar = ({ isOpen, onClose }) => {
   const portalPath = useClientPortalPath();
   const preview = useClientPreview();
 
-  const navItemClass = "flex items-center gap-3 p-3 rounded-lg transition-colors";
-
-  const getActiveClass = ({ isActive }) =>
-    isActive
-      ? `${navItemClass} bg-blue-600 font-medium text-white`
-      : `${navItemClass} hover:bg-slate-800 text-slate-300 hover:text-white`;
-
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
+  const menuItems = [
+    { to: portalPath('dashboard'), icon: LayoutDashboard, label: 'Dashboard', badge: null },
+    { to: portalPath('ms365'), icon: Cloud, label: 'Microsoft 365', badge: null },
+    { to: portalPath('servidores'), icon: Server, label: 'Servidores', badge: null },
+    { to: portalPath('rede'), icon: Network, label: 'Rede', badge: null },
+    { to: portalPath('documentacao'), icon: FileText, label: 'Documentação', badge: null },
+    { to: portalPath('chamados'), icon: Ticket, label: 'Chamados GLPI', badge: null },
+    { to: portalPath('seguranca'), icon: Shield, label: 'Segurança', badge: null },
+  ];
+
+  const bottomItems = !preview?.isPreview ? [
+    { to: portalPath('conta'), icon: UserRound, label: 'Minha Conta', badge: null },
+  ] : [];
+
   return (
     <>
       {/* Overlay for mobile */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden transition-opacity"
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300"
           onClick={onClose}
         />
       )}
 
-      <aside className={`w-64 h-screen fixed md:sticky top-0 left-0 bg-slate-900 text-white p-6 flex flex-col z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      {/* Sidebar Container */}
+      <aside
+        className={`
+          fixed md:sticky top-0 left-0 z-50
+          h-screen w-[280px]
+          flex flex-col
+          transform transition-transform duration-300 ease-out
+          ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+        style={{
+          background: 'linear-gradient(180deg, #1c1917 0%, #292524 50%, #1c1917 100%)',
+        }}
+      >
+        {/* Decorative gradient orbs */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div
+            className="absolute -top-20 -right-20 w-40 h-40 rounded-full opacity-20"
+            style={{ background: 'radial-gradient(circle, #10b981 0%, transparent 70%)' }}
+          />
+          <div
+            className="absolute -bottom-20 -left-20 w-40 h-40 rounded-full opacity-10"
+            style={{ background: 'radial-gradient(circle, #3b82f6 0%, transparent 70%)' }}
+          />
+        </div>
 
-      <div className="mb-10 flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Portal de Contratos</h1>
-          <p className="text-sm text-slate-400 mt-1">Gestão de TI</p>
+        {/* Header */}
+        <div className="relative p-6 border-b border-white/5">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              {/* Logo area with subtle glow */}
+              <div className="flex items-center gap-3 mb-1">
+                <div className="relative">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+                  >
+                    <span className="text-white font-bold text-lg">I</span>
+                  </div>
+                  <div
+                    className="absolute inset-0 rounded-xl blur-md opacity-50"
+                    style={{ background: '#10b981' }}
+                  />
+                </div>
+                <div>
+                  <h1 className="text-white font-bold text-lg tracking-tight">INNER</h1>
+                  <p className="text-white/40 text-[10px] font-medium tracking-widest uppercase">Painel de Gestão</p>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="md:hidden text-white/40 hover:text-white p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {/* User info */}
           {user && (
-            <p className="text-xs text-slate-500 mt-2 truncate">{user.email}</p>
+            <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/30 to-emerald-600/20 flex items-center justify-center border border-emerald-500/20">
+                  <span className="text-emerald-400 text-sm font-semibold">
+                    {user.email?.charAt(0).toUpperCase() || 'U'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white/90 text-sm font-medium truncate">
+                    {user.name || user.email?.split('@')[0] || 'Usuário'}
+                  </p>
+                  <p className="text-white/40 text-xs truncate">{user.email}</p>
+                </div>
+              </div>
+            </div>
           )}
         </div>
-        <button onClick={onClose} className="md:hidden text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800">
-          <X size={20} />
-        </button>
-      </div>
 
-      <nav className="flex flex-col gap-2 flex-1">
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto">
+          <div className="space-y-1">
+            {menuItems.map((item, index) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={onClose}
+                className={({ isActive }) => `
+                  group relative flex items-center gap-3 px-4 py-3 rounded-xl
+                  text-sm font-medium transition-all duration-200
+                  ${isActive
+                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-lg shadow-emerald-900/30'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                  }
+                `}
+                style={({ isActive }) => isActive ? {
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 4px 12px rgba(16, 185, 129, 0.3)'
+                } : {}}
+              >
+                {({ isActive }) => (
+                  <>
+                    {/* Active indicator */}
+                    {isActive && (
+                      <div
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full"
+                        style={{ background: 'linear-gradient(180deg, #34d399 0%, #10b981 100%)' }}
+                      />
+                    )}
 
-        <NavLink to={portalPath('dashboard')} className={getActiveClass} onClick={onClose}>
-          <LayoutDashboard size={18} />
-          Dashboard Geral
-        </NavLink>
+                    {/* Icon */}
+                    <item.icon
+                      size={20}
+                      className={`
+                        transition-colors duration-200
+                        ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white/70'}
+                      `}
+                    />
 
-        <NavLink to={portalPath('ms365')} className={getActiveClass} onClick={onClose}>
-          <Cloud size={18} />
-          Microsoft 365
-        </NavLink>
+                    {/* Label */}
+                    <span className="flex-1">{item.label}</span>
 
-        <NavLink to={portalPath('servidores')} className={getActiveClass} onClick={onClose}>
-          <Server size={18} />
-          Servidores
-        </NavLink>
+                    {/* Badge or indicator */}
+                    {isActive && (
+                      <ChevronRight size={16} className="text-white/60" />
+                    )}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
 
-        <NavLink to={portalPath('rede')} className={getActiveClass} onClick={onClose}>
-          <Network size={18} />
-          Rede
-        </NavLink>
+          {/* Divider */}
+          <div className="my-4 mx-4 h-px bg-white/5" />
 
-        <NavLink to={portalPath('documentacao')} className={getActiveClass} onClick={onClose}>
-          <FileText size={18} />
-          Documentação Técnica
-        </NavLink>
+          {/* Bottom section */}
+          <div className="space-y-1">
+            {bottomItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={onClose}
+                className={({ isActive }) => `
+                  group flex items-center gap-3 px-4 py-3 rounded-xl
+                  text-sm font-medium transition-all duration-200
+                  ${isActive
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                  }
+                `}
+              >
+                <item.icon
+                  size={20}
+                  className={`
+                    transition-colors duration-200
+                    ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white/70'}
+                  `}
+                />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
 
-        <NavLink to={portalPath('chamados')} className={getActiveClass} onClick={onClose}>
-          <Ticket size={18} />
-          Chamados GLPI
-        </NavLink>
+            {/* Settings link for admins */}
+            {user?.role === 'admin' && (
+              <NavLink
+                to="/admin/config"
+                onClick={onClose}
+                className={({ isActive }) => `
+                  group flex items-center gap-3 px-4 py-3 rounded-xl
+                  text-sm font-medium transition-all duration-200
+                  ${isActive
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                  }
+                `}
+              >
+                <Settings
+                  size={20}
+                  className="text-white/40 group-hover:text-white/70 transition-colors"
+                />
+                <span>Configurações</span>
+              </NavLink>
+            )}
+          </div>
+        </nav>
 
-        <NavLink to={portalPath('seguranca')} className={getActiveClass} onClick={onClose}>
-          <Shield size={18} />
-          Segurança
-        </NavLink>
+        {/* Footer - Logout */}
+        <div className="relative p-4 border-t border-white/5">
+          <button
+            onClick={handleLogout}
+            className="group w-full flex items-center gap-3 px-4 py-3 rounded-xl
+              text-sm font-medium text-white/50 hover:text-red-400
+              hover:bg-red-500/10 transition-all duration-200"
+          >
+            <LogOut
+              size={20}
+              className="text-white/30 group-hover:text-red-400 transition-colors"
+            />
+            <span className="group-hover:translate-x-0.5 transition-transform">
+              Sair da conta
+            </span>
+          </button>
 
-        {!preview?.isPreview && (
-          <NavLink to={portalPath('conta')} className={getActiveClass} onClick={onClose}>
-            <UserRound size={18} />
-            Minha conta
-          </NavLink>
-        )}
-
-      </nav>
-
-      <div className="border-t border-slate-700 pt-4 mt-4">
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-red-600/20 text-slate-400 hover:text-red-400 w-full"
-        >
-          <LogOut size={18} />
-          Sair
-        </button>
-      </div>
-
-    </aside>
+          {/* Version tag */}
+          <p className="text-center text-white/20 text-[10px] mt-3 font-medium tracking-wider">
+            INNER PAINEL v2.0
+          </p>
+        </div>
+      </aside>
     </>
   );
 };

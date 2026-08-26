@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ArrowRight } from 'lucide-react';
 
 import bg1 from '../../assets/bg1.png';
 import bg2 from '../../assets/bg2.png';
 import bg3 from '../../assets/bg3.png';
 import bg4 from '../../assets/bg4.png';
 
-import logoMicrosoft from '../../assets/logo_microsoft.png';
-import logoInner from '../../assets/logo_inner.png';
+import logoInnerworks from '../../assets/logo_innerworks.png';
 import iconHome from '../../assets/icon_home.png';
 import iconEmail from '../../assets/icon_contato.png';
 import iconZap from '../../assets/icon_zap.png';
@@ -61,7 +60,7 @@ const Login = () => {
     return (
         <div className="relative min-h-screen overflow-hidden bg-black">
 
-            {/* FUNDO CORES ANIMADOS */}
+            {/* FUNDO ANIMADO */}
             <div className="absolute inset-0">
                 {backgrounds.map((bg, i) => (
                     <img
@@ -71,138 +70,229 @@ const Login = () => {
                             }`}
                     />
                 ))}
+                {/* Overlay escuro suave para melhor contraste */}
+                <div className="absolute inset-0 bg-black/20" />
             </div>
 
-            {/* CONTEÚDO PRINCIPAL ESTÁTICO (h-screen e overflow-hidden) */}
+            {/* CONTEÚDO PRINCIPAL */}
             <div className="relative z-10 flex flex-col lg:flex-row h-screen w-full overflow-hidden">
 
-                {/* 🔵 LADO ESQUERDO: BANNER E LOGOS */}
-                <div className="hidden lg:flex flex-col justify-between h-full w-full lg:w-1/2 px-8 lg:px-[5vw] py-8 lg:py-12 flex-1">
-                
-                {/*LOGO MICROSOFT*/}
-                <div className="flex items-center gap-3 lg:gap-4">
-                    <img src={logoMicrosoft} className="absolute top-[-70px] left-[-40px] w-[450px]"/>
-                </div>
+                {/* LADO ESQUERDO: BANNER */}
+                <div className="hidden lg:flex flex-col justify-between h-full w-full lg:w-1/2 px-8 lg:px-12 py-8 lg:py-12">
 
-                {/*LOGO INNER*/}
-                <div className="flex items-center gap-3 lg:gap-4">
-                <img src={logoInner}className="absolute top-[145px] left-[40px] w-[250px]" />
-                </div>
-                {/* SUBTÍTULO INNER*/}
-                    <h2 className="absolute left-[90px] top-[235px] text-white text-[20px] font-medium">
-                        Let's <span className='italic font-semibold text-[#55F525]'> work </span> together
-                    </h2>
-
-
-                {/* TITULO BANNER */}
-                    <div className="absolute left-[2%] top-1/2 -translate-y-1/2 text-white max-w-[900px] w-full">
-                        <h1 className="text-[60px] font-bold leading-tight">
-                            Transformando Tecnologia <br /> em resultados<span className="italic font-bold"> reais </span>
-                        </h1>
+                    {/* LOGO INNERWORKS */}
+                    <div className="flex items-center gap-3 lg:gap-4 animate-fade-in">
+                        <img
+                            src={logoInnerworks}
+                            className="h-16 lg:h-20 w-auto drop-shadow-2xl"
+                            alt="Innerworks"
+                        />
                     </div>
 
+                    {/* TÍTULO BANNER */}
+                    <div className="flex-1 flex flex-col justify-center max-w-xl animate-slide-up">
+                        <h1 className="text-5xl xl:text-6xl font-bold text-white leading-[1.1] mb-6">
+                            Gestão de TI
+                            <span
+                                style={{
+                                    background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)',
+                                    WebkitBackgroundClip: 'text',
+                                    WebkitTextFillColor: 'transparent',
+                                }}
+                            > simplificada</span>
+                        </h1>
+                        <p className="text-xl text-white/80 mb-10 leading-relaxed">
+                            Centralize o monitoramento, licenciamento e infraestrutura
+                            da sua empresa em um único painel poderoso.
+                        </p>
+                    </div>
 
-                   
-                {/* CONTATOS */}
-                    <div className="absolute bottom-[40px] left-[20px] flex flex-col space-y-4 text-gray-300  text-lg lg:text-xl 2xl:text-2xl">
-                        <div className="flex items-center gap-3 lg:gap-4">
-                            <img src={iconHome} className="w-[20px] lg:w-[30px] 2xl:w-[40px]" alt="Ícone Site" />
+                    {/* CONTATOS */}
+                    <div className="flex flex-col space-y-3 text-white/90 animate-fade-in">
+                        <div className="flex items-center gap-3 text-base">
+                            <img src={iconHome} className="w-5 h-5" alt="Site" />
                             <span>innerworks.com.br</span>
                         </div>
-                        <div className="flex items-center gap-3 lg:gap-4">
-                            <img src={iconEmail} className="w-[20px] lg:w-[30px] 2xl:w-[40px]" alt="Ícone Email" />
+                        <div className="flex items-center gap-3 text-base">
+                            <img src={iconEmail} className="w-5 h-5" alt="Email" />
                             <span>contato@innerworks.com.br</span>
                         </div>
-                        <div className="flex items-center gap-3 lg:gap-4">
-                            <img src={iconZap} className="w-[20px] lg:w-[30px] 2xl:w-[40px]" alt="Ícone Telefone" />
+                        <div className="flex items-center gap-3 text-base">
+                            <img src={iconZap} className="w-5 h-5" alt="Telefone" />
                             <span>(13) 99119-8852</span>
                         </div>
                     </div>
                 </div>
 
-                {/* 🟢 LADO DIREITO: FORMULÁRIO DE LOGIN */}
-                <div className="flex items-center justify-center w-full lg:w-1/2 h-full lg:pr-[5vw] px-4 flex-1">
+                {/* LADO DIREITO: FORMULÁRIO */}
+                <div className="flex items-center justify-center w-full lg:w-1/2 h-full lg:pr-12 px-4 flex-1">
 
-                    {/* Portal de Contratos */}
-                    <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 lg:p-10 2xl:p-16 rounded-3xl shadow-2xl w-full max-w-[380px] lg:max-w-[450px] 2xl:max-w-2xl">
+                    <div
+                        className="p-6 lg:p-10 rounded-3xl shadow-2xl w-full max-w-[420px] lg:max-w-[450px] relative overflow-hidden"
+                        style={{
+                            background: 'rgba(255,255,255,0.10)',
+                            backdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(255,255,255,0.18)'
+                        }}
+                    >
+                        {/* Top glow accent */}
+                        <div
+                            className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px"
+                            style={{ background: 'linear-gradient(90deg, transparent, #10b981, transparent)' }}
+                        />
 
-                        <div className="text-center mb-6 2xl:mb-12">
-                            <h2 className="text-3xl lg:text-4xl 2xl:text-5xl font-bold text-white mb-2 2xl:mb-3">Bem-vindo</h2>
-                            <p className="text-white/80 text-xs lg:text-sm 2xl:text-lg">
-                                Faça login para acessar o Portal de Contratos
-                            </p>
+                        {/* Mobile Logo */}
+                        <div className="lg:hidden flex items-center justify-center gap-3 mb-6">
+                            <img src={logoInnerworks} className="h-10 w-auto" alt="Innerworks" />
                         </div>
 
-                        {error && (
-                            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-200 text-xs 2xl:text-sm text-center">
-                                {error}
-                            </div>
-                        )}
-
-                        {location.state?.passwordChanged && (
-                            <div className="mb-4 p-3 bg-emerald-500/20 border border-emerald-400/50 rounded-lg text-emerald-100 text-xs 2xl:text-sm text-center">
-                                Senha alterada. Entre novamente para continuar.
-                            </div>
-                        )}
-
-                        <form className="space-y-4 2xl:space-y-6" onSubmit={handleLogin}>
-                            <div>
-                                <label className="block text-white text-xs lg:text-sm 2xl:text-lg font-medium mb-1 2xl:mb-2">
-                                    E-mail
-                                </label>
-                                <input
-                                    required
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full px-3 py-2 2xl:px-5 2xl:py-4 bg-white/10 border border-white/20 rounded-xl text-white text-sm 2xl:text-lg"
-                                    placeholder="Digite seu e-mail"
-                                />
+                        <div className="relative">
+                            <div className="text-center mb-6">
+                                <h2 className="text-2xl lg:text-3xl font-bold text-white mb-2">
+                                    Bem-vindo de volta
+                                </h2>
+                                <p className="text-white/60 text-sm">
+                                    Entre para acessar seu painel de gestão
+                                </p>
                             </div>
 
-                            <div>
-                                <label className="block text-white text-xs lg:text-sm 2xl:text-lg font-medium mb-1 2xl:mb-2">
-                                    Senha
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        required
-                                        type={showPassword ? 'text' : 'password'}
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full px-3 py-2 2xl:px-5 2xl:py-4 pr-11 bg-white/10 border border-white/20 rounded-xl text-white text-sm 2xl:text-lg"
-                                        placeholder="Digite sua senha"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword((v) => !v)}
-                                        aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-white/50 hover:text-white/90 transition"
-                                    >
-                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                    </button>
-                                </div>
-                                <Link
-                                    to="/recuperar-senha"
-                                    className="block text-right text-xs text-white/60 hover:text-white/90 underline mt-1"
+                            {/* Error Message */}
+                            {error && (
+                                <div
+                                    className="mb-4 p-3 rounded-xl text-sm text-red-200"
+                                    style={{
+                                        background: 'rgba(239,68,68,0.15)',
+                                        border: '1px solid rgba(239,68,68,0.3)'
+                                    }}
                                 >
-                                    Esqueci minha senha
-                                </Link>
-                            </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                                        {error}
+                                    </div>
+                                </div>
+                            )}
 
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className={`w-full mt-4 2xl:mt-8 py-3 2xl:py-4 bg-blue-600 hover:bg-blue-500 text-white text-sm lg:text-base 2xl:text-xl font-semibold rounded-xl transition ${loading ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
-                            >
-                                {loading ? 'Carregando...' : 'Entrar'}
-                            </button>
-                        </form>
+                            {/* Success Message */}
+                            {location.state?.passwordChanged && (
+                                <div
+                                    className="mb-4 p-3 rounded-xl text-sm text-emerald-200"
+                                    style={{
+                                        background: 'rgba(16,185,129,0.15)',
+                                        border: '1px solid rgba(16,185,129,0.3)'
+                                    }}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        Senha alterada. Entre novamente para continuar.
+                                    </div>
+                                </div>
+                            )}
 
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                {/* Email */}
+                                <div>
+                                    <label className="block text-white/70 text-sm font-medium mb-1.5">
+                                        E-mail
+                                    </label>
+                                    <div className="relative">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30">
+                                            <Mail size={18} />
+                                        </div>
+                                        <input
+                                            required
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="w-full pl-12 pr-4 py-3 rounded-xl text-white text-sm
+                                                bg-white/[0.05] border border-white/[0.1]
+                                                placeholder:text-white/25
+                                                focus:outline-none focus:border-emerald-500/50 focus:bg-white/[0.08]
+                                                transition-all duration-200"
+                                            placeholder="seu@email.com"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Password */}
+                                <div>
+                                    <label className="block text-white/70 text-sm font-medium mb-1.5">
+                                        Senha
+                                    </label>
+                                    <div className="relative">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30">
+                                            <Lock size={18} />
+                                        </div>
+                                        <input
+                                            required
+                                            type={showPassword ? 'text' : 'password'}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="w-full pl-12 pr-12 py-3 rounded-xl text-white text-sm
+                                                bg-white/[0.05] border border-white/[0.1]
+                                                placeholder:text-white/25
+                                                focus:outline-none focus:border-emerald-500/50 focus:bg-white/[0.08]
+                                                transition-all duration-200"
+                                            placeholder="••••••••"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword((v) => !v)}
+                                            aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                                        >
+                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Forgot Password */}
+                                <div className="flex justify-end">
+                                    <Link
+                                        to="/recuperar-senha"
+                                        className="text-sm text-emerald-400/70 hover:text-emerald-400 transition-colors"
+                                    >
+                                        Esqueceu sua senha?
+                                    </Link>
+                                </div>
+
+                                {/* Submit */}
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full relative group overflow-hidden rounded-xl
+                                        py-3.5 px-6 font-semibold text-sm
+                                        transition-all duration-300
+                                        disabled:opacity-50 disabled:cursor-not-allowed"
+                                    style={{
+                                        background: loading
+                                            ? 'rgba(16,185,129,0.5)'
+                                            : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                        boxShadow: '0 4px 20px rgba(16,185,129,0.3)'
+                                    }}
+                                >
+                                    <span className="relative z-10 flex items-center justify-center gap-2">
+                                        {loading ? (
+                                            <>
+                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                <span>Entrando...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span>Entrar no Painel</span>
+                                                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                            </>
+                                        )}
+                                    </span>
+                                </button>
+                            </form>
+                        </div>
                     </div>
-
                 </div>
+            </div>
+
+            {/* Footer mobile */}
+            <div className="absolute bottom-4 left-0 right-0 text-center lg:hidden z-10">
+                <p className="text-white/40 text-xs">© 2024 Innerworks. Todos os direitos reservados.</p>
             </div>
         </div>
     );
