@@ -55,16 +55,6 @@ const PRIORITY_CONFIG = {
   'Baixa':      { bg: 'bg-slate-50',   text: 'text-slate-600',   border: 'border-slate-200' },
 };
 
-const SLA_CONFIG = {
-  'Dentro do SLA':  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-  'Fora do SLA':    { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',     dot: 'bg-red-500' },
-  'Em Análise':     { bg: 'bg-slate-50',   text: 'text-slate-500',   border: 'border-slate-200',   dot: 'bg-slate-400' },
-};
-
-function slaConfig(status) {
-  return SLA_CONFIG[status] || null;
-}
-
 function statusConfig(status) {
   return STATUS_CONFIG[status] || { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', dot: 'bg-slate-400' };
 }
@@ -182,20 +172,15 @@ const ChamadosGLPI = () => {
 
   // Métricas dinâmicas baseadas no que está visível
   const ticketsNaoSolucionados = tickets.filter(t => !isResolved(t.status));
-  const ticketsComSla = tickets.filter(t => t.sla_status === 'Dentro do SLA' || t.sla_status === 'Fora do SLA');
-  const ticketsDentroSla = tickets.filter(t => t.sla_status === 'Dentro do SLA');
-  const slaPercentual = ticketsComSla.length > 0
-    ? ((ticketsDentroSla.length / ticketsComSla.length) * 100).toFixed(1)
-    : '0';
+  const ticketsCriticosAbertos = ticketsNaoSolucionados.filter(t =>
+    ['Alta', 'Muito Alta', 'Maior'].includes(t.priority)
+  );
 
   const statsVisiveis = {
     total: tickets.length,
     abertos: ticketsNaoSolucionados.length,
-    criticos: ticketsNaoSolucionados.filter(t => ['Alta', 'Muito Alta'].includes(t.priority)).length,
+    criticos: ticketsCriticosAbertos.length,
     visiveis: filteredTickets.length,
-    slaPercentual: slaPercentual,
-    slaTotal: ticketsComSla.length,
-    slaOk: ticketsDentroSla.length,
   };
 
   const exportToCSV = () => {
@@ -255,7 +240,7 @@ const ChamadosGLPI = () => {
             <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-violet-500 to-violet-600" />
             <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Chamados GLPI</h1>
           </div>
-          <p className="text-neutral-500 ml-3.5">Acompanhe e filtre os chamados de suporte técnico</p>
+          <p className="text-neutral-500 ml-3.5">Foco nos chamados em aberto que requerem atenção</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -329,37 +314,31 @@ const ChamadosGLPI = () => {
         </div>
 
         <div className="group relative overflow-hidden rounded-2xl bg-white border border-neutral-200/60 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-emerald-600" />
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-500 to-red-600" />
           <div className="absolute -top-16 -right-16 w-32 h-32 rounded-full opacity-0 group-hover:opacity-15 transition-opacity duration-500"
-            style={{ background: 'radial-gradient(circle, #10b981 0%, transparent 70%)' }} />
+            style={{ background: 'radial-gradient(circle, #ef4444 0%, transparent 70%)' }} />
           <div className="p-6">
             <div className="flex justify-between items-start mb-4">
-              <h3 className="text-sm font-medium text-neutral-500">SLA Cumprido</h3>
+              <h3 className="text-sm font-medium text-neutral-500">Críticos Abertos</h3>
               <div className="w-11 h-11 rounded-xl flex items-center justify-center"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(16,185,129,0.08) 100%)',
-                  border: '1px solid rgba(16,185,129,0.2)'
+                  background: 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.08) 100%)',
+                  border: '1px solid rgba(239,68,68,0.2)'
                 }}>
-                <CheckCircle2 size={20} className="text-emerald-600" />
+                <AlertTriangle size={20} className="text-red-600" />
               </div>
             </div>
             <div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold text-neutral-900">{statsVisiveis.slaPercentual}%</span>
-                <span className="text-sm text-neutral-500">dentro do SLA</span>
-              </div>
+              <span className="text-3xl font-bold text-neutral-900">{statsVisiveis.criticos}</span>
               <p className="text-xs text-neutral-400 mt-1">
-                {statsVisiveis.slaOk} de {statsVisiveis.slaTotal} chamados com SLA conhecido
+                Alta, Muito Alta ou Maior em aberto
               </p>
-              <div className="mt-3 w-full bg-neutral-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${statsVisiveis.slaPercentual}%`,
-                    background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'
-                  }}
-                />
-              </div>
+              {statsVisiveis.criticos > 0 && (
+                <div className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-red-600 bg-red-50 px-2.5 py-1 rounded-md border border-red-100">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  Atenção necessária
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -589,7 +568,6 @@ const ChamadosGLPI = () => {
             filteredTickets.map((ticket) => {
               const sCfg = statusConfig(ticket.status);
               const pCfg = priorityConfig(ticket.priority);
-              const slaCfg = slaConfig(ticket.sla_status);
               return (
                 <div
                   key={ticket.id}
@@ -612,18 +590,10 @@ const ChamadosGLPI = () => {
                         <h3 className="font-semibold text-neutral-900 group-hover:text-emerald-600 transition-colors truncate">
                           {ticket.title}
                         </h3>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {slaCfg && (
-                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${slaCfg.bg} ${slaCfg.text} ${slaCfg.border}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${slaCfg.dot}`} />
-                              {ticket.sla_status}
-                            </span>
-                          )}
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${sCfg.bg} ${sCfg.text} ${sCfg.border} whitespace-nowrap`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${sCfg.dot}`} />
-                            {ticket.status}
-                          </span>
-                        </div>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${sCfg.bg} ${sCfg.text} ${sCfg.border} whitespace-nowrap`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sCfg.dot}`} />
+                          {ticket.status}
+                        </span>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-neutral-500">
