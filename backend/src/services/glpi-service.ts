@@ -119,13 +119,40 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
 
     // A tabela local deve refletir o retrato atual retornado pelo GLPI para a entidade,
     // não acumular chamados que já não pertencem mais ao conjunto sincronizado.
-    const syncedGlpiIds = ticketsToUpsert.map((ticket) => ticket.glpi_id);
-    let cleanupQuery = supabase.from('glpi_tickets').delete().eq('company_id', company_id);
-    if (syncedGlpiIds.length > 0) {
-      cleanupQuery = cleanupQuery.not('glpi_id', 'in', `(${syncedGlpiIds.join(',')})`);
+    //
+    // Não use um único `not.in.(...)` com todos os IDs: o Supabase/PostgREST leva
+    // esse filtro para a URL e, para clientes com muitos chamados, ela ultrapassa
+    // o limite do proxy (HTTP 414 - URI too long). Buscamos apenas os IDs locais e
+    // removemos os obsoletos em lotes com tamanho seguro.
+    const syncedGlpiIds = new Set(ticketsToUpsert.map((ticket) => Number(ticket.glpi_id)));
+
+    if (syncedGlpiIds.size === 0) {
+      const { error: cleanupError } = await supabase
+        .from('glpi_tickets')
+        .delete()
+        .eq('company_id', company_id);
+      if (cleanupError) throw cleanupError;
+    } else {
+      const { data: localTickets, error: localTicketsError } = await supabase
+        .from('glpi_tickets')
+        .select('glpi_id')
+        .eq('company_id', company_id);
+      if (localTicketsError) throw localTicketsError;
+
+      const staleGlpiIds = (localTickets || [])
+        .map((ticket: { glpi_id: number }) => Number(ticket.glpi_id))
+        .filter((glpiId) => !syncedGlpiIds.has(glpiId));
+
+      const deleteBatchSize = 100;
+      for (let start = 0; start < staleGlpiIds.length; start += deleteBatchSize) {
+        const { error: cleanupError } = await supabase
+          .from('glpi_tickets')
+          .delete()
+          .eq('company_id', company_id)
+          .in('glpi_id', staleGlpiIds.slice(start, start + deleteBatchSize));
+        if (cleanupError) throw cleanupError;
+      }
     }
-    const { error: cleanupError } = await cleanupQuery;
-    if (cleanupError) throw cleanupError;
 
     // Encerrar sessão GLPI
     try {
