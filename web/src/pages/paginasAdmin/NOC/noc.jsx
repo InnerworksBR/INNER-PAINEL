@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, AlertTriangle, Building2, CheckCircle2, Clock, XCircle, Monitor, Maximize2, RefreshCw, Signal, Ticket, TrendingUp, X } from "lucide-react";
+import { Activity, AlertTriangle, Building2, CheckCircle2, Clock, XCircle, Monitor, Maximize2, RefreshCw, Signal, Ticket, TrendingUp, X, ExternalLink } from "lucide-react";
 import api from '../../../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const NOC = () => {
+    const navigate = useNavigate();
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [isFullscreen, setIsFullscreen] = useState(false);
+
+    // Open NOC in new tab for fullscreen
+    const openInNewTab = useCallback(() => {
+        window.open('/admin/noc', '_blank');
+    }, []);
 
     // Update clock every second
     useEffect(() => {
@@ -154,6 +161,13 @@ const NOC = () => {
                         title="Fullscreen (F11)"
                     >
                         <Maximize2 className="w-6 h-6 text-slate-400" />
+                    </button>
+                    <button
+                        onClick={openInNewTab}
+                        className="p-3 rounded-xl bg-blue-600 border border-blue-500 hover:bg-blue-500 transition-colors"
+                        title="Abrir em nova aba"
+                    >
+                        <ExternalLink className="w-6 h-6 text-white" />
                     </button>
                 </div>
             </header>

@@ -18,6 +18,10 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
       const companies = companiesRes.data || [];
 
+      // Create company map for lookups
+      const companyMap = new Map(companies.map(c => [c.id, c.name]));
+      const companyNameToId = new Map(companies.map(c => [c.name.toLowerCase(), c.id]));
+
       // Fetch integrations for all companies
       const integrationsRes = await supabaseAdmin
         .from('company_integrations')
@@ -25,17 +29,17 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
       const integrations = integrationsRes.data || [];
 
-      // Fetch recent tickets (GLPI)
+      // Fetch recent tickets (GLPI) - with company_id
       const ticketsRes = await supabaseAdmin
         .from('glpi_tickets')
-        .select('id, companies(name), name, status, urgency, created_at')
+        .select('id, company_id, name, status, urgency, created_at')
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(20);
 
       // Fetch recent alerts/monitoring events
       const alertsRes = await supabaseAdmin
         .from('monitoring_events')
-        .select('company_id, companies(name), message, severity, created_at')
+        .select('company_id, message, severity, created_at')
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -48,7 +52,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
         // Count open/critical tickets for this company
         const companyTickets = (ticketsRes.data || []).filter(
-          (t: any) => t.companies?.name === company.name
+          (t: any) => t.company_id === company.id
         );
         const openTickets = companyTickets.filter(
           (t: any) => ['open', 'pending', 'in_progress', 'new'].includes(String(t.status).toLowerCase())
@@ -59,7 +63,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
         // Get last alert for this company
         const companyAlerts = (alertsRes.data || []).filter(
-          (a: any) => a.companies?.name === company.name
+          (a: any) => a.company_id === company.id
         );
         const lastAlert = companyAlerts[0] || null;
 
@@ -126,10 +130,11 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         offline: companiesWithStatus.filter((c: any) => c.status === 'offline').length,
       };
 
-      // Format recent tickets
+      // Format recent tickets - resolve company name from company_id
       const recentTickets = (ticketsRes.data || []).map((ticket: any) => ({
         id: ticket.id,
-        companyName: ticket.companies?.name || 'N/A',
+        companyId: ticket.company_id,
+        companyName: companyMap.get(ticket.company_id) || 'N/A',
         title: ticket.name,
         status: ticket.status,
         urgency: ticket.urgency,
@@ -138,7 +143,8 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
       // Format recent alerts
       const recentAlerts = (alertsRes.data || []).map((alert: any) => ({
-        companyName: alert.companies?.name || 'N/A',
+        companyId: alert.company_id,
+        companyName: companyMap.get(alert.company_id) || 'N/A',
         message: alert.message,
         severity: alert.severity,
         timestamp: alert.created_at,
