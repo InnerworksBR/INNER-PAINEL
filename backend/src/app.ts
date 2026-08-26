@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyServerOptions } from 'fastify';
 
 import adminAuditRoutes from './routes/admin/audit-routes';
 import adminSecurityRoutes from './routes/admin/security-routes';
+import adminDocumentCreatorRoutes from './routes/admin/document-creator-routes';
 import clientSecurityRoutes from './routes/client/security-routes';
 import adminCompaniesRoutes from './routes/admin/companies-routes';
 import adminDashboardRoutes from './routes/admin/dashboard-routes';
@@ -12,6 +13,7 @@ import adminMonitoringRoutes from './routes/admin/monitoring-routes';
 import adminMs365Routes from './routes/admin/ms365-routes';
 import adminSettingsRoutes from './routes/admin/settings-routes';
 import adminUserRoutes from './routes/admin/users-routes';
+import adminNocRoutes from './routes/admin/noc-routes';
 import authRoutes from './routes/auth';
 import clientDashboardRoutes from './routes/client/dashboard-routes';
 import clientDocsRoutes from './routes/client/docs-routes';
@@ -52,6 +54,8 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(adminMonitoringRoutes, { prefix: '/api/admin/monitoring' });
   fastify.register(adminMs365Routes, { prefix: '/api/admin/ms365' });
   fastify.register(adminSecurityRoutes, { prefix: '/api/admin/security' });
+  fastify.register(adminDocumentCreatorRoutes, { prefix: '/api/admin/documents' });
+  fastify.register(adminNocRoutes, { prefix: '/api/admin/noc' });
 
   fastify.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 

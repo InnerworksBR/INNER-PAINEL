@@ -17,6 +17,7 @@ import RedefinirSenha from "../pages/RedefinirSenha/redefinirSenha";
 
 // Admin Pages
 import DashAdmin from "../pages/paginasAdmin/dashAdmin/dashAdmin";
+import NOC from "../pages/paginasAdmin/NOC/noc";
 import SegurancaAdmin from "../pages/paginasAdmin/segurancaAdmin/segurancaAdmin";
 import EmpresasAdmin from "../pages/paginasAdmin/empresasAdmin/empresasAdmin";
 import DocAdmin from "../pages/paginasAdmin/docAdmin/docAdmin";
@@ -24,6 +25,7 @@ import UsuariosAdmin from "../pages/paginasAdmin/usuariosAdmin/usuariosAdmin";
 import ConfigAdmin from "../pages/paginasAdmin/configAdmin/configAdmin";
 import AuditAdmin from "../pages/paginasAdmin/auditAdmin/auditAdmin";
 import InventarioAdmin from "../pages/paginasAdmin/inventarioAdmin/inventarioAdmin";
+import DocumentCreator from "../pages/paginasAdmin/DocumentCreator/documentCreator";
 
 // Route Protection
 import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
@@ -69,6 +71,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <DashAdmin /> },
       { path: "dashAdmin", element: <DashAdmin /> },
+      { path: "noc", element: <NOC /> },
       { path: "empresasAdmin", element: <EmpresasAdmin /> },
       { path: "docAdmin", element: <DocAdmin /> },
       { path: "usuariosAdmin", element: <UsuariosAdmin /> },
@@ -76,6 +79,7 @@ export const router = createBrowserRouter([
       { path: "inventarioAdmin", element: <InventarioAdmin /> },
       { path: "configAdmin", element: <ConfigAdmin /> },
       { path: "segurancaAdmin", element: <SegurancaAdmin /> },
+      { path: "document-creator", element: <DocumentCreator /> },
       { path: "conta", element: <Conta /> },
     ],
   },

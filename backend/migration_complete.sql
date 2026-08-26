@@ -868,6 +868,72 @@ COMMENT ON COLUMN servers.zabbix_archived_at IS 'Timestamp de arquivo do registr
 COMMENT ON COLUMN servers.monitoring_source IS 'Fonte de monitoramento: zabbix (antigo), agent, snmp, archived';
 
 -- =============================================================================
+-- 015: SLA Recalculation
+-- =============================================================================
+
+-- Atualizar tickets com SLA baseado em heurística
+UPDATE glpi_tickets
+SET sla_status = 'Em Análise'
+WHERE sla_status = 'N/A';
+
+UPDATE glpi_tickets
+SET sla_status = 'Fora do SLA'
+WHERE status NOT IN ('Resolvido', 'Fechado', '5', '6')
+  AND priority IN ('Alta', 'Muito Alta', 'Maior')
+  AND created_at < (NOW() - INTERVAL '1 day')
+  AND sla_status = 'Em Análise';
+
+UPDATE glpi_tickets
+SET sla_status = 'Fora do SLA'
+WHERE status NOT IN ('Resolvido', 'Fechado', '5', '6')
+  AND created_at < (NOW() - INTERVAL '7 days')
+  AND sla_status = 'Em Análise';
+
+COMMENT ON COLUMN glpi_tickets.sla_status IS 'Classificação de SLA: Dentro do SLA | Fora do SLA | Em Análise (sem dados suficientes)';
+
+-- =============================================================================
+-- 016: Habilitar módulos por empresa
+-- =============================================================================
+
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS enabled_modules TEXT[] DEFAULT ARRAY['dashboard', 'ms365', 'chamados'];
+COMMENT ON COLUMN companies.enabled_modules IS 'Módulos habilitados para o cliente: dashboard, ms365, servidores, rede, seguranca, inventario, chamados, documentacao';
+CREATE INDEX IF NOT EXISTS idx_companies_enabled_modules ON companies USING GIN (enabled_modules);
+
+-- =============================================================================
+-- 017: Tabela de configurações de notificação por empresa
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS company_notification_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    notify_critical_email BOOLEAN DEFAULT true,
+    notify_daily_summary BOOLEAN DEFAULT true,
+    notify_weekly_summary BOOLEAN DEFAULT false,
+    notification_emails TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_company_notification_settings_company_id
+ON company_notification_settings(company_id);
+
+COMMENT ON TABLE company_notification_settings IS 'Configurações de notificação por empresa';
+COMMENT ON COLUMN company_notification_settings.notify_critical_email IS 'Envia alertas críticos por e-mail imediato';
+COMMENT ON COLUMN company_notification_settings.notify_daily_summary IS 'Envia resumo diário de status';
+COMMENT ON COLUMN company_notification_settings.notify_weekly_summary IS 'Envia relatório semanal com métricas';
+COMMENT ON COLUMN company_notification_settings.notification_emails IS 'Lista de e-mails para receber notificações (separados por vírgula)';
+
+ALTER TABLE company_notification_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admins can manage notification settings" ON company_notification_settings
+    FOR ALL
+    TO authenticated
+    USING (EXISTS (
+        SELECT 1 FROM users
+        WHERE users.id = auth.uid() AND users.role = 'admin'
+    ));
+
+-- =============================================================================
 -- FIM DA MIGRATION
 -- Execute no SQL Editor do Supabase Local
 -- =============================================================================

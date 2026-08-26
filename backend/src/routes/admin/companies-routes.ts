@@ -9,6 +9,9 @@ interface CompanyBody {
   cnpj: string;
   sector?: string;
   status?: string;
+  enabled_modules?: string[];
+  phone?: string;
+  email?: string;
 }
 
 interface PaginationQuery {
@@ -56,14 +59,25 @@ export default async function adminCompaniesRoutes(fastify: FastifyInstance): Pr
           cnpj: { type: 'string' },
           sector: { type: 'string' },
           status: { type: 'string' },
+          enabled_modules: { type: 'array', items: { type: 'string' } },
+          phone: { type: 'string' },
+          email: { type: 'string' },
         },
       },
     },
   }, async (request, reply) => {
-    const { name, cnpj, sector, status } = request.body;
+    const { name, cnpj, sector, status, enabled_modules, phone, email } = request.body;
     const { data, error } = await supabaseAdmin
       .from('companies')
-      .insert([{ name, cnpj, sector, status: status || 'Ativo' }])
+      .insert([{
+        name,
+        cnpj,
+        sector,
+        status: status || 'Ativo',
+        enabled_modules: enabled_modules || ['dashboard', 'ms365', 'chamados'],
+        phone: phone || null,
+        email: email || null,
+      }])
       .select();
 
     if (error) return reply.code(500).send({ error: error.message });
@@ -74,7 +88,7 @@ export default async function adminCompaniesRoutes(fastify: FastifyInstance): Pr
       entityId: company.id,
       companyId: company.id,
       summary: `Empresa criada: ${name}`,
-      metadata: { cnpj, sector, status: status || 'Ativo' },
+      metadata: { cnpj, sector, status: status || 'Ativo', enabled_modules },
     });
     return company;
   });
@@ -154,6 +168,62 @@ export default async function adminCompaniesRoutes(fastify: FastifyInstance): Pr
       },
     });
     return sanitizeIntegration(data![0]);
+  });
+
+  // Route for saving notification settings
+  fastify.post<{ Params: { id: string }; Body: Record<string, any> }>('/:id/notifications', async (request, reply) => {
+    const { id } = request.params;
+    const { notify_critical_email, notify_daily_summary, notify_weekly_summary, notification_emails } = request.body;
+
+    // Check if settings already exist
+    const { data: existing } = await supabaseAdmin
+      .from('company_notification_settings')
+      .select('*')
+      .eq('company_id', id)
+      .maybeSingle();
+
+    const settingsData = {
+      company_id: id,
+      notify_critical_email: Boolean(notify_critical_email),
+      notify_daily_summary: Boolean(notify_daily_summary),
+      notify_weekly_summary: Boolean(notify_weekly_summary),
+      notification_emails: notification_emails || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    let data, error;
+
+    if (existing) {
+      // Update existing
+      const result = await supabaseAdmin
+        .from('company_notification_settings')
+        .update(settingsData)
+        .eq('company_id', id)
+        .select();
+      data = result.data;
+      error = result.error;
+    } else {
+      // Insert new
+      const result = await supabaseAdmin
+        .from('company_notification_settings')
+        .insert([settingsData])
+        .select();
+      data = result.data;
+      error = result.error;
+    }
+
+    if (error) return reply.code(500).send({ error: error.message });
+
+    await writeAdminAuditLog(supabaseAdmin, request, {
+      action: 'notification_settings.save',
+      entityType: 'company_notification_settings',
+      entityId: data![0]?.id,
+      companyId: id,
+      summary: 'Configurações de notificação salvas',
+      metadata: { notify_critical_email, notify_daily_summary, notify_weekly_summary, has_emails: Boolean(notification_emails) },
+    });
+
+    return data![0];
   });
 
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {

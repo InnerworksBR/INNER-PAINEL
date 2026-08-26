@@ -1,4 +1,4 @@
-import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X, UserRound, Shield, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X, UserRound, Shield, ChevronRight, Monitor, Sparkles } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -13,8 +13,10 @@ const SidebarAdmin = ({ isOpen, onClose }) => {
 
     const menuItems = [
         { to: "/admin/dashAdmin", icon: LayoutDashboard, label: 'Dashboard' },
+        { to: "/admin/noc", icon: Monitor, label: 'NOC' },
         { to: "/admin/empresasAdmin", icon: Building2, label: 'Empresas' },
         { to: "/admin/docAdmin", icon: FileText, label: 'Documentação' },
+        { to: "/admin/document-creator", icon: Sparkles, label: 'Docs IA' },
         { to: "/admin/usuariosAdmin", icon: Users, label: 'Usuários' },
         { to: "/admin/auditAdmin", icon: FileSearch, label: 'Auditoria' },
         { to: "/admin/inventarioAdmin", icon: Boxes, label: 'Inventário' },

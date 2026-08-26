@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle, Eye, Monitor, Copy } from 'lucide-react';
+import { Building2, Plus, Search, Edit2, Trash2, X, Check, RefreshCw, AlertCircle, CheckCircle, Eye, Monitor, Copy, Sparkles } from 'lucide-react';
 import { useCompanies } from '../../../context/CompanyContext';
 import api from '../../../services/api';
 import { useNavigate } from 'react-router-dom';
+import OnboardingWizard from '../Onboarding/onboarding';
 
 const EmpresasAdmin = () => {
-    const { companies, addCompany, updateCompany, deleteCompany, updateIntegrations } = useCompanies();
+    const { companies, addCompany, updateCompany, deleteCompany, updateIntegrations, refreshCompanies } = useCompanies();
     const navigate = useNavigate();
 
     // Estados para o modal e formulário
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
     const [isIntegrationsModalOpen, setIsIntegrationsModalOpen] = useState(false);
     const [integrationsCompany, setIntegrationsCompany] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -210,11 +212,19 @@ const EmpresasAdmin = () => {
                     <p className="text-slate-500 text-lg font-normal">Cadastre e gerencie as empresas do portal</p>
                 </div>
                 <button
-                    onClick={() => handleOpenModal()}
+                    onClick={() => setIsOnboardingOpen(true)}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-normal transition-all shadow-lg shadow-blue-500/20 active:scale-95"
                 >
                     <Plus size={20} />
-                    Nova Empresa
+                    Novo Cliente
+                </button>
+                <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 px-4 py-2.5 rounded-xl font-normal transition-all"
+                    title="Método rápido"
+                >
+                    <Sparkles size={18} />
+                    Rápido
                 </button>
             </div>
 
@@ -590,6 +600,16 @@ const EmpresasAdmin = () => {
                     </div>
                 </div>
             )}
+
+            {/* Wizard de Onboarding */}
+            <OnboardingWizard
+                isOpen={isOnboardingOpen}
+                onClose={() => setIsOnboardingOpen(false)}
+                onSuccess={(company) => {
+                    refreshCompanies();
+                    setIsOnboardingOpen(false);
+                }}
+            />
         </div>
     );
 };
