@@ -56,24 +56,25 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     }
 
     // 2. Buscar tickets com paginação por range.
-    // Estratégia final: usar POST /search com body JSON (sem limite de URL).
-    // O GLPI /search aceita criteria como array de objetos (cada um com
-    // field, searchtype, value). Sem criteria[], retorna ERROR_BAD_ARRAY.
-    // Passamos criteria: [] (vazio) para não filtrar nada - traz todos.
-    const pageSize = 50;
+    // Estrategia final: usar /Ticket (NAO /search) com GET e range.
+    // /search exige criteria[] obrigatorio na URL e quebra com URI too long.
+    // /Ticket direto retorna a lista paginada via header Content-Range.
+    const pageSize = 25;
     const maxTickets = 5000;
     const tickets: any[] = [];
 
     for (let start = 0; start < maxTickets; start += pageSize) {
       const end = start + pageSize - 1;
-      const response = await glpiApi.post('/Ticket/search', {
-        criteria: [],
-        range: `${start}-${end}`,
-        order: 'DESC',
-        sort: 'id',
-        expand_dropdowns: false,
-        get_hateoas: false,
+      const response = await glpiApi.get('/Ticket', {
+        params: {
+          range: `${start}-${end}`,
+          order: 'DESC',
+          sort: 'id',
+        },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
       });
+
       const page = Array.isArray(response.data) ? response.data : [];
       tickets.push(...page);
       if (page.length < pageSize) break;
