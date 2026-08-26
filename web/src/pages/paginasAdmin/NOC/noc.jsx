@@ -10,8 +10,13 @@ const NOC = () => {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [isFullscreen, setIsFullscreen] = useState(false);
 
-    // Open NOC in new tab for fullscreen
+    // Open NOC in new tab for fullscreen (totally separate, no sidebar)
     const openInNewTab = useCallback(() => {
+        window.open('/noc', '_blank');
+    }, []);
+
+    // Fullscreen button - also opens in new tab to avoid sidebar
+    const handleFullscreen = useCallback(() => {
         window.open('/noc', '_blank');
     }, []);
 
@@ -156,9 +161,9 @@ const NOC = () => {
                         <RefreshCw className={`w-6 h-6 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
                     </button>
                     <button
-                        onClick={toggleFullscreen}
+                        onClick={handleFullscreen}
                         className="p-3 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-colors"
-                        title="Fullscreen (F11)"
+                        title="Abrir em tela cheia (nova aba)"
                     >
                         <Maximize2 className="w-6 h-6 text-slate-400" />
                     </button>
