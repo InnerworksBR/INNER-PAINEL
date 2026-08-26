@@ -77,7 +77,10 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     }
 
     // 3. Mapear e persistir
-    // Migration SQL necessária: ALTER TABLE glpi_tickets ADD COLUMN IF NOT EXISTS glpi_date_mod timestamptz;
+    // A coluna glpi_date_mod foi adicionada na migration_014_glpi_date_mod.sql
+    // mas pode não existir em ambientes que ainda não aplicaram a migration.
+    // Para máxima compatibilidade, montamos o payload completo e, se o upsert
+    // falhar especificamente por causa dessa coluna ausente, refazemos sem ela.
     const ticketsToUpsert = tickets.map((t: any) => ({
       glpi_id: t.id,
       title: t.name,
@@ -97,7 +100,17 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
         .from('glpi_tickets')
         .upsert(ticketsToUpsert, { onConflict: 'company_id,glpi_id' });
 
-      if (error) throw error;
+      // Fallback: se a coluna glpi_date_mod não existir, refaz sem ela
+      if (error && /glpi_date_mod.*schema cache|column.*glpi_date_mod/i.test(error.message || '')) {
+        console.warn('[glpi-service] Coluna glpi_date_mod ausente — aplicando fallback sem ela. Aplique a migration_014_glpi_date_mod.sql no Supabase.');
+        const ticketsFallback = ticketsToUpsert.map(({ glpi_date_mod, ...rest }) => rest);
+        const { error: retryError } = await supabase
+          .from('glpi_tickets')
+          .upsert(ticketsFallback, { onConflict: 'company_id,glpi_id' });
+        if (retryError) throw retryError;
+      } else if (error) {
+        throw error;
+      }
     }
 
     // A tabela local deve refletir o retrato atual retornado pelo GLPI para a entidade,
