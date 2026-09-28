@@ -155,6 +155,48 @@ GRANT EXECUTE ON FUNCTION enroll_agent(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT,
 -- ============================================================
 -- 3. Estado atual de hosts e VMs Hyper-V
 -- ============================================================
+-- Estas colunas existiam no schema consolidado, mas podem faltar em bancos
+-- legados que aplicaram apenas as migrations incrementais. A ingestão usa
+-- asset_key no lookup do host e no ON CONFLICT, por isso os pré-requisitos
+-- precisam ser preparados antes da função ser executada.
+ALTER TABLE servers
+  ADD COLUMN IF NOT EXISTS monitoring_source TEXT DEFAULT 'agent_native';
+
+ALTER TABLE servers
+  ADD COLUMN IF NOT EXISTS asset_key TEXT;
+
+ALTER TABLE servers
+  ADD COLUMN IF NOT EXISTS agent_id UUID REFERENCES registered_agents(id) ON DELETE SET NULL;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT asset_key
+      FROM servers
+     WHERE asset_key IS NOT NULL
+     GROUP BY asset_key
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'servers.asset_key contains duplicate non-null values; resolve duplicates before applying migration 019';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_index AS index_info
+      JOIN pg_attribute AS attribute_info
+        ON attribute_info.attrelid = index_info.indrelid
+       AND attribute_info.attnum = ANY(index_info.indkey)
+     WHERE index_info.indrelid = 'public.servers'::regclass
+       AND index_info.indisunique
+       AND index_info.indnkeyatts = 1
+       AND attribute_info.attname = 'asset_key'
+  ) THEN
+    CREATE UNIQUE INDEX servers_asset_key_unique_idx
+      ON servers (asset_key);
+  END IF;
+END;
+$$;
+
 ALTER TABLE servers
   ALTER COLUMN monitoring_source SET DEFAULT 'agent_native';
 
