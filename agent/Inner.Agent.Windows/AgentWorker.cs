@@ -1,6 +1,7 @@
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Inner.Agent.Windows.Collectors;
 using Inner.Agent.Windows.Contracts;
 using Inner.Agent.Windows.Persistence;
@@ -25,7 +26,8 @@ public sealed class AgentWorker(
     private const string AgentVersion = "1.0.0";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     private DateTimeOffset _lastHeartbeatAt = DateTimeOffset.MinValue;

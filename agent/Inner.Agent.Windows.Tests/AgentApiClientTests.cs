@@ -20,6 +20,10 @@ public sealed class AgentApiClientTests
 
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
             Assert.Equal(3, body.RootElement.GetProperty("sequence").GetInt64());
+            Assert.Equal("Running", body.RootElement
+                .GetProperty("virtual_machines")[0]
+                .GetProperty("state")
+                .GetString());
             return JsonResponse("""{"status":"accepted","accepted_sequence_no":3}""");
         });
         using var httpClient = new HttpClient(handler);
@@ -29,7 +33,11 @@ public sealed class AgentApiClientTests
             3,
             DateTimeOffset.UtcNow,
             new HostMetrics("HV-01", 10, 20, 100, 20, 30, 10),
-            Array.Empty<VirtualMachineMetrics>()));
+            new[]
+            {
+                new VirtualMachineMetrics(
+                    "vm-1", "VM-01", HyperVState.Running, 2, 4096, 2048, 3600, 100)
+            }));
 
         Assert.Equal("accepted", result.Status);
         Assert.Equal(3, result.AcceptedSequenceNo);

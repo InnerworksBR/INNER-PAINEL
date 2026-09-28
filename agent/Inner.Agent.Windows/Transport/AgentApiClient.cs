@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Inner.Agent.Windows.Contracts;
 
 namespace Inner.Agent.Windows.Transport;
@@ -52,7 +53,8 @@ public sealed class AgentApiClient(HttpClient httpClient, string apiBaseUrl)
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     public Task<AgentCredentials> EnrollAsync(EnrollmentRequest request, CancellationToken cancellationToken = default) =>

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Inner.Agent.Windows.Contracts;
 using Microsoft.Data.Sqlite;
 
@@ -8,7 +9,8 @@ public sealed class SqliteAgentOutbox : IAgentOutbox
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     private readonly string _connectionString;
