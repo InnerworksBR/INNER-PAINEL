@@ -59,9 +59,6 @@ try {
     $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if ($existing) {
         Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-        sc.exe delete $serviceName | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Não foi possível remover a instalação anterior do serviço." }
-        Start-Sleep -Seconds 1
     }
 
     New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
@@ -84,14 +81,22 @@ try {
 
     $installedExecutable = Join-Path $InstallRoot "Inner.Agent.Windows.exe"
     $binPath = '"' + $installedExecutable + '"'
-    sc.exe create $serviceName binPath= $binPath start= auto obj= LocalSystem DisplayName= "Inner Hyper-V Agent" | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "Não foi possível criar o serviço do agente." }
+    if ($existing) {
+        sc.exe config $serviceName binPath= $binPath start= auto obj= LocalSystem DisplayName= "Inner Hyper-V Agent" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Não foi possível atualizar o serviço do agente." }
+    } else {
+        sc.exe create $serviceName binPath= $binPath start= auto obj= LocalSystem DisplayName= "Inner Hyper-V Agent" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Não foi possível criar o serviço do agente." }
+    }
     sc.exe description $serviceName "Coleta host Hyper-V e suas máquinas virtuais para o painel Inner." | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Não foi possível configurar a descrição do serviço." }
     Start-Service -Name $serviceName
     $installationSucceeded = $true
     Write-Host "Agente instalado e iniciado como serviço $serviceName."
 } finally {
+    if (-not $installationSucceeded -and $existing) {
+        Start-Service -Name $serviceName -ErrorAction SilentlyContinue
+    }
     if ($installationSucceeded -and (Test-Path -LiteralPath $tokenSourcePath)) {
         Remove-Item -LiteralPath $tokenSourcePath -Force -ErrorAction SilentlyContinue
     }

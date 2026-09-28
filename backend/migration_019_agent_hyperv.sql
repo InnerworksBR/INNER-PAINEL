@@ -501,7 +501,7 @@ BEGIN
      WHERE s.company_id = v_company_id
        AND s.agent_id = p_agent_id
        AND s.is_virtual = TRUE
-       AND s.last_metrics_at < p_collected_at
+       AND COALESCE(s.last_metrics_at, '-infinity'::timestamptz) < p_collected_at
        AND NOT EXISTS (
          SELECT 1
            FROM jsonb_array_elements(COALESCE(p_payload -> 'virtual_machines', '[]'::jsonb)) incoming

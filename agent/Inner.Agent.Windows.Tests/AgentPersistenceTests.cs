@@ -65,13 +65,18 @@ public sealed class AgentPersistenceTests
         await using var outbox = new SqliteAgentOutbox(directory);
         await outbox.InitializeAsync(CancellationToken.None);
 
-        var sequence = await outbox.EnqueueAsync(new MetricBatch(
+        var firstSequence = await outbox.EnqueueAsync(new MetricBatch(
+            0,
+            DateTimeOffset.UtcNow,
+            new HostMetrics("HV-01", 20, 40, 1024, 400, 30, 100),
+            Array.Empty<VirtualMachineMetrics>()), CancellationToken.None);
+        await outbox.EnqueueAsync(new MetricBatch(
             0,
             DateTimeOffset.UtcNow,
             new HostMetrics("HV-01", 20, 40, 1024, 400, 30, 100),
             Array.Empty<VirtualMachineMetrics>()), CancellationToken.None);
 
-        await outbox.MarkRetryAsync(sequence, TimeSpan.FromHours(1), "temporarily unavailable", CancellationToken.None);
+        await outbox.MarkRetryAsync(firstSequence, TimeSpan.FromHours(1), "temporarily unavailable", CancellationToken.None);
 
         Assert.Empty(await outbox.GetPendingAsync(10, CancellationToken.None));
     }

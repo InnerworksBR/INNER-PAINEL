@@ -9,6 +9,7 @@ import { AgentPayloadError } from '../types/agent';
 const VM_STATES = new Set<HyperVState>(['Running', 'Off', 'Paused']);
 const MAX_VIRTUAL_MACHINES = 500;
 const MAX_PAYLOAD_BYTES = 1024 * 1024;
+const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 export function validateMetricBatch(input: unknown): MetricBatch {
   if (!isRecord(input)) throw new AgentPayloadError('INVALID_PAYLOAD', 'payload must be an object');
@@ -18,8 +19,12 @@ export function validateMetricBatch(input: unknown): MetricBatch {
 
   const sequence = readNonNegativeInteger(input.sequence, 'sequence');
   const collectedAt = readString(input.collected_at, 'collected_at');
-  if (Number.isNaN(Date.parse(collectedAt))) {
+  const collectedAtMs = Date.parse(collectedAt);
+  if (Number.isNaN(collectedAtMs)) {
     throw new AgentPayloadError('INVALID_PAYLOAD', 'collected_at must be an ISO timestamp');
+  }
+  if (collectedAtMs > Date.now() + MAX_FUTURE_SKEW_MS) {
+    throw new AgentPayloadError('INVALID_PAYLOAD', 'collected_at cannot be in the future');
   }
 
   const host = validateHost(input.host);

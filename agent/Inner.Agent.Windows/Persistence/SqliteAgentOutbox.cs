@@ -146,9 +146,27 @@ public sealed class SqliteAgentOutbox : IAgentOutbox
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT sequence, payload, created_at, attempts
-              FROM agent_outbox
+             FROM agent_outbox
              WHERE status = 'pending'
                AND (next_attempt_at IS NULL OR next_attempt_at <= $now)
+               AND sequence >= (
+                   SELECT MIN(sequence)
+                     FROM agent_outbox
+                    WHERE status = 'pending'
+               )
+               AND ((
+                   SELECT first_pending.next_attempt_at
+                     FROM agent_outbox AS first_pending
+                    WHERE first_pending.status = 'pending'
+                    ORDER BY first_pending.sequence
+                    LIMIT 1
+               ) IS NULL OR (
+                   SELECT first_pending.next_attempt_at
+                     FROM agent_outbox AS first_pending
+                    WHERE first_pending.status = 'pending'
+                    ORDER BY first_pending.sequence
+                    LIMIT 1
+               ) <= $now)
              ORDER BY sequence
              LIMIT $limit;
             """;

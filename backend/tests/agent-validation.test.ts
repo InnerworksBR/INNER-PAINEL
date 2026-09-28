@@ -77,3 +77,13 @@ test('rejects an empty host name', () => {
     (error: unknown) => error instanceof Error && error.message.includes('INVALID_PAYLOAD')
   );
 });
+
+test('rejects snapshots too far in the future', () => {
+  const payload = validBatch();
+  payload.collected_at = new Date(Date.now() + 11 * 60 * 1000).toISOString();
+
+  assert.throws(
+    () => validateMetricBatch(payload),
+    (error: unknown) => error instanceof Error && error.message.includes('collected_at cannot be in the future')
+  );
+});
