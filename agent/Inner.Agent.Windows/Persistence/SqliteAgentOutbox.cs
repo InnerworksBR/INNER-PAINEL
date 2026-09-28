@@ -63,6 +63,19 @@ public sealed class SqliteAgentOutbox : IAgentOutbox
         await EnsureColumnAsync(connection, "agent_outbox", "next_attempt_at", "TEXT NULL", cancellationToken);
         await EnsureColumnAsync(connection, "agent_outbox", "last_error", "TEXT NULL", cancellationToken);
         await EnsureColumnAsync(connection, "agent_sequence", "last_accepted_sequence", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
+        await using var cleanup = connection.CreateCommand();
+        cleanup.CommandText = """
+            DELETE FROM agent_outbox
+             WHERE status = 'rejected'
+               AND sequence NOT IN (
+                   SELECT sequence
+                     FROM agent_outbox
+                    WHERE status = 'rejected'
+                    ORDER BY sequence DESC
+                    LIMIT 1000
+               );
+            """;
+        await cleanup.ExecuteNonQueryAsync(cancellationToken);
         _initialized = true;
     }
 

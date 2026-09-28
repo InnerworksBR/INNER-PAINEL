@@ -77,6 +77,9 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
     try {
       const rawIdempotencyKey = request.headers['idempotency-key'];
       const idempotencyKey = Array.isArray(rawIdempotencyKey) ? rawIdempotencyKey[0] : rawIdempotencyKey;
+      if (!idempotencyKey?.trim()) {
+        return reply.code(400).send({ error: 'Idempotency-Key é obrigatório.' });
+      }
       const result = await ingestMetricBatch(
         fastify.supabaseAdmin,
         principal.agent_id,

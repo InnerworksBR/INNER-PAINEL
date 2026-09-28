@@ -76,13 +76,13 @@ DECLARE
   v_company_id UUID;
   v_asset_key TEXT;
 BEGIN
-  SELECT id, company_id
+  SELECT aat.id, aat.company_id
     INTO v_token_id, v_company_id
-    FROM agent_activation_tokens
-   WHERE token_hash = p_activation_token_hash
-     AND is_active = TRUE
-     AND used_at IS NULL
-     AND (expires_at IS NULL OR expires_at > NOW())
+    FROM agent_activation_tokens AS aat
+   WHERE aat.token_hash = p_activation_token_hash
+     AND aat.is_active = TRUE
+     AND aat.used_at IS NULL
+     AND (aat.expires_at IS NULL OR aat.expires_at > NOW())
    FOR UPDATE;
 
   IF v_token_id IS NULL THEN
@@ -93,7 +93,7 @@ BEGIN
 
   UPDATE agent_activation_tokens
      SET used_at = NOW(), is_active = FALSE
-   WHERE id = v_token_id;
+   WHERE agent_activation_tokens.id = v_token_id;
 
   RETURN QUERY
   INSERT INTO registered_agents (
@@ -239,10 +239,10 @@ DECLARE
   v_previous_status TEXT;
   v_current_status TEXT;
 BEGIN
-  SELECT company_id, status, COALESCE(last_sequence_no, -1)
+  SELECT ra.company_id, ra.status, COALESCE(ra.last_sequence_no, -1)
     INTO v_company_id, v_agent_status, v_last_sequence_no
-    FROM registered_agents
-   WHERE id = p_agent_id
+    FROM registered_agents AS ra
+   WHERE ra.id = p_agent_id
    FOR UPDATE;
 
   IF v_company_id IS NULL OR v_agent_status = 'Revoked' THEN
@@ -304,16 +304,16 @@ BEGIN
     p_sequence_no
   );
   -- O host é identificado pelo agente/asset_key; hostname é apenas mutável.
-  SELECT id
+  SELECT s.id
     INTO v_host_id
-    FROM servers
-   WHERE company_id = v_company_id
+    FROM servers AS s
+   WHERE s.company_id = v_company_id
      AND (
-       asset_key = p_agent_id::TEXT || ':host'
-       OR (agent_id = p_agent_id AND is_virtual = FALSE)
-       OR (hostname = v_hostname AND agent_id IS NULL)
+       s.asset_key = p_agent_id::TEXT || ':host'
+       OR (s.agent_id = p_agent_id AND s.is_virtual = FALSE)
+       OR (s.hostname = v_hostname AND s.agent_id IS NULL)
      )
-   ORDER BY CASE WHEN asset_key = p_agent_id::TEXT || ':host' THEN 0 ELSE 1 END
+   ORDER BY CASE WHEN s.asset_key = p_agent_id::TEXT || ':host' THEN 0 ELSE 1 END
    LIMIT 1
    FOR UPDATE;
 
@@ -382,10 +382,10 @@ BEGIN
       FROM jsonb_array_elements(COALESCE(p_payload -> 'virtual_machines', '[]'::jsonb))
   LOOP
     v_current_status := CASE WHEN v_vm ->> 'state' = 'Running' THEN 'Online' ELSE 'Offline' END;
-    SELECT status
+    SELECT s.status
       INTO v_previous_status
-      FROM servers
-     WHERE asset_key = p_agent_id::TEXT || ':vm:' || (v_vm ->> 'hyperv_id')
+      FROM servers AS s
+     WHERE s.asset_key = p_agent_id::TEXT || ':vm:' || (v_vm ->> 'hyperv_id')
      FOR UPDATE;
 
     INSERT INTO servers (
@@ -402,8 +402,9 @@ BEGIN
       vm_parent_id,
       hyperv_vm_id,
       is_virtual,
-      vm_cpu_percent,
-      vm_memory_total_mb,
+       vm_cpu_percent,
+       vm_memory_percent,
+       vm_memory_total_mb,
       vm_memory_used_mb,
       vm_virtual_disk_size_gb,
       vm_status,
@@ -429,8 +430,14 @@ BEGIN
       v_host_id,
       v_vm ->> 'hyperv_id',
       TRUE,
-      (v_vm ->> 'cpu_percent')::DECIMAL,
-      (v_vm ->> 'memory_assigned_mb')::INTEGER,
+       (v_vm ->> 'cpu_percent')::DECIMAL,
+       CASE
+         WHEN COALESCE((v_vm ->> 'memory_assigned_mb')::DECIMAL, 0) > 0
+           THEN COALESCE((v_vm ->> 'memory_used_mb')::DECIMAL, 0)
+             / COALESCE((v_vm ->> 'memory_assigned_mb')::DECIMAL, 1) * 100
+         ELSE 0
+       END,
+       (v_vm ->> 'memory_assigned_mb')::INTEGER,
       (v_vm ->> 'memory_used_mb')::INTEGER,
       (v_vm ->> 'virtual_disk_size_gb')::DECIMAL,
       v_vm ->> 'state',
@@ -447,9 +454,10 @@ BEGIN
       monitoring_source = 'agent_native',
       vm_parent_id = EXCLUDED.vm_parent_id,
       hyperv_vm_id = EXCLUDED.hyperv_vm_id,
-      is_virtual = TRUE,
-      vm_cpu_percent = EXCLUDED.vm_cpu_percent,
-      vm_memory_total_mb = EXCLUDED.vm_memory_total_mb,
+       is_virtual = TRUE,
+       vm_cpu_percent = EXCLUDED.vm_cpu_percent,
+       vm_memory_percent = EXCLUDED.vm_memory_percent,
+       vm_memory_total_mb = EXCLUDED.vm_memory_total_mb,
       vm_memory_used_mb = EXCLUDED.vm_memory_used_mb,
       vm_virtual_disk_size_gb = EXCLUDED.vm_virtual_disk_size_gb,
       vm_status = EXCLUDED.vm_status,
@@ -501,12 +509,12 @@ BEGIN
        )
      FOR UPDATE
   LOOP
-    UPDATE servers
+    UPDATE servers AS s
        SET status = 'Offline',
            vm_status = 'Off',
            last_updated = p_collected_at,
            last_metrics_at = p_collected_at
-     WHERE asset_key = p_agent_id::TEXT || ':vm:' || (v_vm ->> 'hyperv_id');
+     WHERE s.asset_key = p_agent_id::TEXT || ':vm:' || (v_vm ->> 'hyperv_id');
 
     IF v_vm ->> 'status' <> 'Offline' THEN
       INSERT INTO monitoring_events (
@@ -531,14 +539,14 @@ BEGIN
     END IF;
   END LOOP;
 
-  UPDATE registered_agents
+  UPDATE registered_agents AS ra
      SET status = 'Online',
          last_metrics_at = p_collected_at,
          last_sequence_no = p_sequence_no,
          last_error = NULL,
          updated_at = NOW()
-   WHERE id = p_agent_id
-     AND status <> 'Revoked';
+   WHERE ra.id = p_agent_id
+     AND ra.status <> 'Revoked';
 
   RETURN QUERY SELECT 'accepted', p_agent_id, p_sequence_no, NOW();
 END;
@@ -558,6 +566,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_deleted INTEGER;
+  v_history_deleted INTEGER;
 BEGIN
   IF retention_days < 1 THEN
     RAISE EXCEPTION 'retention_days must be positive';
@@ -567,6 +576,15 @@ BEGIN
    WHERE collected_at < NOW() - make_interval(days => retention_days);
 
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
+
+  DELETE FROM server_metric_history AS h
+   USING servers AS s
+   WHERE h.server_id = s.id
+     AND s.monitoring_source = 'agent_native'
+     AND h.collected_at < NOW() - make_interval(days => retention_days);
+
+  GET DIAGNOSTICS v_history_deleted = ROW_COUNT;
+  v_deleted := v_deleted + v_history_deleted;
   RETURN v_deleted;
 END;
 $$;

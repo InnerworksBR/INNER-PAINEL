@@ -42,6 +42,7 @@ if ([string]::IsNullOrWhiteSpace($activationToken)) {
     throw "O arquivo de token está vazio ou não contém activation_token."
 }
 
+$installationSucceeded = $false
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
 try {
     if ([IO.Path]::GetExtension($PackagePath) -eq ".zip") {
@@ -59,12 +60,14 @@ try {
     if ($existing) {
         Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
         sc.exe delete $serviceName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Não foi possível remover a instalação anterior do serviço." }
         Start-Sleep -Seconds 1
     }
 
     New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
     icacls $dataDirectory /inheritance:r /grant:r "SYSTEM:(OI)(CI)(F)" "Administrators:(OI)(CI)(F)" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Não foi possível proteger o diretório de dados do agente." }
     Copy-Item -LiteralPath (Join-Path $staging "*") -Destination $InstallRoot -Recurse -Force
 
     $configPath = Join-Path $InstallRoot "appsettings.json"
@@ -77,15 +80,19 @@ try {
     @{ activation_token = $activationToken; created_at = [DateTime]::UtcNow.ToString("O") } |
         ConvertTo-Json | Set-Content -LiteralPath $bootstrapPath -Encoding UTF8
     icacls $bootstrapPath /inheritance:r /grant:r "SYSTEM:(R)" "Administrators:(R)" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Não foi possível proteger o bootstrap do agente." }
 
     $installedExecutable = Join-Path $InstallRoot "Inner.Agent.Windows.exe"
     $binPath = '"' + $installedExecutable + '"'
     sc.exe create $serviceName binPath= $binPath start= auto obj= LocalSystem DisplayName= "Inner Hyper-V Agent" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Não foi possível criar o serviço do agente." }
     sc.exe description $serviceName "Coleta host Hyper-V e suas máquinas virtuais para o painel Inner." | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Não foi possível configurar a descrição do serviço." }
     Start-Service -Name $serviceName
+    $installationSucceeded = $true
     Write-Host "Agente instalado e iniciado como serviço $serviceName."
 } finally {
-    if (Test-Path -LiteralPath $tokenSourcePath) {
+    if ($installationSucceeded -and (Test-Path -LiteralPath $tokenSourcePath)) {
         Remove-Item -LiteralPath $tokenSourcePath -Force -ErrorAction SilentlyContinue
     }
     if (Test-Path -LiteralPath $staging) {

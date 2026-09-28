@@ -33,7 +33,8 @@ public sealed class WindowsHostMetricsCollector : IHostMetricsCollector
 
     private double ReadCpuPercent()
     {
-        if (!GetSystemTimes(out var idle, out var kernel, out var user)) return 0;
+        if (!GetSystemTimes(out var idle, out var kernel, out var user))
+            throw new InvalidOperationException("Windows CPU counters are unavailable.");
 
         var current = new CpuSample(ToUInt64(idle), ToUInt64(kernel), ToUInt64(user));
         var previous = Interlocked.Exchange(ref _previousCpu, current);
@@ -48,23 +49,18 @@ public sealed class WindowsHostMetricsCollector : IHostMetricsCollector
     private static MemorySample ReadMemory()
     {
         var status = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
-        if (!GlobalMemoryStatusEx(ref status)) return new MemorySample(0, 0);
+        if (!GlobalMemoryStatusEx(ref status))
+            throw new InvalidOperationException("Windows memory counters are unavailable.");
         return new MemorySample(status.TotalPhysical, status.TotalPhysical - status.AvailablePhysical);
     }
 
     private static double ReadSystemDiskPercent()
     {
-        try
-        {
-            var root = Path.GetPathRoot(Environment.SystemDirectory);
-            if (string.IsNullOrWhiteSpace(root)) return 0;
-            var drive = new DriveInfo(root);
-            return drive.TotalSize <= 0 ? 0 : Math.Clamp((drive.TotalSize - drive.AvailableFreeSpace) * 100d / drive.TotalSize, 0, 100);
-        }
-        catch
-        {
-            return 0;
-        }
+        var root = Path.GetPathRoot(Environment.SystemDirectory)
+            ?? throw new InvalidOperationException("Windows system drive is unavailable.");
+        var drive = new DriveInfo(root);
+        if (drive.TotalSize <= 0) throw new InvalidOperationException("Windows system drive has no readable capacity.");
+        return Math.Clamp((drive.TotalSize - drive.AvailableFreeSpace) * 100d / drive.TotalSize, 0, 100);
     }
 
     private static ulong ToUInt64(FileTime value) => ((ulong)value.High << 32) | value.Low;

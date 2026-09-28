@@ -82,7 +82,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           integration.ms365_last_sync_error ||
           integration.glpi_last_sync_error
         );
-        const hasAgentProblem = companyAgents.some((agent: any) => {
+        const hasAgentProblem = companyAgents.length === 0 || companyAgents.some((agent: any) => {
           if (String(agent.status || '').toLowerCase() !== 'online') return true;
           return getMetricFreshnessStatus(agent.last_metrics_at) !== 'Online';
         });
