@@ -1,13 +1,12 @@
 // src/routes/client/metrics-routes.ts
 import type { FastifyInstance } from 'fastify';
 import { syncMS365Metrics } from '../../services/ms-graph-service';
-import { fetchZabbixMetrics } from '../../services/zabbix-service';
 import type { JWTPayload } from '../../types';
-import { decryptSecret } from '../../services/crypto-service';
 import { writeAdminAuditLog } from '../../services/audit-service';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { buildAssetDetail } from '../../services/asset-profile-service';
 import { formatSseEvent } from '../../services/sse-service';
+import { getMetricFreshnessStatus } from '../../services/monitoring-freshness-service';
 
 export default async function clientMetricsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -60,11 +59,11 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
 
         const { data: agentData, error: agentError } = await agentsQuery;
         if (!agentError && agentData) {
-          return agentData;
+          return agentData.map(applyServerFreshness);
         }
       }
 
-      return data || [];
+      return (data || []).map(applyServerFreshness);
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
@@ -192,7 +191,7 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
   fastify.post<{ Params: { type: string }; Body: { company_id?: string; host_ids?: string[] } }>('/sync/:type', async (request, reply) => {
     const { user } = request.user as JWTPayload;
     const { type } = request.params;
-    const { company_id, host_ids } = request.body || {};
+    const { company_id } = request.body || {};
 
     if (user.role !== 'admin') {
       return reply.code(403).send({ error: 'Apenas administradores podem sincronizar' });
@@ -214,23 +213,6 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
           metadata: result,
         });
         return result;
-      } else if (type === 'zabbix') {
-        const { fetchZabbixMetrics, fetchZabbixNetworkDevices } = await import('../../services/zabbix-service');
-        const srvResult = await fetchZabbixMetrics(supabaseAdmin, targetCompanyId, host_ids);
-        const netResult = await fetchZabbixNetworkDevices(supabaseAdmin, targetCompanyId);
-        const result = { 
-          message: 'Sincronização Zabbix concluída (Servidores e Rede)', 
-          servers: srvResult.count,
-          network: netResult.count
-        };
-        await writeAdminAuditLog(supabaseAdmin, request, {
-          action: 'sync.manual',
-          entityType: 'zabbix',
-          companyId: targetCompanyId,
-          summary: 'Sync manual Zabbix executado',
-          metadata: result,
-        });
-        return result;
       } else if (type === 'glpi') {
         const { syncTickets } = await import('../../services/glpi-service');
         const result = await syncTickets(supabaseAdmin, targetCompanyId);
@@ -243,69 +225,12 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
         });
         return result;
       }
-      return reply.code(400).send({ error: 'Tipo de sincronização inválido. Use: ms365, zabbix ou glpi' });
+      return reply.code(400).send({ error: 'Tipo de sincronização inválido. Use: ms365 ou glpi' });
     } catch (error: any) {
       return reply.code(500).send({ error: error.message });
     }
   });
 
-  // Diagnóstico Zabbix — lista chaves de itens brutas (apenas admins)
-  fastify.get('/zabbix-debug', async (request, reply) => {
-    const { user } = request.user as JWTPayload;
-    if (user.role !== 'admin') return reply.code(403).send({ error: 'Apenas admins' });
-
-    const companyId = (request.query as any).company_id || user.company_id;
-    if (!companyId) return reply.code(400).send({ error: 'company_id obrigatório' });
-
-    const { data: integrations } = await supabaseAdmin
-      .from('company_integrations')
-      .select('zabbix_api_url, zabbix_user, zabbix_password')
-      .eq('company_id', companyId)
-      .single();
-
-    if (!integrations?.zabbix_api_url) {
-      return reply.code(400).send({ error: 'Credenciais Zabbix não configuradas' });
-    }
-
-    const axiosModule = await import('axios');
-    const { zabbix_api_url, zabbix_user } = integrations;
-    const zabbix_password = decryptSecret(integrations.zabbix_password);
-    if (!zabbix_password) {
-      return reply.code(400).send({ error: 'Senha Zabbix não configurada' });
-    }
-
-    const loginRes = await axiosModule.default.post(zabbix_api_url, {
-      jsonrpc: '2.0', method: 'user.login',
-      params: { username: zabbix_user, password: zabbix_password },
-      id: 1, auth: null,
-    });
-    const token = loginRes.data.result;
-
-    const hostsRes = await axiosModule.default.post(zabbix_api_url, {
-      jsonrpc: '2.0', method: 'host.get',
-      params: {
-        limit: 3,
-        filter: { status: '0' },
-        selectGroups: ['name'],
-        selectItems: ['key_', 'lastvalue', 'name', 'units'],
-      },
-      id: 2, auth: token,
-    });
-
-    await axiosModule.default.post(zabbix_api_url, { jsonrpc: '2.0', method: 'user.logout', params: [], id: 3, auth: token }).catch(() => {});
-
-    const hosts = hostsRes.data.result || [];
-    return hosts.map((h: any) => ({
-      hostname: h.name,
-      groups: h.groups?.map((g: any) => g.name),
-      items: (h.items || [])
-        .filter((i: any) => {
-          const k = i.key_;
-          return k.includes('cpu') || k.includes('memory') || k.includes('vfs') || k.includes('icmp') || k.includes('agent');
-        })
-        .map((i: any) => ({ key: i.key_, name: i.name, value: i.lastvalue, unit: i.units })),
-    }));
-  });
 }
 
 async function loadServerStreamSnapshot(supabaseAdmin: any, companyId: string | null) {
@@ -328,5 +253,15 @@ async function loadServerStreamSnapshot(supabaseAdmin: any, companyId: string | 
   const { data: events, error: eventsError } = await eventsQuery;
   if (eventsError) throw eventsError;
 
-  return { servers: servers || [], events: events || [] };
+  return { servers: (servers || []).map(applyServerFreshness), events: events || [] };
+}
+
+function applyServerFreshness(server: any) {
+  const recordedStatus = String(server.status || '').toLowerCase();
+  return {
+    ...server,
+    status: recordedStatus === 'offline'
+      ? 'Offline'
+      : getMetricFreshnessStatus(server.last_metrics_at || server.last_updated),
+  };
 }

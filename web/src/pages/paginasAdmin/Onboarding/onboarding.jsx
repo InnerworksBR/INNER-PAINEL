@@ -31,10 +31,6 @@ const DEFAULT_FORM_DATA = {
   ms_graph_tenant_id: '',
   ms_graph_client_id: '',
   ms_graph_client_secret: '',
-  zabbix_enabled: false,
-  zabbix_api_url: '',
-  zabbix_user: '',
-  zabbix_password: '',
 
   // Notifications
   notify_critical_email: true,
@@ -89,10 +85,6 @@ const OnboardingWizard = ({ isOpen, onClose, onSuccess }) => {
       if (formData.ms365_enabled) {
         if (!formData.ms_graph_tenant_id) newErrors.ms_graph_tenant_id = 'Tenant ID é obrigatório';
         if (!formData.ms_graph_client_id) newErrors.ms_graph_client_id = 'Client ID é obrigatório';
-      }
-      if (formData.zabbix_enabled) {
-        if (!formData.zabbix_api_url) newErrors.zabbix_api_url = 'URL da API é obrigatória';
-        if (!formData.zabbix_user) newErrors.zabbix_user = 'Usuário é obrigatório';
       }
     }
 
@@ -154,12 +146,6 @@ const OnboardingWizard = ({ isOpen, onClose, onSuccess }) => {
         integrations.ms_graph_tenant_id = formData.ms_graph_tenant_id;
         integrations.ms_graph_client_id = formData.ms_graph_client_id;
         integrations.ms_graph_client_secret = formData.ms_graph_client_secret;
-      }
-
-      if (formData.zabbix_enabled) {
-        integrations.zabbix_api_url = formData.zabbix_api_url;
-        integrations.zabbix_user = formData.zabbix_user;
-        integrations.zabbix_password = formData.zabbix_password;
       }
 
       if (Object.keys(integrations).length > 0) {

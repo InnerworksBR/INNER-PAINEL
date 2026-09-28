@@ -2,19 +2,17 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import cron from 'node-cron';
 import { syncTickets } from '../services/glpi-service';
 import { syncMS365Metrics } from '../services/ms-graph-service';
-import { fetchZabbixMetrics, fetchZabbixNetworkDevices } from '../services/zabbix-service';
 import { isDetailedLoggingEnabled } from '../services/settings-service';
+
+const SCHEDULED_SYNC_TYPES = ['glpi', 'ms365'] as const;
+type ScheduledSyncType = typeof SCHEDULED_SYNC_TYPES[number];
+
+export function getScheduledSyncTypes(): readonly ScheduledSyncType[] {
+  return SCHEDULED_SYNC_TYPES;
+}
 
 export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
   console.log('Iniciando scheduler de sincronizacao automatica...');
-
-  cron.schedule('*/30 * * * * *', async () => {
-    await syncAllCompanies(supabaseAdmin, 'zabbix');
-  });
-
-  cron.schedule('* * * * *', async () => {
-    await syncAllCompanies(supabaseAdmin, 'zabbix-network');
-  });
 
   cron.schedule('*/30 * * * *', async () => {
     await syncAllCompanies(supabaseAdmin, 'glpi');
@@ -24,12 +22,17 @@ export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
     await syncAllCompanies(supabaseAdmin, 'ms365');
   });
 
-  console.log('Scheduler configurado: Zabbix 30s, rede 60s, GLPI 30min, MS365 6h');
+  cron.schedule('0 0 3 * * *', async () => {
+    const { error } = await supabaseAdmin.rpc('purge_agent_metrics', { retention_days: 30 });
+    if (error) console.error('[CRON] Falha na retenção de métricas do agente:', error.message);
+  });
+
+  console.log('Scheduler configurado: GLPI 30min, MS365 6h, retenção do agente 30d. Servidores: agente nativo.');
 }
 
 async function syncAllCompanies(
   supabaseAdmin: SupabaseClient,
-  syncType: 'zabbix' | 'zabbix-network' | 'glpi' | 'ms365'
+  syncType: ScheduledSyncType
 ): Promise<void> {
   try {
     const detailedLogs = await isDetailedLoggingEnabled(supabaseAdmin);
@@ -47,12 +50,6 @@ async function syncAllCompanies(
     for (const companyId of companyIds) {
       try {
         switch (syncType) {
-          case 'zabbix':
-            await fetchZabbixMetrics(supabaseAdmin, companyId);
-            break;
-          case 'zabbix-network':
-            await fetchZabbixNetworkDevices(supabaseAdmin, companyId);
-            break;
           case 'glpi':
             await syncTickets(supabaseAdmin, companyId);
             break;

@@ -50,6 +50,9 @@ CREATE INDEX IF NOT EXISTS registered_agents_freshness_idx
 -- 3. Estado atual de hosts e VMs Hyper-V
 -- ============================================================
 ALTER TABLE servers
+  ALTER COLUMN monitoring_source SET DEFAULT 'agent_native';
+
+ALTER TABLE servers
   ADD COLUMN IF NOT EXISTS hyperv_vm_id TEXT;
 
 ALTER TABLE servers
@@ -124,7 +127,6 @@ DECLARE
   v_host_id UUID;
   v_host JSONB;
   v_vm JSONB;
-  v_inserted BOOLEAN := FALSE;
   v_hostname TEXT;
 BEGIN
   SELECT company_id
@@ -186,8 +188,6 @@ BEGIN
     p_idempotency_key,
     p_sequence_no
   );
-  v_inserted := TRUE;
-
   INSERT INTO servers (
     company_id,
     hostname,
@@ -234,6 +234,31 @@ BEGIN
     last_updated = EXCLUDED.last_updated,
     last_metrics_at = EXCLUDED.last_metrics_at
   RETURNING id INTO v_host_id;
+
+  INSERT INTO server_metric_history (
+    company_id,
+    server_id,
+    hostname,
+    cpu_usage,
+    memory_usage,
+    disk_usage,
+    memory_total,
+    memory_used,
+    status,
+    collected_at
+  )
+  VALUES (
+    v_company_id,
+    v_host_id,
+    v_hostname,
+    (v_host ->> 'cpu_percent')::DECIMAL,
+    (v_host ->> 'memory_percent')::DECIMAL,
+    (v_host ->> 'disk_percent')::DECIMAL,
+    (v_host ->> 'memory_total_mb')::DECIMAL / 1024,
+    (v_host ->> 'memory_used_mb')::DECIMAL / 1024,
+    'Online',
+    p_collected_at
+  );
 
   FOR v_vm IN
     SELECT value
@@ -319,6 +344,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION ingest_agent_metrics(UUID, BIGINT, TEXT, TIMESTAMPTZ, JSONB) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION ingest_agent_metrics(UUID, BIGINT, TEXT, TIMESTAMPTZ, JSONB) TO service_role;
+
 -- ============================================================
 -- 6. Retenção dos snapshots brutos
 -- ============================================================
@@ -342,3 +370,6 @@ BEGIN
   RETURN v_deleted;
 END;
 $$;
+
+REVOKE ALL ON FUNCTION purge_agent_metrics(INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION purge_agent_metrics(INTEGER) TO service_role;

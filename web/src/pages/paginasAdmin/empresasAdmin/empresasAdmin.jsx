@@ -24,7 +24,6 @@ const EmpresasAdmin = () => {
     });
     const [integrationValues, setIntegrationValues] = useState({
         glpi_entity_id: '',
-        zabbix_api_url: '', zabbix_user: '', zabbix_password: '',
         ms_graph_tenant_id: '', ms_graph_client_id: '', ms_graph_client_secret: ''
     });
 
@@ -41,7 +40,6 @@ const EmpresasAdmin = () => {
             
         setIntegrationValues({
             glpi_entity_id: ints.glpi_entity_id || '',
-            zabbix_api_url: ints.zabbix_api_url || '', zabbix_user: ints.zabbix_user || '', zabbix_password: ints.zabbix_password || '',
             ms_graph_tenant_id: ints.ms_graph_tenant_id || '', ms_graph_client_id: ints.ms_graph_client_id || '', ms_graph_client_secret: ints.ms_graph_client_secret || ''
         });
         setIsIntegrationsModalOpen(true);
@@ -571,11 +569,6 @@ const EmpresasAdmin = () => {
                                         className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-all disabled:opacity-50 flex items-center gap-1.5">
                                         {syncStatus.loading ? <RefreshCw size={12} className="animate-spin" /> : null}
                                         Testar MS365
-                                    </button>
-                                    <button type="button" onClick={() => handleTestSync('zabbix')} disabled={syncStatus.loading}
-                                        className="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-lg border border-green-200 transition-all disabled:opacity-50 flex items-center gap-1.5">
-                                        {syncStatus.loading ? <RefreshCw size={12} className="animate-spin" /> : null}
-                                        Testar Zabbix
                                     </button>
                                 </div>
                             </div>

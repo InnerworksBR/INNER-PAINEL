@@ -1,7 +1,5 @@
 ﻿import type { FastifyInstance } from 'fastify';
-import { fetchZabbixNetworkDevices } from '../../services/zabbix-service';
 import type { JWTPayload } from '../../types';
-import { writeAdminAuditLog } from '../../services/audit-service';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { buildAssetDetail } from '../../services/asset-profile-service';
 
@@ -138,22 +136,6 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
   });
 
   fastify.post<{ Body: { company_id?: string } }>('/sync', async (request, reply) => {
-    const { user } = request.user as JWTPayload;
-    if (user.role !== 'admin') return reply.code(403).send({ error: 'Apenas administradores podem sincronizar' });
-    const company_id = request.body?.company_id || user.company_id;
-    if (!company_id) return reply.code(400).send({ error: 'company_id é obrigatório' });
-    try {
-      const result = await fetchZabbixNetworkDevices(supabaseAdmin, company_id);
-      await writeAdminAuditLog(supabaseAdmin, request, {
-        action: 'sync.manual',
-        entityType: 'network',
-        companyId: company_id,
-        summary: 'Sync manual de rede executado',
-        metadata: result,
-      });
-      return result;
-    } catch (error: any) {
-      return reply.code(500).send({ error: error.message });
-    }
+    return reply.code(410).send({ error: 'Sincronização de rede via Zabbix foi descontinuada.' });
   });
 }

@@ -23,8 +23,6 @@ const Integrations = ({ formData, updateFormData, errors }) => {
         hasConfig = Boolean(formData.glpi_entity_id);
       } else if (type === 'ms365') {
         hasConfig = Boolean(formData.ms_graph_tenant_id && formData.ms_graph_client_id);
-      } else if (type === 'zabbix') {
-        hasConfig = Boolean(formData.zabbix_api_url && formData.zabbix_user);
       }
 
       setTestResult(prev => ({
@@ -215,7 +213,7 @@ const Integrations = ({ formData, updateFormData, errors }) => {
         )}
       </div>
 
-      {/* Zabbix Integration */}
+      {/* Legacy integration retained visually only for existing form compatibility */}
       <div className={`p-5 rounded-xl border-2 transition-all ${formData.zabbix_enabled ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white'}`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -223,15 +221,11 @@ const Integrations = ({ formData, updateFormData, errors }) => {
               <Server size={20} className="text-emerald-600" />
             </div>
             <div>
-              <h4 className="font-medium text-slate-900">Zabbix</h4>
-              <p className="text-xs text-slate-500">Monitoramento de servidores e infraestrutura</p>
+              <h4 className="font-medium text-slate-900">Monitoramento nativo Hyper-V</h4>
+              <p className="text-xs text-slate-500">Um único agente no host físico descobre todas as VMs automaticamente.</p>
             </div>
           </div>
-          <ToggleButton
-            enabled={formData.zabbix_enabled}
-            onClick={() => toggleIntegration('zabbix_enabled')}
-            label="Zabbix"
-          />
+          <span className="text-xs font-medium text-slate-500">Zabbix descontinuado</span>
         </div>
 
         {formData.zabbix_enabled && (

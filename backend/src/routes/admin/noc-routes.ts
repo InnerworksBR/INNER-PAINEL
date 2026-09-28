@@ -25,9 +25,14 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
       // Fetch integrations for all companies
       const integrationsRes = await supabaseAdmin
         .from('company_integrations')
-        .select('company_id, zabbix_last_sync_at, zabbix_last_sync_error, ms365_last_sync_at, ms365_last_sync_error, glpi_last_sync_at, glpi_last_sync_error');
+        .select('company_id, ms365_last_sync_at, ms365_last_sync_error, glpi_last_sync_at, glpi_last_sync_error');
 
       const integrations = integrationsRes.data || [];
+
+      const agentsRes = await supabaseAdmin
+        .from('registered_agents')
+        .select('company_id, status, last_heartbeat');
+      const agents = agentsRes.data || [];
 
       // Fetch recent tickets (GLPI) - with correct columns
       const ticketsRes = await supabaseAdmin
@@ -49,6 +54,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           (i: any) => i.company_id === company.id
         );
         const integration = companyIntegrations[0];
+        const companyAgents = agents.filter((agent: any) => agent.company_id === company.id);
 
         // Count open/critical tickets for this company
         const companyTickets = (ticketsRes.data || []).filter(
@@ -72,10 +78,14 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
         // Check for sync errors
         const hasErrors = integration && (
-          integration.zabbix_last_sync_error ||
           integration.ms365_last_sync_error ||
           integration.glpi_last_sync_error
         );
+        const hasAgentProblem = companyAgents.some((agent: any) => {
+          if (String(agent.status || '').toLowerCase() !== 'online') return true;
+          if (!agent.last_heartbeat) return true;
+          return Date.now() - new Date(agent.last_heartbeat).getTime() > 10 * 60 * 1000;
+        });
 
         // Check for critical events
         const hasCriticalEvent = companyAlerts.some(
@@ -90,7 +100,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         // Determine status
         if (hasCriticalEvent || criticalTickets.length > 0) {
           status = 'critical';
-        } else if (hasErrors || hasWarningEvent || openTickets.length > 3) {
+        } else if (hasErrors || hasWarningEvent || hasAgentProblem || openTickets.length > 3) {
           status = 'warning';
         } else if (String(company.status || '').toLowerCase() !== 'ativo') {
           status = 'offline';

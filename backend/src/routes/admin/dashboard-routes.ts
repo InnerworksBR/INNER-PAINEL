@@ -80,23 +80,18 @@ export default async function adminDashboardRoutes(fastify: FastifyInstance): Pr
 function hasAnySyncError(integration: any): boolean {
   return Boolean(
     integration.ms365_last_sync_error ||
-    integration.zabbix_last_sync_error ||
-    integration.zabbix_network_last_sync_error ||
     integration.glpi_last_sync_error
   );
 }
 
 function hasNoSync(integration: any): boolean {
   return !integration.ms365_last_sync_at &&
-    !integration.zabbix_last_sync_at &&
-    !integration.zabbix_network_last_sync_at &&
     !integration.glpi_last_sync_at;
 }
 
 function hasAnyConfiguredIntegration(integration: any): boolean {
   return Boolean(
-    integration.zabbix_api_url ||
     integration.ms_graph_tenant_id ||
-    integration.glpi_api_url
+    integration.glpi_entity_id
   );
 }

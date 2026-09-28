@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-type SyncType = 'ms365' | 'zabbix' | 'zabbix_network' | 'glpi';
+type SyncType = 'ms365' | 'glpi';
 
 export async function recordSyncSuccess(
   supabase: SupabaseClient,
