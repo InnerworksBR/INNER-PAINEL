@@ -81,6 +81,10 @@ try {
     $config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configPath -Encoding UTF8
 
     $bootstrapPath = Join-Path $InstallRoot "bootstrap.json"
+    if (Test-Path -LiteralPath $bootstrapPath) {
+        icacls $bootstrapPath /grant:r "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Nao foi possivel preparar o bootstrap para uma nova tentativa." }
+    }
     @{ activation_token = $activationToken; created_at = [DateTime]::UtcNow.ToString("O") } |
         ConvertTo-Json | Set-Content -LiteralPath $bootstrapPath -Encoding UTF8
     icacls $bootstrapPath /inheritance:r /grant:r "*S-1-5-18:(R)" "*S-1-5-32-544:(R)" | Out-Null
