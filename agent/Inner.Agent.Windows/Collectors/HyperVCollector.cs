@@ -10,8 +10,7 @@ public sealed class HyperVCollector(ILogger<HyperVCollector> logger)
 {
     private const string HyperVNamespace = @"root\virtualization\v2";
     private const string VirtualMachineQuery =
-        "SELECT Name, ElementName, EnabledState, OnTimeInMilliseconds, Description " +
-        "FROM Msvm_ComputerSystem WHERE Description = 'Microsoft Virtual Computer System'";
+        "SELECT Name, ElementName, EnabledState, OnTimeInMilliseconds FROM Msvm_ComputerSystem";
 
     public Task<IReadOnlyList<VirtualMachineMetrics>> CollectAsync(CancellationToken cancellationToken)
     {
@@ -37,7 +36,10 @@ public sealed class HyperVCollector(ILogger<HyperVCollector> logger)
                 {
                     var hyperVId = vm["Name"]?.ToString()?.Trim();
                     var name = vm["ElementName"]?.ToString()?.Trim();
-                    if (string.IsNullOrWhiteSpace(hyperVId) || string.IsNullOrWhiteSpace(name)) continue;
+                    // Description is localized by Windows; VM Name is a GUID, host Name is not.
+                    if (string.IsNullOrWhiteSpace(hyperVId) ||
+                        !HyperVValueMapper.IsVirtualMachineId(hyperVId) ||
+                        string.IsNullOrWhiteSpace(name)) continue;
 
                     summaries.TryGetValue(hyperVId, out var summary);
                     var state = summary?.EnabledState ?? vm["EnabledState"];
@@ -260,6 +262,8 @@ public static class HyperVStateParser
 
 public static class HyperVValueMapper
 {
+    public static bool IsVirtualMachineId(string? name) => Guid.TryParse(name, out _);
+
     public static double? BytesToMegabytes(double? bytes) =>
         bytes is >= 0 ? bytes.Value / 1024d / 1024d : null;
 

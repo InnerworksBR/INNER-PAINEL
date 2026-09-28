@@ -26,4 +26,14 @@ public sealed class HyperVCollectorTests
         Assert.Equal(75, HyperVValueMapper.PercentOrNull(75));
         Assert.Null(HyperVValueMapper.PercentOrNull(-1));
     }
+
+    [Theory]
+    [InlineData("SRVHOST01", false)]
+    [InlineData("10983581-1E0E-4A3A-B523-0471DE4F96F8", true)]
+    [InlineData("cea175ae-e6b2-4cea-a536-f9c13ffd6a7e", true)]
+    [InlineData("", false)]
+    public void DistinguishesHyperVHostFromVmByWmiName(string wmiName, bool expected)
+    {
+        Assert.Equal(expected, HyperVValueMapper.IsVirtualMachineId(wmiName));
+    }
 }
