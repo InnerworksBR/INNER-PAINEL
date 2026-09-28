@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { JWTPayload } from '../types';
+import type { HeartbeatRequest } from '../types/agent';
 import {
   AgentAuthError,
   createAgentClaims,
@@ -7,6 +8,12 @@ import {
   parseAgentClaims,
   rotateAgentRefreshToken,
 } from '../services/agent-auth-service';
+import {
+  AgentIngestionError,
+  ingestMetricBatch,
+  recordAgentHeartbeat,
+} from '../services/agent-ingestion-service';
+import { AgentPayloadError } from '../types/agent';
 
 type EnrollmentBody = {
   activation_token?: string;
@@ -60,6 +67,30 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
       return reply.send(buildCredentialsResponse(fastify, result.agent, result.refresh_token));
     } catch (error) {
       return sendAgentAuthError(request, reply, error, 'Falha na renovação do agente');
+    }
+  });
+
+  fastify.post('/metrics', async (request, reply) => {
+    const principal = await authenticateAgentRequest(request, reply);
+    if (!principal) return;
+
+    try {
+      const result = await ingestMetricBatch(fastify.supabaseAdmin, principal.agent_id, request.body);
+      return reply.code(result.status === 'duplicate' ? 200 : 202).send(result);
+    } catch (error) {
+      return sendIngestionError(request, reply, error);
+    }
+  });
+
+  fastify.post<{ Body: HeartbeatRequest }>('/heartbeat', async (request, reply) => {
+    const principal = await authenticateAgentRequest(request, reply);
+    if (!principal) return;
+
+    try {
+      await recordAgentHeartbeat(fastify.supabaseAdmin, principal.agent_id, request.body);
+      return reply.code(204).send();
+    } catch (error) {
+      return sendIngestionError(request, reply, error);
     }
   });
 }
@@ -136,4 +167,19 @@ function publicAuthError(error: AgentAuthError): string {
   if (error.code === 'INVALID_ACTIVATION_TOKEN') return 'Token de ativação inválido, expirado ou já utilizado.';
   if (error.code === 'INVALID_REFRESH_TOKEN') return 'Refresh token inválido ou revogado.';
   return 'Não foi possível autenticar o agente.';
+}
+
+function sendIngestionError(request: FastifyRequest, reply: FastifyReply, error: unknown) {
+  if (error instanceof AgentPayloadError) {
+    const statusCode = error.code === 'PAYLOAD_TOO_LARGE' ? 413 : 400;
+    return reply.code(statusCode).send({ error: error.message.replace(`${error.code}: `, '') });
+  }
+
+  if (error instanceof AgentIngestionError) {
+    if (error.statusCode >= 500) request.log.error(error, 'Falha na ingestão do agente');
+    return reply.code(error.statusCode).send({ error: error.statusCode === 401 ? 'Agente não autorizado.' : 'Não foi possível processar as métricas.' });
+  }
+
+  request.log.error(error, 'Falha inesperada na ingestão do agente');
+  return reply.code(500).send({ error: 'Não foi possível processar as métricas.' });
 }
