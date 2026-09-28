@@ -24,4 +24,9 @@ test('migration 019 provisions the legacy server identity required by metric ing
     /CREATE UNIQUE INDEX servers_asset_key_unique_idx\s+ON servers \(asset_key\);/i,
     'servers.asset_key must have a unique constraint for ON CONFLICT (asset_key)',
   );
+  assert.match(
+    sql,
+    /s\.hostname\s*=\s*v_hostname\s+AND\s+COALESCE\(s\.is_virtual, FALSE\)\s*=\s*FALSE/i,
+    'host lookup must reuse a legacy physical server with the same hostname',
+  );
 });

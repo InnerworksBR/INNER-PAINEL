@@ -352,10 +352,14 @@ BEGIN
    WHERE s.company_id = v_company_id
      AND (
        s.asset_key = p_agent_id::TEXT || ':host'
-       OR (s.agent_id = p_agent_id AND s.is_virtual = FALSE)
-       OR (s.hostname = v_hostname AND s.agent_id IS NULL)
+       OR (s.agent_id = p_agent_id AND COALESCE(s.is_virtual, FALSE) = FALSE)
+       OR (s.hostname = v_hostname AND COALESCE(s.is_virtual, FALSE) = FALSE)
      )
-   ORDER BY CASE WHEN s.asset_key = p_agent_id::TEXT || ':host' THEN 0 ELSE 1 END
+   ORDER BY CASE
+     WHEN s.asset_key = p_agent_id::TEXT || ':host' THEN 0
+     WHEN s.agent_id = p_agent_id THEN 1
+     ELSE 2
+   END
    LIMIT 1
    FOR UPDATE;
 
