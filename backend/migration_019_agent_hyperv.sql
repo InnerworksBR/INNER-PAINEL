@@ -334,8 +334,8 @@ BEGIN
     v_company_id,
     (v_host ->> 'cpu_percent')::DECIMAL,
     (v_host ->> 'memory_percent')::DECIMAL,
-    (v_host ->> 'memory_total_mb')::INTEGER,
-    (v_host ->> 'memory_used_mb')::INTEGER,
+    ROUND((v_host ->> 'memory_total_mb')::NUMERIC)::INTEGER,
+    ROUND((v_host ->> 'memory_used_mb')::NUMERIC)::INTEGER,
     (v_host ->> 'disk_percent')::DECIMAL,
     (v_host ->> 'uptime_seconds')::BIGINT,
     COALESCE(p_payload -> 'virtual_machines', '[]'::jsonb),
@@ -483,8 +483,8 @@ BEGIN
              / COALESCE((v_vm ->> 'memory_assigned_mb')::DECIMAL, 1) * 100
          ELSE 0
        END,
-       (v_vm ->> 'memory_assigned_mb')::INTEGER,
-      (v_vm ->> 'memory_used_mb')::INTEGER,
+       ROUND((v_vm ->> 'memory_assigned_mb')::NUMERIC)::INTEGER,
+      ROUND((v_vm ->> 'memory_used_mb')::NUMERIC)::INTEGER,
       (v_vm ->> 'virtual_disk_size_gb')::DECIMAL,
       v_vm ->> 'state',
       p_collected_at,
