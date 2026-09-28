@@ -50,7 +50,7 @@ public sealed class HyperVCollector(ILogger<HyperVCollector> logger)
                         name,
                         HyperVStateParser.Parse(state),
                         summary?.ProcessorLoad,
-                        ReadAssignedMemoryMb(vm, cancellationToken),
+                        ReadAssignedMemoryMb(hyperVId, cancellationToken),
                         summary?.MemoryUsageMb,
                         uptime,
                         diskSizes.GetValueOrDefault(hyperVId)));
@@ -119,10 +119,15 @@ public sealed class HyperVCollector(ILogger<HyperVCollector> logger)
         return result;
     }
 
-    private static double? ReadAssignedMemoryMb(ManagementObject vm, CancellationToken cancellationToken)
+    private static double? ReadAssignedMemoryMb(string hyperVId, CancellationToken cancellationToken)
     {
         try
         {
+            // Projected Msvm_ComputerSystem rows may have no __PATH; GetRelated requires a bound object.
+            using var vm = new ManagementObject(
+                new ManagementScope(HyperVNamespace),
+                new ManagementPath(HyperVValueMapper.VirtualMachineWmiPath(hyperVId)),
+                null);
             using var settings = vm.GetRelated(
                 "Msvm_VirtualSystemSettingData",
                 "Msvm_SettingsDefineState",
@@ -158,7 +163,7 @@ public sealed class HyperVCollector(ILogger<HyperVCollector> logger)
                 }
             }
         }
-        catch (ManagementException)
+        catch (Exception error) when (error is ManagementException or InvalidOperationException)
         {
             // Memory assignment is optional. Summary metrics can still be sent.
         }
@@ -263,6 +268,9 @@ public static class HyperVStateParser
 public static class HyperVValueMapper
 {
     public static bool IsVirtualMachineId(string? name) => Guid.TryParse(name, out _);
+
+    public static string VirtualMachineWmiPath(string hyperVId) =>
+        $"Msvm_ComputerSystem.Name=\"{Guid.Parse(hyperVId).ToString("D").ToUpperInvariant()}\"";
 
     public static double? BytesToMegabytes(double? bytes) =>
         bytes is >= 0 ? bytes.Value / 1024d / 1024d : null;

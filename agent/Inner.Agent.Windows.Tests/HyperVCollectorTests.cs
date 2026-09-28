@@ -36,4 +36,16 @@ public sealed class HyperVCollectorTests
     {
         Assert.Equal(expected, HyperVValueMapper.IsVirtualMachineId(wmiName));
     }
+
+    [Theory]
+    [InlineData("10983581-1E0E-4A3A-B523-0471DE4F96F8")]
+    [InlineData("{10983581-1e0e-4a3a-b523-0471de4f96f8}")]
+    public void BuildsBoundWmiPathFromVmIdInsteadOfUsingProjectedSearchResult(string vmId)
+    {
+        var objectPath = HyperVValueMapper.VirtualMachineWmiPath(vmId);
+        var managementPath = new System.Management.ManagementPath(objectPath);
+
+        Assert.Equal("Msvm_ComputerSystem.Name=\"10983581-1E0E-4A3A-B523-0471DE4F96F8\"", objectPath);
+        Assert.True(managementPath.IsInstance);
+    }
 }
