@@ -48,12 +48,16 @@ try {
     if ([IO.Path]::GetExtension($PackagePath) -eq ".zip") {
         Expand-Archive -LiteralPath $PackagePath -DestinationPath $staging -Force
     } else {
-        Copy-Item -LiteralPath (Join-Path $PackagePath "*") -Destination $staging -Recurse -Force
+        Get-ChildItem -LiteralPath $PackagePath -Force | Copy-Item -Destination $staging -Recurse -Force
     }
 
     $executable = Join-Path $staging "Inner.Agent.Windows.exe"
     if (-not (Test-Path -LiteralPath $executable)) {
         throw "Inner.Agent.Windows.exe nao encontrado no pacote."
+    }
+    $stagedConfigPath = Join-Path $staging "appsettings.json"
+    if (-not (Test-Path -LiteralPath $stagedConfigPath)) {
+        throw "appsettings.json nao encontrado no pacote. Gere ou copie o pacote correto do agente."
     }
 
     $existing = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
@@ -65,9 +69,12 @@ try {
     New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
     icacls $dataDirectory /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Nao foi possivel proteger o diretorio de dados do agente." }
-    Copy-Item -LiteralPath (Join-Path $staging "*") -Destination $InstallRoot -Recurse -Force
+    Get-ChildItem -LiteralPath $staging -Force | Copy-Item -Destination $InstallRoot -Recurse -Force
 
     $configPath = Join-Path $InstallRoot "appsettings.json"
+    if (-not (Test-Path -LiteralPath $configPath)) {
+        throw "appsettings.json nao foi copiado para o diretorio de instalacao."
+    }
     $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
     $config.Agent.ApiBaseUrl = $ApiBaseUrl.TrimEnd("/")
     $config.Agent.DataDirectory = $dataDirectory
