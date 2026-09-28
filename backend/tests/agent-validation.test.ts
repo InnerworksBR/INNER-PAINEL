@@ -37,6 +37,17 @@ test('accepts a valid host and VM metric batch', () => {
   assert.equal(result.virtual_machines[0].state, 'Running');
 });
 
+test('accepts the older agent hyper_v_id field and normalizes it', () => {
+  const payload = validBatch();
+  const vm = payload.virtual_machines[0] as Record<string, unknown>;
+  delete vm.hyperv_id;
+  vm.hyper_v_id = 'vm-1';
+
+  const result = validateMetricBatch(payload);
+
+  assert.equal(result.virtual_machines[0].hyperv_id, 'vm-1');
+});
+
 test('rejects CPU values outside the 0 to 100 range', () => {
   const payload = validBatch();
   payload.host.cpu_percent = 101;

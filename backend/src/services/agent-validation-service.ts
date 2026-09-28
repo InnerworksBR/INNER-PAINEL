@@ -61,7 +61,10 @@ function validateHost(input: unknown): HostMetricRecord {
 
 function validateVirtualMachine(input: unknown): VirtualMachineMetricRecord {
   if (!isRecord(input)) throw new AgentPayloadError('INVALID_PAYLOAD', 'virtual machine must be an object');
-  const hypervId = readString(input.hyperv_id, 'virtual_machines[].hyperv_id').trim();
+  const hypervId = readString(
+    input.hyperv_id === undefined ? input.hyper_v_id : input.hyperv_id,
+    'virtual_machines[].hyperv_id',
+  ).trim();
   const name = readString(input.name, 'virtual_machines[].name').trim();
   const state = readString(input.state, 'virtual_machines[].state') as HyperVState;
   if (!hypervId || !name) throw new AgentPayloadError('INVALID_PAYLOAD', 'VM identity is required');
