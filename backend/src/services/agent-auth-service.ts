@@ -147,63 +147,29 @@ export async function enrollAgent(
   input: AgentEnrollmentInput,
 ): Promise<{ agent: AgentRecord; refresh_token: string }> {
   const tokenHash = hashOpaqueToken(input.activation_token);
-  const { data: token, error: tokenError } = await supabase
-    .from('agent_activation_tokens')
-    .select('id, company_id, is_active, used_at, expires_at')
-    .eq('token_hash', tokenHash)
-    .maybeSingle();
-
-  if (tokenError) {
-    throw new AgentAuthError('AUTH_STORAGE_ERROR', tokenError.message);
-  }
-
-  if (!token || !isActivationTokenUsable(token as ActivationTokenRecord)) {
-    throw new AgentAuthError('INVALID_ACTIVATION_TOKEN', 'Token de ativação inválido, expirado ou já utilizado.');
-  }
-
-  const { data: claimedToken, error: claimError } = await supabase
-    .from('agent_activation_tokens')
-    .update({ used_at: new Date().toISOString(), is_active: false })
-    .eq('id', token.id)
-    .eq('is_active', true)
-    .is('used_at', null)
-    .select('id')
-    .maybeSingle();
-
-  if (claimError) {
-    throw new AgentAuthError('AUTH_STORAGE_ERROR', claimError.message);
-  }
-
-  if (!claimedToken) {
-    throw new AgentAuthError('INVALID_ACTIVATION_TOKEN', 'Token de ativação já foi utilizado.');
-  }
-
   const refreshToken = generateOpaqueToken();
-  const assetKey = buildAgentAssetKey(String(token.company_id), input.machine_id);
-  const { data: agent, error: agentError } = await supabase
-    .from('registered_agents')
-    .upsert({
-      company_id: token.company_id,
-      agent_type: 'endpoint',
-      asset_key: assetKey,
-      agent_secret: hashOpaqueToken(generateOpaqueToken()),
-      refresh_token_hash: hashOpaqueToken(refreshToken),
-      machine_id: input.machine_id.trim(),
-      hostname: input.hostname.trim(),
-      os_info: input.os_info?.trim() || null,
-      os_version: input.os_version?.trim() || null,
-      hypervisor: input.hypervisor?.trim() || 'Hyper-V',
-      version: input.agent_version.trim(),
-      agent_version: input.agent_version.trim(),
-      status: 'Online',
-      last_heartbeat: new Date().toISOString(),
-      metadata: { enrollment: 'native-agent-v1' },
-    }, { onConflict: 'asset_key' })
-    .select('id, company_id, hostname, agent_version')
-    .single();
+  const { data, error: enrollmentError } = await supabase.rpc('enroll_agent', {
+    p_activation_token_hash: tokenHash,
+    p_machine_id: input.machine_id.trim(),
+    p_hostname: input.hostname.trim(),
+    p_agent_version: input.agent_version.trim(),
+    p_os_info: input.os_info?.trim() || null,
+    p_os_version: input.os_version?.trim() || null,
+    p_hypervisor: input.hypervisor?.trim() || 'Hyper-V',
+    p_refresh_token_hash: hashOpaqueToken(refreshToken),
+    p_agent_secret_hash: hashOpaqueToken(generateOpaqueToken()),
+  });
 
-  if (agentError || !agent) {
-    throw new AgentAuthError('AUTH_STORAGE_ERROR', agentError?.message || 'Não foi possível registrar o agente.');
+  if (enrollmentError) {
+    if (enrollmentError.message.includes('INVALID_ACTIVATION_TOKEN')) {
+      throw new AgentAuthError('INVALID_ACTIVATION_TOKEN', 'Token de ativação inválido, expirado ou já utilizado.');
+    }
+    throw new AgentAuthError('AUTH_STORAGE_ERROR', enrollmentError.message);
+  }
+
+  const agent = (Array.isArray(data) ? data[0] : data) as AgentRecord | null;
+  if (!agent) {
+    throw new AgentAuthError('AUTH_STORAGE_ERROR', 'Não foi possível registrar o agente.');
   }
 
   return {
@@ -216,28 +182,21 @@ export async function rotateAgentRefreshToken(
   supabase: SupabaseClient,
   rawRefreshToken: string,
 ): Promise<{ agent: AgentRecord; refresh_token: string }> {
+  const refreshToken = generateOpaqueToken();
   const { data: agent, error } = await supabase
     .from('registered_agents')
-    .select('id, company_id, hostname, agent_version, status')
+    .update({ refresh_token_hash: hashOpaqueToken(refreshToken), last_heartbeat: new Date().toISOString() })
     .eq('refresh_token_hash', hashOpaqueToken(rawRefreshToken))
+    .neq('status', 'Revoked')
+    .select('id, company_id, hostname, agent_version, status')
     .maybeSingle();
 
   if (error) {
     throw new AgentAuthError('AUTH_STORAGE_ERROR', error.message);
   }
 
-  if (!agent || agent.status === 'Revoked') {
+  if (!agent) {
     throw new AgentAuthError('INVALID_REFRESH_TOKEN', 'Refresh token inválido ou revogado.');
-  }
-
-  const refreshToken = generateOpaqueToken();
-  const { error: updateError } = await supabase
-    .from('registered_agents')
-    .update({ refresh_token_hash: hashOpaqueToken(refreshToken), last_heartbeat: new Date().toISOString() })
-    .eq('id', agent.id);
-
-  if (updateError) {
-    throw new AgentAuthError('AUTH_STORAGE_ERROR', updateError.message);
   }
 
   return { agent: agent as AgentRecord, refresh_token: refreshToken };

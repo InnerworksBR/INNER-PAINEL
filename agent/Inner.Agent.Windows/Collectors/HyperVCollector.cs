@@ -54,10 +54,12 @@ public sealed class HyperVCollector(ILogger<HyperVCollector> logger)
         catch (ManagementException error)
         {
             logger.LogWarning(error, "Hyper-V WMI is unavailable or access was denied");
+            throw;
         }
         catch (Exception error)
         {
             logger.LogError(error, "Hyper-V metric collection failed");
+            throw;
         }
 
         return result;

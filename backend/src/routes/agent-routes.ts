@@ -75,7 +75,14 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
     if (!principal) return;
 
     try {
-      const result = await ingestMetricBatch(fastify.supabaseAdmin, principal.agent_id, request.body);
+      const rawIdempotencyKey = request.headers['idempotency-key'];
+      const idempotencyKey = Array.isArray(rawIdempotencyKey) ? rawIdempotencyKey[0] : rawIdempotencyKey;
+      const result = await ingestMetricBatch(
+        fastify.supabaseAdmin,
+        principal.agent_id,
+        request.body,
+        idempotencyKey,
+      );
       return reply.code(result.status === 'duplicate' ? 200 : 202).send(result);
     } catch (error) {
       return sendIngestionError(request, reply, error);
@@ -100,10 +107,30 @@ export async function authenticateAgentRequest(
   reply: FastifyReply,
 ): Promise<ReturnType<typeof parseAgentClaims> | null> {
   try {
-    await request.jwtVerify();
+    await request.jwtVerify({
+      decode: {},
+      verify: { allowedIss: 'inner-agent', allowedAud: 'inner-agent-api' },
+    });
     const principal = parseAgentClaims(request.user as unknown);
     if (!principal) {
       await reply.code(401).send({ error: 'Credencial de agente inválida.' });
+      return null;
+    }
+
+    const { data: agent, error } = await request.server.supabaseAdmin
+      .from('registered_agents')
+      .select('id, company_id, status')
+      .eq('id', principal.agent_id)
+      .eq('company_id', principal.company_id)
+      .neq('status', 'Revoked')
+      .maybeSingle();
+    if (error) {
+      request.log.error(error, 'Falha ao validar o estado do agente');
+      await reply.code(503).send({ error: 'Não foi possível validar o agente.' });
+      return null;
+    }
+    if (!agent) {
+      await reply.code(401).send({ error: 'Agente revogado ou não encontrado.' });
       return null;
     }
     return principal;

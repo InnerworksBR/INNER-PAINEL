@@ -41,12 +41,14 @@ public sealed record AgentHeartbeat(
 
 public sealed class AgentApiException : Exception
 {
-    public AgentApiException(HttpStatusCode statusCode, string message) : base(message)
+    public AgentApiException(HttpStatusCode statusCode, string message, TimeSpan? retryAfter = null) : base(message)
     {
         StatusCode = statusCode;
+        RetryAfter = retryAfter;
     }
 
     public HttpStatusCode StatusCode { get; }
+    public TimeSpan? RetryAfter { get; }
 }
 
 public sealed class AgentApiClient(HttpClient httpClient, string apiBaseUrl)
@@ -66,10 +68,17 @@ public sealed class AgentApiClient(HttpClient httpClient, string apiBaseUrl)
     public Task<MetricAcknowledgement> SendMetricsAsync(
         string accessToken,
         MetricBatch batch,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? idempotencyKey = null)
     {
         var validated = MetricBatchContract.Validate(batch);
-        return SendAsync<MetricBatch, MetricAcknowledgement>(HttpMethod.Post, "/metrics", validated, accessToken, cancellationToken);
+        return SendAsync<MetricBatch, MetricAcknowledgement>(
+            HttpMethod.Post,
+            "/metrics",
+            validated,
+            accessToken,
+            cancellationToken,
+            idempotencyKey);
     }
 
     public async Task SendHeartbeatAsync(
@@ -86,9 +95,10 @@ public sealed class AgentApiClient(HttpClient httpClient, string apiBaseUrl)
         string path,
         TRequest body,
         string? token,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? idempotencyKey = null)
     {
-        using var response = await SendResponseAsync(method, path, body, token, cancellationToken);
+        using var response = await SendResponseAsync(method, path, body, token, cancellationToken, idempotencyKey);
         await EnsureSuccessAsync(response, cancellationToken);
         var result = await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions, cancellationToken);
         return result ?? throw new AgentApiException(response.StatusCode, "API returned an empty response.");
@@ -99,7 +109,8 @@ public sealed class AgentApiClient(HttpClient httpClient, string apiBaseUrl)
         string path,
         TRequest body,
         string? token,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? idempotencyKey = null)
     {
         using var request = new HttpRequestMessage(method, BuildUri(path))
         {
@@ -107,6 +118,8 @@ public sealed class AgentApiClient(HttpClient httpClient, string apiBaseUrl)
         };
         if (!string.IsNullOrWhiteSpace(token))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
         return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
@@ -116,6 +129,7 @@ public sealed class AgentApiClient(HttpClient httpClient, string apiBaseUrl)
     {
         if (response.IsSuccessStatusCode) return;
         var detail = await response.Content.ReadAsStringAsync(cancellationToken);
-        throw new AgentApiException(response.StatusCode, $"Agent API returned {(int)response.StatusCode}: {detail}");
+        var retryAfter = response.Headers.RetryAfter?.Delta;
+        throw new AgentApiException(response.StatusCode, $"Agent API returned {(int)response.StatusCode}: {detail}", retryAfter);
     }
 }

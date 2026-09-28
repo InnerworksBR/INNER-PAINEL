@@ -24,6 +24,7 @@ public sealed class AgentWorker(
 {
     private const string CredentialsKey = "credentials";
     private const string AgentVersion = "1.0.0";
+    private const int MaxSendAttempts = 10;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -164,26 +165,90 @@ public sealed class AgentWorker(
             {
                 var batch = JsonSerializer.Deserialize<MetricBatch>(item.Payload, JsonOptions)
                     ?? throw new InvalidOperationException("Outbox payload is empty.");
-                var acknowledgement = await apiClient.SendMetricsAsync(stored.Credentials.AccessToken, batch, cancellationToken);
+                var acknowledgement = await apiClient.SendMetricsAsync(
+                    stored.Credentials.AccessToken,
+                    batch,
+                    cancellationToken,
+                    $"{stored.Credentials.AgentId}:{batch.Sequence}");
                 if (acknowledgement.Status is "accepted" or "duplicate")
                     await outbox.MarkAcceptedAsync(item.Sequence, cancellationToken);
             }
             catch (AgentApiException error) when (error.StatusCode == HttpStatusCode.Unauthorized)
             {
                 stored = await RefreshStoredCredentialsAsync(stored, cancellationToken);
-                if (stored is null) return;
-                var batch = JsonSerializer.Deserialize<MetricBatch>(item.Payload, JsonOptions)
-                    ?? throw new InvalidOperationException("Outbox payload is empty.");
-                var acknowledgement = await apiClient.SendMetricsAsync(stored.Credentials.AccessToken, batch, cancellationToken);
-                if (acknowledgement.Status is "accepted" or "duplicate")
-                    await outbox.MarkAcceptedAsync(item.Sequence, cancellationToken);
+                if (stored is null)
+                {
+                    await ScheduleRetryAsync(item, "TOKEN_REFRESH_FAILED", cancellationToken);
+                    return;
+                }
+
+                try
+                {
+                    var batch = JsonSerializer.Deserialize<MetricBatch>(item.Payload, JsonOptions)
+                        ?? throw new InvalidOperationException("Outbox payload is empty.");
+                    var acknowledgement = await apiClient.SendMetricsAsync(
+                        stored.Credentials.AccessToken,
+                        batch,
+                        cancellationToken,
+                        $"{stored.Credentials.AgentId}:{batch.Sequence}");
+                    if (acknowledgement.Status is "accepted" or "duplicate")
+                        await outbox.MarkAcceptedAsync(item.Sequence, cancellationToken);
+                }
+                catch (Exception retryError)
+                {
+                    await HandleSendFailureAsync(item, retryError, cancellationToken);
+                    if (retryError is not AgentApiException { StatusCode: >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError })
+                        return;
+                }
+            }
+            catch (JsonException error)
+            {
+                await outbox.MarkRejectedAsync(item.Sequence, $"PAYLOAD_INVALID: {error.Message}", cancellationToken);
+                logger.LogError(error, "Invalid metric payload in outbox sequence {Sequence}", item.Sequence);
             }
             catch (Exception error)
             {
-                logger.LogWarning(error, "Could not send metric sequence {Sequence}; it remains in the outbox", item.Sequence);
-                return;
+                await HandleSendFailureAsync(item, error, cancellationToken);
+                if (error is not AgentApiException { StatusCode: >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError })
+                    return;
             }
         }
+    }
+
+    private async Task HandleSendFailureAsync(
+        PendingMetric item,
+        Exception error,
+        CancellationToken cancellationToken)
+    {
+        if (error is AgentApiException { StatusCode: >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError } apiError &&
+            apiError.StatusCode is not HttpStatusCode.RequestTimeout and not (HttpStatusCode)429)
+        {
+            await outbox.MarkRejectedAsync(item.Sequence, error.Message, cancellationToken);
+            logger.LogError(error, "Metric sequence {Sequence} was rejected permanently", item.Sequence);
+            return;
+        }
+
+        await ScheduleRetryAsync(item, error.Message, cancellationToken, error as AgentApiException);
+        logger.LogWarning(error, "Could not send metric sequence {Sequence}; retry scheduled", item.Sequence);
+    }
+
+    private async Task ScheduleRetryAsync(
+        PendingMetric item,
+        string error,
+        CancellationToken cancellationToken,
+        AgentApiException? apiError = null)
+    {
+        if (item.Attempts >= MaxSendAttempts)
+        {
+            await outbox.MarkRejectedAsync(item.Sequence, $"RETRY_LIMIT: {error}", cancellationToken);
+            return;
+        }
+
+        var exponentialSeconds = Math.Min(300, 5 * Math.Pow(2, Math.Min(item.Attempts, 6)));
+        var delay = apiError?.RetryAfter is { } retryAfter
+            ? TimeSpan.FromSeconds(Math.Min(3600, Math.Max(1, retryAfter.TotalSeconds)))
+            : TimeSpan.FromSeconds(exponentialSeconds);
+        await outbox.MarkRetryAsync(item.Sequence, delay, error, cancellationToken);
     }
 
     private async Task SendHeartbeatAsync(CancellationToken cancellationToken)

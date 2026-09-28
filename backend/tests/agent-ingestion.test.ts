@@ -64,6 +64,22 @@ test('não chama o banco quando o lote contém métrica inválida', async () => 
   assert.equal(called, false);
 });
 
+test('rejeita chave de idempotência que não corresponde ao agente e sequence', async () => {
+  let called = false;
+  const supabase = {
+    rpc() {
+      called = true;
+      return Promise.resolve({ data: [], error: null });
+    },
+  } as any;
+
+  await assert.rejects(
+    () => ingestMetricBatch(supabase, 'agent-1', validBatch, 'agent-1:999'),
+    /INVALID_PAYLOAD.*Idempotency-Key/,
+  );
+  assert.equal(called, false);
+});
+
 test('atualiza heartbeat e registra o último resultado da coleta', async () => {
   let updated: Record<string, unknown> | undefined;
   let filteredAgentId = '';
@@ -77,7 +93,21 @@ test('atualiza heartbeat e registra o último resultado da coleta', async () => 
             eq(column: string, value: string) {
               assert.equal(column, 'id');
               filteredAgentId = value;
-              return Promise.resolve({ error: null });
+              return {
+                neq(neqColumn: string, neqValue: string) {
+                  assert.equal(neqColumn, 'status');
+                  assert.equal(neqValue, 'Revoked');
+                  return {
+                    select() {
+                      return {
+                        maybeSingle() {
+                          return Promise.resolve({ data: { id: value }, error: null });
+                        },
+                      };
+                    },
+                  };
+                },
+              };
             },
           };
         },

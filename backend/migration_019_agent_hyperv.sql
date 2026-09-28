@@ -39,12 +39,118 @@ ALTER TABLE registered_agents
 ALTER TABLE registered_agents
   ADD COLUMN IF NOT EXISTS machine_id TEXT;
 
+ALTER TABLE registered_agents
+  ADD COLUMN IF NOT EXISTS last_sequence_no BIGINT NOT NULL DEFAULT -1;
+
 CREATE UNIQUE INDEX IF NOT EXISTS registered_agents_company_machine_idx
   ON registered_agents (company_id, machine_id)
   WHERE machine_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS registered_agents_freshness_idx
   ON registered_agents (company_id, status, last_metrics_at);
+
+-- Enrollment atômico: bloqueia e consome o token junto com o upsert do agente.
+CREATE OR REPLACE FUNCTION enroll_agent(
+  p_activation_token_hash TEXT,
+  p_machine_id TEXT,
+  p_hostname TEXT,
+  p_agent_version TEXT,
+  p_os_info TEXT,
+  p_os_version TEXT,
+  p_hypervisor TEXT,
+  p_refresh_token_hash TEXT,
+  p_agent_secret_hash TEXT
+)
+RETURNS TABLE (
+  id UUID,
+  company_id UUID,
+  hostname TEXT,
+  agent_version TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_token_id UUID;
+  v_company_id UUID;
+  v_asset_key TEXT;
+BEGIN
+  SELECT id, company_id
+    INTO v_token_id, v_company_id
+    FROM agent_activation_tokens
+   WHERE token_hash = p_activation_token_hash
+     AND is_active = TRUE
+     AND used_at IS NULL
+     AND (expires_at IS NULL OR expires_at > NOW())
+   FOR UPDATE;
+
+  IF v_token_id IS NULL THEN
+    RAISE EXCEPTION 'INVALID_ACTIVATION_TOKEN';
+  END IF;
+
+  v_asset_key := 'agent:' || v_company_id::TEXT || ':' || BTRIM(p_machine_id);
+
+  UPDATE agent_activation_tokens
+     SET used_at = NOW(), is_active = FALSE
+   WHERE id = v_token_id;
+
+  RETURN QUERY
+  INSERT INTO registered_agents (
+    company_id,
+    agent_type,
+    asset_key,
+    agent_secret,
+    refresh_token_hash,
+    machine_id,
+    hostname,
+    os_info,
+    os_version,
+    hypervisor,
+    version,
+    agent_version,
+    status,
+    last_heartbeat,
+    metadata
+  )
+  VALUES (
+    v_company_id,
+    'endpoint',
+    v_asset_key,
+    p_agent_secret_hash,
+    p_refresh_token_hash,
+    BTRIM(p_machine_id),
+    BTRIM(p_hostname),
+    NULLIF(BTRIM(p_os_info), ''),
+    NULLIF(BTRIM(p_os_version), ''),
+    COALESCE(NULLIF(BTRIM(p_hypervisor), ''), 'Hyper-V'),
+    BTRIM(p_agent_version),
+    BTRIM(p_agent_version),
+    'Online',
+    NOW(),
+    jsonb_build_object('enrollment', 'native-agent-v1')
+  )
+  ON CONFLICT (asset_key) DO UPDATE SET
+    agent_secret = EXCLUDED.agent_secret,
+    refresh_token_hash = EXCLUDED.refresh_token_hash,
+    machine_id = EXCLUDED.machine_id,
+    hostname = EXCLUDED.hostname,
+    os_info = EXCLUDED.os_info,
+    os_version = EXCLUDED.os_version,
+    hypervisor = EXCLUDED.hypervisor,
+    version = EXCLUDED.version,
+    agent_version = EXCLUDED.agent_version,
+    status = 'Online',
+    last_heartbeat = NOW(),
+    last_error = NULL,
+    metadata = EXCLUDED.metadata,
+    updated_at = NOW()
+  RETURNING registered_agents.id, registered_agents.company_id, registered_agents.hostname, registered_agents.agent_version;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION enroll_agent(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION enroll_agent(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO service_role;
 
 -- ============================================================
 -- 3. Estado atual de hosts e VMs Hyper-V
@@ -124,18 +230,22 @@ SET search_path = public
 AS $$
 DECLARE
   v_company_id UUID;
+  v_agent_status TEXT;
+  v_last_sequence_no BIGINT;
   v_host_id UUID;
   v_host JSONB;
   v_vm JSONB;
   v_hostname TEXT;
+  v_previous_status TEXT;
+  v_current_status TEXT;
 BEGIN
-  SELECT company_id
-    INTO v_company_id
+  SELECT company_id, status, COALESCE(last_sequence_no, -1)
+    INTO v_company_id, v_agent_status, v_last_sequence_no
     FROM registered_agents
    WHERE id = p_agent_id
    FOR UPDATE;
 
-  IF v_company_id IS NULL THEN
+  IF v_company_id IS NULL OR v_agent_status = 'Revoked' THEN
     RAISE EXCEPTION 'AGENT_NOT_FOUND';
   END IF;
 
@@ -145,6 +255,11 @@ BEGIN
      WHERE agent_id = p_agent_id
        AND (idempotency_key = p_idempotency_key OR sequence_no = p_sequence_no)
   ) THEN
+    RETURN QUERY SELECT 'duplicate', p_agent_id, p_sequence_no, NOW();
+    RETURN;
+  END IF;
+
+  IF p_sequence_no <= v_last_sequence_no THEN
     RETURN QUERY SELECT 'duplicate', p_agent_id, p_sequence_no, NOW();
     RETURN;
   END IF;
@@ -188,52 +303,54 @@ BEGIN
     p_idempotency_key,
     p_sequence_no
   );
-  INSERT INTO servers (
-    company_id,
-    hostname,
-    cpu_usage,
-    memory_usage,
-    disk_usage,
-    memory_total,
-    memory_used,
-    status,
-    monitoring_source,
-    asset_key,
-    agent_id,
-    is_virtual,
-    last_updated,
-    last_metrics_at
-  )
-  VALUES (
-    v_company_id,
-    v_hostname,
-    (v_host ->> 'cpu_percent')::DECIMAL,
-    (v_host ->> 'memory_percent')::DECIMAL,
-    (v_host ->> 'disk_percent')::DECIMAL,
-    (v_host ->> 'memory_total_mb')::DECIMAL / 1024,
-    (v_host ->> 'memory_used_mb')::DECIMAL / 1024,
-    'Online',
-    'agent_native',
-    p_agent_id::TEXT || ':host',
-    p_agent_id,
-    FALSE,
-    p_collected_at,
-    p_collected_at
-  )
-  ON CONFLICT (company_id, hostname) DO UPDATE SET
-    cpu_usage = EXCLUDED.cpu_usage,
-    memory_usage = EXCLUDED.memory_usage,
-    disk_usage = EXCLUDED.disk_usage,
-    memory_total = EXCLUDED.memory_total,
-    memory_used = EXCLUDED.memory_used,
-    status = EXCLUDED.status,
-    monitoring_source = 'agent_native',
-    asset_key = EXCLUDED.asset_key,
-    agent_id = EXCLUDED.agent_id,
-    is_virtual = FALSE,
-    last_updated = EXCLUDED.last_updated,
-    last_metrics_at = EXCLUDED.last_metrics_at
-  RETURNING id INTO v_host_id;
+  -- O host é identificado pelo agente/asset_key; hostname é apenas mutável.
+  SELECT id
+    INTO v_host_id
+    FROM servers
+   WHERE company_id = v_company_id
+     AND (
+       asset_key = p_agent_id::TEXT || ':host'
+       OR (agent_id = p_agent_id AND is_virtual = FALSE)
+       OR (hostname = v_hostname AND agent_id IS NULL)
+     )
+   ORDER BY CASE WHEN asset_key = p_agent_id::TEXT || ':host' THEN 0 ELSE 1 END
+   LIMIT 1
+   FOR UPDATE;
+
+  IF v_host_id IS NULL THEN
+    INSERT INTO servers (
+      company_id, hostname, cpu_usage, memory_usage, disk_usage,
+      memory_total, memory_used, status, monitoring_source, asset_key,
+      agent_id, is_virtual, last_updated, last_metrics_at
+    )
+    VALUES (
+      v_company_id, v_hostname,
+      (v_host ->> 'cpu_percent')::DECIMAL,
+      (v_host ->> 'memory_percent')::DECIMAL,
+      (v_host ->> 'disk_percent')::DECIMAL,
+      (v_host ->> 'memory_total_mb')::DECIMAL / 1024,
+      (v_host ->> 'memory_used_mb')::DECIMAL / 1024,
+      'Online', 'agent_native', p_agent_id::TEXT || ':host',
+      p_agent_id, FALSE, p_collected_at, p_collected_at
+    )
+    RETURNING id INTO v_host_id;
+  ELSE
+    UPDATE servers
+       SET hostname = v_hostname,
+           cpu_usage = (v_host ->> 'cpu_percent')::DECIMAL,
+           memory_usage = (v_host ->> 'memory_percent')::DECIMAL,
+           disk_usage = (v_host ->> 'disk_percent')::DECIMAL,
+           memory_total = (v_host ->> 'memory_total_mb')::DECIMAL / 1024,
+           memory_used = (v_host ->> 'memory_used_mb')::DECIMAL / 1024,
+           status = 'Online',
+           monitoring_source = 'agent_native',
+           asset_key = p_agent_id::TEXT || ':host',
+           agent_id = p_agent_id,
+           is_virtual = FALSE,
+           last_updated = p_collected_at,
+           last_metrics_at = p_collected_at
+     WHERE id = v_host_id;
+  END IF;
 
   INSERT INTO server_metric_history (
     company_id,
@@ -264,6 +381,13 @@ BEGIN
     SELECT value
       FROM jsonb_array_elements(COALESCE(p_payload -> 'virtual_machines', '[]'::jsonb))
   LOOP
+    v_current_status := CASE WHEN v_vm ->> 'state' = 'Running' THEN 'Online' ELSE 'Offline' END;
+    SELECT status
+      INTO v_previous_status
+      FROM servers
+     WHERE asset_key = p_agent_id::TEXT || ':vm:' || (v_vm ->> 'hyperv_id')
+     FOR UPDATE;
+
     INSERT INTO servers (
       company_id,
       hostname,
@@ -298,7 +422,7 @@ BEGIN
       END,
       COALESCE((v_vm ->> 'memory_assigned_mb')::DECIMAL, 0) / 1024,
       COALESCE((v_vm ->> 'memory_used_mb')::DECIMAL, 0) / 1024,
-      CASE WHEN v_vm ->> 'state' = 'Running' THEN 'Online' ELSE 'Offline' END,
+      v_current_status,
       'agent_native',
       p_agent_id::TEXT || ':vm:' || (v_vm ->> 'hyperv_id'),
       p_agent_id,
@@ -331,14 +455,90 @@ BEGIN
       vm_status = EXCLUDED.vm_status,
       last_updated = EXCLUDED.last_updated,
       last_metrics_at = EXCLUDED.last_metrics_at;
+
+    IF v_previous_status IS DISTINCT FROM v_current_status THEN
+      INSERT INTO monitoring_events (
+        company_id, source, entity_name, entity_type, previous_status,
+        current_status, severity, message, metadata
+      )
+      VALUES (
+        v_company_id,
+        'server',
+        v_vm ->> 'name',
+        'virtual_machine',
+        v_previous_status,
+        v_current_status,
+        CASE WHEN v_current_status = 'Offline' THEN 'warning' ELSE 'info' END,
+        CASE
+          WHEN v_previous_status IS NULL THEN 'Máquina virtual descoberta pelo agente Hyper-V.'
+          ELSE 'Estado da máquina virtual alterado pelo agente Hyper-V.'
+        END,
+        jsonb_build_object(
+          'agent_id', p_agent_id,
+          'hyperv_id', v_vm ->> 'hyperv_id',
+          'sequence_no', p_sequence_no
+        )
+      );
+    END IF;
+  END LOOP;
+
+  -- Uma VM ausente do snapshot atual foi removida/desligada e não pode ficar online.
+  FOR v_vm IN
+    SELECT jsonb_build_object(
+      'name', s.hostname,
+      'status', s.status,
+      'hyperv_id', s.hyperv_vm_id
+    )
+      FROM servers s
+     WHERE s.company_id = v_company_id
+       AND s.agent_id = p_agent_id
+       AND s.is_virtual = TRUE
+       AND s.last_metrics_at < p_collected_at
+       AND NOT EXISTS (
+         SELECT 1
+           FROM jsonb_array_elements(COALESCE(p_payload -> 'virtual_machines', '[]'::jsonb)) incoming
+          WHERE incoming ->> 'hyperv_id' = s.hyperv_vm_id
+       )
+     FOR UPDATE
+  LOOP
+    UPDATE servers
+       SET status = 'Offline',
+           vm_status = 'Off',
+           last_updated = p_collected_at,
+           last_metrics_at = p_collected_at
+     WHERE asset_key = p_agent_id::TEXT || ':vm:' || (v_vm ->> 'hyperv_id');
+
+    IF v_vm ->> 'status' <> 'Offline' THEN
+      INSERT INTO monitoring_events (
+        company_id, source, entity_name, entity_type, previous_status,
+        current_status, severity, message, metadata
+      )
+      VALUES (
+        v_company_id,
+        'server',
+        v_vm ->> 'name',
+        'virtual_machine',
+        v_vm ->> 'status',
+        'Offline',
+        'warning',
+        'Máquina virtual ausente no snapshot do agente Hyper-V.',
+        jsonb_build_object(
+          'agent_id', p_agent_id,
+          'hyperv_id', v_vm ->> 'hyperv_id',
+          'sequence_no', p_sequence_no
+        )
+      );
+    END IF;
   END LOOP;
 
   UPDATE registered_agents
      SET status = 'Online',
          last_metrics_at = p_collected_at,
+         last_sequence_no = p_sequence_no,
          last_error = NULL,
          updated_at = NOW()
-   WHERE id = p_agent_id;
+   WHERE id = p_agent_id
+     AND status <> 'Revoked';
 
   RETURN QUERY SELECT 'accepted', p_agent_id, p_sequence_no, NOW();
 END;

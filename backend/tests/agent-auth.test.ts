@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildAgentAssetKey,
   createAgentClaims,
+  enrollAgent,
   generateOpaqueToken,
   hashOpaqueToken,
   isActivationTokenUsable,
@@ -63,4 +64,35 @@ test('não aceita claims de portal como identidade de agente', () => {
 
   assert.equal(parseAgentClaims({ user: { id: 'user-1' } }), null);
   assert.equal(parseAgentClaims({ kind: 'agent', agent_id: '', company_id: 'company-1' }), null);
+});
+
+test('faz enrollment por RPC atômico para consumir token e criar agente na mesma transação', async () => {
+  let rpcName = '';
+  let rpcArgs: Record<string, unknown> | undefined;
+  const supabase = {
+    rpc(name: string, args: Record<string, unknown>) {
+      rpcName = name;
+      rpcArgs = args;
+      return Promise.resolve({
+        data: [{ id: 'agent-1', company_id: 'company-1', hostname: 'HV-01', agent_version: '1.0.0' }],
+        error: null,
+      });
+    },
+  } as any;
+
+  const result = await enrollAgent(supabase, {
+    activation_token: 'activation-token',
+    machine_id: 'machine-1',
+    hostname: 'HV-01',
+    agent_version: '1.0.0',
+    os_info: 'Windows Server',
+    os_version: '2022',
+    hypervisor: 'Hyper-V',
+  });
+
+  assert.equal(rpcName, 'enroll_agent');
+  assert.equal(rpcArgs?.p_activation_token_hash, hashOpaqueToken('activation-token'));
+  assert.equal(rpcArgs?.p_machine_id, 'machine-1');
+  assert.equal(result.agent.id, 'agent-1');
+  assert.ok(result.refresh_token.length >= 40);
 });

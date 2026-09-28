@@ -47,22 +47,6 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
       const { data, error } = await query;
       if (error) return reply.code(500).send({ error: error.message });
 
-      // Se nao tem dados de agente nativo, tentar buscar servidores com agent_id
-      if (!data || data.length === 0) {
-        let agentsQuery = supabaseAdmin
-          .from('servers')
-          .select('*')
-          .not('agent_id', 'is', null)
-          .order('hostname', { ascending: true });
-
-        if (targetCompanyId) agentsQuery = agentsQuery.eq('company_id', targetCompanyId);
-
-        const { data: agentData, error: agentError } = await agentsQuery;
-        if (!agentError && agentData) {
-          return agentData.map(applyServerFreshness);
-        }
-      }
-
       return (data || []).map(applyServerFreshness);
     } catch (err) {
       return sendCompanyScopeError(reply, err);

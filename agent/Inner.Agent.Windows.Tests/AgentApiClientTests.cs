@@ -17,6 +17,7 @@ public sealed class AgentApiClientTests
             Assert.Equal(HttpMethod.Post, request.Method);
             Assert.Equal("/api/agent/v1/metrics", request.RequestUri?.AbsolutePath);
             Assert.Equal("Bearer access-1", request.Headers.Authorization?.ToString());
+            Assert.Equal("agent-1:3", request.Headers.GetValues("Idempotency-Key").Single());
 
             using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
             Assert.Equal(3, body.RootElement.GetProperty("sequence").GetInt64());
@@ -37,7 +38,8 @@ public sealed class AgentApiClientTests
             {
                 new VirtualMachineMetrics(
                     "vm-1", "VM-01", HyperVState.Running, 2, 4096, 2048, 3600, 100)
-            }));
+            }),
+            idempotencyKey: "agent-1:3");
 
         Assert.Equal("accepted", result.Status);
         Assert.Equal(3, result.AcceptedSequenceNo);

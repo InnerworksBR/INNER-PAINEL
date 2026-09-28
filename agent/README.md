@@ -11,13 +11,13 @@ Agente Windows instalado uma única vez no host físico Hyper-V. Ele coleta o ho
    .\build-agent.ps1
    ~~~
 
-3. No host Hyper-V, execute o PowerShell como Administrador:
+3. Salve o token baixado pelo painel em um arquivo protegido no host Hyper-V (não passe o segredo como argumento) e execute o PowerShell como Administrador:
 
    ~~~powershell
-   .\install-agent.ps1 -ApiBaseUrl "https://painel.exemplo.com" -ActivationToken "TOKEN_COPIADO_DO_PAINEL"
+   .\install-agent.ps1 -ApiBaseUrl "https://painel.exemplo.com" -ActivationTokenFile "C:\Secure\inner-agent-token.json"
    ~~~
 
-O token é usado uma única vez no enrollment, armazenado temporariamente em bootstrap.json e removido depois do registro. O agente guarda access/refresh tokens usando DPAPI e os lotes pendentes em SQLite.
+O instalador lê o token do arquivo, grava-o temporariamente em bootstrap.json, remove o arquivo de origem e o bootstrap depois do registro. O token é usado uma única vez no enrollment. O agente guarda access/refresh tokens usando DPAPI e os lotes pendentes em SQLite.
 
 ## Coleta
 

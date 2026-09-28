@@ -24,12 +24,17 @@ export async function ingestMetricBatch(
   supabase: SupabaseClient,
   agentId: string,
   input: unknown,
+  idempotencyKey?: string,
 ): Promise<IngestionResult> {
   const batch = validateMetricBatch(input);
+  const expectedIdempotencyKey = `${agentId}:${batch.sequence}`;
+  if (idempotencyKey && idempotencyKey !== expectedIdempotencyKey) {
+    throw new AgentPayloadError('INVALID_PAYLOAD', 'Idempotency-Key não corresponde ao agente e sequence.');
+  }
   const { data, error } = await supabase.rpc('ingest_agent_metrics', {
     p_agent_id: agentId,
     p_sequence_no: batch.sequence,
-    p_idempotency_key: `${agentId}:${batch.sequence}`,
+    p_idempotency_key: idempotencyKey || expectedIdempotencyKey,
     p_collected_at: batch.collected_at,
     p_payload: {
       host: batch.host,
@@ -60,7 +65,7 @@ export async function recordAgentHeartbeat(
 ): Promise<void> {
   validateHeartbeat(heartbeat);
 
-  const { error } = await supabase
+  const { data: updatedAgent, error } = await supabase
     .from('registered_agents')
     .update({
       status: 'Online',
@@ -78,10 +83,16 @@ export async function recordAgentHeartbeat(
       },
       updated_at: new Date().toISOString(),
     })
-    .eq('id', agentId);
+    .eq('id', agentId)
+    .neq('status', 'Revoked')
+    .select('id')
+    .maybeSingle();
 
   if (error) {
     throw new AgentIngestionError('INGESTION_ERROR', error.message);
+  }
+  if (!updatedAgent) {
+    throw new AgentIngestionError('AGENT_NOT_FOUND', 'Agente revogado ou não encontrado.', 401);
   }
 }
 

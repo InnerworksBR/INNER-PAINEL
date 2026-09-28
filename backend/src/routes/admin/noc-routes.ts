@@ -1,6 +1,7 @@
 // src/routes/admin/noc-routes.ts
 import type { FastifyInstance } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
+import { getMetricFreshnessStatus } from '../../services/monitoring-freshness-service';
 
 export default async function adminNocRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -31,7 +32,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
       const agentsRes = await supabaseAdmin
         .from('registered_agents')
-        .select('company_id, status, last_heartbeat');
+        .select('company_id, status, last_heartbeat, last_metrics_at');
       const agents = agentsRes.data || [];
 
       // Fetch recent tickets (GLPI) - with correct columns
@@ -83,8 +84,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         );
         const hasAgentProblem = companyAgents.some((agent: any) => {
           if (String(agent.status || '').toLowerCase() !== 'online') return true;
-          if (!agent.last_heartbeat) return true;
-          return Date.now() - new Date(agent.last_heartbeat).getTime() > 10 * 60 * 1000;
+          return getMetricFreshnessStatus(agent.last_metrics_at) !== 'Online';
         });
 
         // Check for critical events
