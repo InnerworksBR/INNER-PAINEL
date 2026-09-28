@@ -53,6 +53,8 @@ const Servidores = () => {
   );
 
   const clampPercent = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+  const formatPercent = (value) => `${Math.round(clampPercent(value))}%`;
+  const formatGigabytes = (value) => `${Math.round(Math.max(0, Number(value) || 0)).toLocaleString('pt-BR')} GB`;
 
   const cpuData = activeServer ? [
     { name: 'Em Uso', value: clampPercent(activeServer.cpu_usage), color: '#3b82f6' },
@@ -244,7 +246,7 @@ const Servidores = () => {
                             style={{ width: `${clampPercent(server.cpu_usage)}%` }}
                           />
                         </div>
-                        <span className="text-[10px] font-semibold text-neutral-700">{server.cpu_usage}%</span>
+                        <span className="text-[10px] font-semibold text-neutral-700">{formatPercent(server.cpu_usage)}</span>
                       </div>
                     </div>
                     <div className="bg-neutral-50 rounded-lg p-2">
@@ -259,7 +261,7 @@ const Servidores = () => {
                             style={{ width: `${clampPercent(server.memory_usage)}%` }}
                           />
                         </div>
-                        <span className="text-[10px] font-semibold text-neutral-700">{server.memory_usage}%</span>
+                        <span className="text-[10px] font-semibold text-neutral-700">{formatPercent(server.memory_usage)}</span>
                       </div>
                     </div>
                   </div>
@@ -386,7 +388,7 @@ const Servidores = () => {
                       </div>
                       <span className="text-sm font-semibold text-neutral-700">CPU</span>
                     </div>
-                    <span className="text-2xl font-bold text-blue-600">{activeServer.cpu_usage}%</span>
+                    <span className="text-2xl font-bold text-blue-600">{formatPercent(activeServer.cpu_usage)}</span>
                   </div>
                   <div className="h-32">
                     <ResponsiveContainer width="100%" height="100%">
@@ -418,7 +420,7 @@ const Servidores = () => {
                       </div>
                       <span className="text-sm font-semibold text-neutral-700">Memória</span>
                     </div>
-                    <span className="text-2xl font-bold text-purple-600">{activeServer.memory_usage}%</span>
+                    <span className="text-2xl font-bold text-purple-600">{formatPercent(activeServer.memory_usage)}</span>
                   </div>
                   <div className="h-32">
                     <ResponsiveContainer width="100%" height="100%">
@@ -440,7 +442,7 @@ const Servidores = () => {
                     </ResponsiveContainer>
                   </div>
                   <p className="text-xs text-neutral-500 text-center mt-2">
-                    {activeServer.memory_usage || 0} GB / {activeServer.memory_total || 0} GB
+                    {formatGigabytes(activeServer.memory_used)} / {formatGigabytes(activeServer.memory_total)}
                   </p>
                 </div>
 
@@ -453,7 +455,7 @@ const Servidores = () => {
                       </div>
                       <span className="text-sm font-semibold text-neutral-700">Disco</span>
                     </div>
-                    <span className="text-2xl font-bold text-emerald-600">{activeServer.disk_usage || 0}%</span>
+                    <span className="text-2xl font-bold text-emerald-600">{formatPercent(activeServer.disk_usage)}</span>
                   </div>
                   <div className="mt-4">
                     <div className="w-full bg-neutral-100 rounded-full h-3">
@@ -466,7 +468,9 @@ const Servidores = () => {
                       />
                     </div>
                     <p className="text-xs text-neutral-500 mt-2">
-                      {activeServer.disk_usage || 0} GB / {activeServer.disk_total || 0} GB
+                      {Number(activeServer.disk_total) > 0 && activeServer.disk_used != null
+                        ? `${formatGigabytes(activeServer.disk_used)} / ${formatGigabytes(activeServer.disk_total)}`
+                        : 'Capacidade não informada'}
                     </p>
                   </div>
                 </div>
