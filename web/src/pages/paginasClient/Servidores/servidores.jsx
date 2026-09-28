@@ -30,8 +30,16 @@ import { useRealtimeData } from '../../../hooks/useRealtimeSubscription';
 import AssetDetailDrawer from '../../../components/AssetDetailDrawer';
 
 const Servidores = () => {
-  const { data: servers, loading, refresh } = useRealtimeData('/client/metrics/servers', 'servers', { intervalMs: 30000 });
-  const { data: events, refresh: refreshEvents } = useRealtimeData('/client/metrics/servers/events', 'server_events', { intervalMs: 30000 });
+  const { data: servers, loading, refresh } = useRealtimeData('/client/metrics/servers', 'servers', {
+    intervalMs: 30000,
+    realtime: true,
+    realtimeDataKey: 'servers',
+  });
+  const { refresh: refreshEvents } = useRealtimeData('/client/metrics/servers/events', 'server_events', {
+    intervalMs: 30000,
+    realtime: true,
+    realtimeDataKey: 'events',
+  });
   const [activeServerId, setActiveServerId] = useState(null);
   const [detailServer, setDetailServer] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');

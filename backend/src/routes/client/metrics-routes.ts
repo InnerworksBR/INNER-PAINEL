@@ -7,6 +7,7 @@ import { decryptSecret } from '../../services/crypto-service';
 import { writeAdminAuditLog } from '../../services/audit-service';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { buildAssetDetail } from '../../services/asset-profile-service';
+import { formatSseEvent } from '../../services/sse-service';
 
 export default async function clientMetricsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -86,6 +87,55 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
+  });
+
+  fastify.get('/servers/stream', async (request, reply) => {
+    const { user } = request.user as JWTPayload;
+    let targetCompanyId: string | null;
+    try {
+      ({ targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id));
+    } catch (err) {
+      return sendCompanyScopeError(reply, err);
+    }
+
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    let closed = false;
+    let writing = false;
+    let timer: NodeJS.Timeout | null = null;
+    const closeStream = () => {
+      closed = true;
+      if (timer) clearInterval(timer);
+    };
+    request.raw.once('close', closeStream);
+
+    const sendSnapshot = async () => {
+      if (closed || writing) return;
+      writing = true;
+      try {
+        const { servers, events } = await loadServerStreamSnapshot(supabaseAdmin, targetCompanyId);
+        if (!closed) {
+          reply.raw.write(formatSseEvent('monitoring', {
+            servers,
+            events,
+            sent_at: new Date().toISOString(),
+          }));
+        }
+      } catch (error) {
+        request.log.warn({ err: error }, 'Falha ao atualizar stream de monitoramento');
+      } finally {
+        writing = false;
+      }
+    };
+
+    await sendSnapshot();
+    timer = setInterval(() => void sendSnapshot(), 5000);
   });
 
   fastify.get<{ Params: { id: string } }>('/servers/:id/history', async (request, reply) => {
@@ -256,4 +306,27 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
         .map((i: any) => ({ key: i.key_, name: i.name, value: i.lastvalue, unit: i.units })),
     }));
   });
+}
+
+async function loadServerStreamSnapshot(supabaseAdmin: any, companyId: string | null) {
+  let serversQuery = supabaseAdmin
+    .from('servers')
+    .select('*')
+    .eq('monitoring_source', 'agent_native')
+    .order('hostname', { ascending: true });
+  if (companyId) serversQuery = serversQuery.eq('company_id', companyId);
+  const { data: servers, error: serversError } = await serversQuery;
+  if (serversError) throw serversError;
+
+  let eventsQuery = supabaseAdmin
+    .from('monitoring_events')
+    .select('*')
+    .eq('source', 'server')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (companyId) eventsQuery = eventsQuery.eq('company_id', companyId);
+  const { data: events, error: eventsError } = await eventsQuery;
+  if (eventsError) throw eventsError;
+
+  return { servers: servers || [], events: events || [] };
 }
