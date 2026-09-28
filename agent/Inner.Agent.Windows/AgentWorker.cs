@@ -71,6 +71,12 @@ public sealed class AgentWorker(
 
     private async Task<bool> EnsureEnrolledAsync(CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(options.Value.ApiBaseUrl))
+        {
+            logger.LogError("Agent API base URL is not configured.");
+            return false;
+        }
+
         var stored = ReadStoredCredentials();
         if (stored is not null)
         {
