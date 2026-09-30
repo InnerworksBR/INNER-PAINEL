@@ -121,16 +121,16 @@ BEGIN
   END IF;
 END $$;
 
--- 9. Política para audit_logs
+-- 9. Política para admin_audit_logs
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'audit_logs'
-    AND policyname = 'Service role manages audit_logs'
+    WHERE schemaname = 'public' AND tablename = 'admin_audit_logs'
+    AND policyname = 'Service role manages admin_audit_logs'
   ) THEN
-    CREATE POLICY "Service role manages audit_logs"
-      ON audit_logs FOR ALL
+    CREATE POLICY "Service role manages admin_audit_logs"
+      ON admin_audit_logs FOR ALL
       TO service_role
       USING (true) WITH CHECK (true);
   END IF;

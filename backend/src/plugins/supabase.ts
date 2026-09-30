@@ -20,6 +20,12 @@ export default fp(async function supabasePlugin(fastify: FastifyInstance) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  const createSupabaseAuthClient = () =>
+    createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
   fastify.decorate('supabase', supabase);
   fastify.decorate('supabaseAdmin', supabaseAdmin);
+  fastify.decorate('createSupabaseAuthClient', createSupabaseAuthClient);
 });

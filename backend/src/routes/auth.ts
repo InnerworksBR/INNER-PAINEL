@@ -19,7 +19,7 @@ interface UpdateProfileBody {
 }
 
 export default async function authRoutes(fastify: FastifyInstance): Promise<void> {
-  const { supabase, supabaseAdmin } = fastify;
+  const { supabaseAdmin, createSupabaseAuthClient } = fastify;
 
   fastify.post<{ Body: LoginBody }>('/login', {
     schema: {
@@ -35,7 +35,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
   }, async (request: FastifyRequest<{ Body: LoginBody }>, reply: FastifyReply) => {
     const { email, password } = request.body;
 
-    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    const { data, error } = await createSupabaseAuthClient().auth.signInWithPassword({
       email,
       password,
     });
@@ -173,7 +173,7 @@ export default async function authRoutes(fastify: FastifyInstance): Promise<void
       return reply.code(400).send({ error: 'A confirmacao da nova senha nao confere.' });
     }
 
-    const { error: passwordError } = await supabase.auth.signInWithPassword({
+    const { error: passwordError } = await createSupabaseAuthClient().auth.signInWithPassword({
       email: user.email,
       password: currentPassword,
     });

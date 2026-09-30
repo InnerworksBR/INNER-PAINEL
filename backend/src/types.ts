@@ -6,6 +6,7 @@ declare module 'fastify' {
   interface FastifyInstance {
     supabase: SupabaseClient;
     supabaseAdmin: SupabaseClient;
+    createSupabaseAuthClient: () => SupabaseClient;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
