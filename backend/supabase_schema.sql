@@ -7,6 +7,8 @@ CREATE TABLE companies (
   cnpj TEXT UNIQUE NOT NULL,
   sector TEXT,
   status TEXT DEFAULT 'Ativo',
+  phone TEXT,
+  email TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

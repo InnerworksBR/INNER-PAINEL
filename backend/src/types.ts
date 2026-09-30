@@ -41,6 +41,8 @@ export interface Company {
   cnpj: string;
   sector?: string;
   status: string;
+  phone?: string | null;
+  email?: string | null;
   created_at: string;
   company_integrations?: CompanyIntegration[];
 }
