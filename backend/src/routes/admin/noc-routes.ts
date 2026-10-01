@@ -3,6 +3,29 @@ import type { FastifyInstance } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
 import { getMetricFreshnessStatus } from '../../services/monitoring-freshness-service';
 
+const OPEN_TICKET_STATUSES = new Set([
+  'open',
+  'pending',
+  'in_progress',
+  'new',
+  'novo',
+  'em andamento (atribuido)',
+  'em andamento (planejado)',
+  'pendente',
+  '1',
+  '2',
+  '3',
+  '4',
+]);
+
+function normalizeTicketStatus(status: unknown): string {
+  return String(status ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
 export default async function adminNocRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
 
@@ -35,12 +58,22 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         .select('company_id, status, last_heartbeat, last_metrics_at');
       const agents = agentsRes.data || [];
 
-      // Fetch recent tickets (GLPI) - with correct columns
-      const ticketsRes = await supabaseAdmin
-        .from('glpi_tickets')
-        .select('id, company_id, glpi_id, title, status, sla_status, priority, created_at')
-        .order('created_at', { ascending: false })
-        .limit(20);
+      // Fetch all tickets for company aggregates; keep only the latest 20 for the recent list.
+      const tickets: any[] = [];
+      const ticketPageSize = 500;
+      for (let offset = 0; ; offset += ticketPageSize) {
+        const { data, error } = await supabaseAdmin
+          .from('glpi_tickets')
+          .select('id, company_id, glpi_id, title, status, sla_status, priority, created_at')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(offset, offset + ticketPageSize - 1);
+
+        if (error) throw error;
+        const page = data || [];
+        tickets.push(...page);
+        if (page.length < ticketPageSize) break;
+      }
 
       // Fetch recent alerts/monitoring events
       const alertsRes = await supabaseAdmin
@@ -58,11 +91,11 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         const companyAgents = agents.filter((agent: any) => agent.company_id === company.id);
 
         // Count open/critical tickets for this company
-        const companyTickets = (ticketsRes.data || []).filter(
+        const companyTickets = tickets.filter(
           (t: any) => t.company_id === company.id
         );
         const openTickets = companyTickets.filter(
-          (t: any) => ['open', 'pending', 'in_progress', 'new'].includes(String(t.status).toLowerCase())
+          (t: any) => OPEN_TICKET_STATUSES.has(normalizeTicketStatus(t.status))
         );
         const criticalTickets = companyTickets.filter(
           (t: any) => t.sla_status === 'Fora do SLA' || t.priority === 'Alta' || t.priority === 'Muito Alta'
@@ -106,14 +139,19 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           status = 'offline';
         }
 
-        // Calculate SLA compliance (simplified - based on ticket resolution)
-        const totalTickets = companyTickets.length;
-        const resolvedTickets = companyTickets.filter(
-          (t: any) => ['closed', 'resolved'].includes(String(t.status).toLowerCase())
+        // Measure actual SLA classifications; unresolved tickets can still be within SLA.
+        const ticketsWithKnownSla = companyTickets.filter(
+          (t: any) => t.sla_status === 'Dentro do SLA' || t.sla_status === 'Fora do SLA'
+        );
+        const ticketsWithinSla = ticketsWithKnownSla.filter(
+          (t: any) => t.sla_status === 'Dentro do SLA'
         ).length;
-        const slaCompliance = totalTickets > 0
-          ? Math.round((resolvedTickets / totalTickets) * 100)
-          : 100;
+        let slaCompliance = 0;
+        if (ticketsWithKnownSla.length > 0) {
+          slaCompliance = Math.round((ticketsWithinSla / ticketsWithKnownSla.length) * 100);
+        } else if (companyTickets.length === 0) {
+          slaCompliance = 100;
+        }
 
         return {
           id: company.id,
@@ -141,7 +179,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
       };
 
       // Format recent tickets - resolve company name from company_id
-      const recentTickets = (ticketsRes.data || []).map((ticket: any) => ({
+      const recentTickets = tickets.slice(0, 20).map((ticket: any) => ({
         id: ticket.glpi_id || ticket.id,
         companyId: ticket.company_id,
         companyName: companyMap.get(ticket.company_id) || 'N/A',
