@@ -1,4 +1,7 @@
 import type { FastifyInstance } from 'fastify';
+import { loadCompanyRows } from '../../services/portal-data-service';
+import { applyServerFreshness } from '../../services/monitoring-freshness-service';
+import { isResolvedTicket } from '../../services/ticket-status';
 import type { JWTPayload } from '../../types';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 
@@ -16,43 +19,20 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
         user,
         (request.query as any)?.company_id
       );
-      const filterByCompany = (query: any) => {
-        if (targetCompanyId) {
-          return query.eq('company_id', targetCompanyId);
-        }
-        return query;
-      };
-
-      const [ms365Res, serversRes, ticketsRes, docsRes, networkRes, assetProfilesRes] = await Promise.all([
-        filterByCompany(supabaseAdmin.from('ms365_metrics').select('*')),
-        filterByCompany(supabaseAdmin.from('servers').select('*')),
-        filterByCompany(supabaseAdmin.from('glpi_tickets').select('*')),
-        filterByCompany(supabaseAdmin.from('documents').select('id, created_at')),
-        filterByCompany(supabaseAdmin.from('network_devices').select('*')),
-        filterByCompany(
-          supabaseAdmin
-            .from('asset_profiles')
-            .select('source_type, source_id, customer_visible, include_in_health_score')
-        ),
+      const [ms365, servers, tickets, docs, network, assetProfiles] = await Promise.all([
+        loadCompanyRows(supabaseAdmin, 'ms365_metrics', targetCompanyId),
+        loadCompanyRows(supabaseAdmin, 'servers', targetCompanyId, { monitoring_source: 'agent_native' }),
+        loadCompanyRows(supabaseAdmin, 'glpi_tickets', targetCompanyId),
+        loadCompanyRows(supabaseAdmin, 'documents', targetCompanyId),
+        loadCompanyRows(supabaseAdmin, 'network_devices', targetCompanyId),
+        loadCompanyRows(supabaseAdmin, 'asset_profiles', targetCompanyId),
       ]);
-
-      const ms365 = ms365Res.data || [];
-      const servers = serversRes.data || [];
-      const tickets = ticketsRes.data || [];
-      const docs = docsRes.data || [];
-      const network = networkRes.data || [];
-      const assetProfiles = assetProfilesRes.data || [];
-      const visibleServerIds = new Set(
-        assetProfiles
-          .filter((profile: any) => profile.source_type === 'server' && profile.customer_visible === true)
-          .map((profile: any) => profile.source_id)
-      );
+      const visibleServers = servers.map(applyServerFreshness);
       const visibleNetworkDeviceIds = new Set(
         assetProfiles
           .filter((profile: any) => profile.source_type === 'network_device' && profile.customer_visible === true)
           .map((profile: any) => profile.source_id)
       );
-      const visibleServers = servers.filter((server: any) => visibleServerIds.has(server.id));
       const visibleNetwork = network.filter((device: any) => visibleNetworkDeviceIds.has(device.id));
 
       const validMs365 = ms365.filter((metric: any) => metric.include_in_dashboard === true);
@@ -61,7 +41,7 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       const utilizationRate = totalLicenses > 0 ? (assignedLicenses / totalLicenses) * 100 : 0;
 
       const onlineServers = visibleServers.filter((s: any) => s.status === 'Online').length;
-      const openTickets = tickets.filter((t: any) => !['Resolvido', 'Fechado', '5', '6'].includes(t.status)).length;
+      const openTickets = tickets.filter((t: any) => !isResolvedTicket(t.status)).length;
       const resolvedTickets = tickets.length - openTickets;
       const onlineDevices = visibleNetwork.filter((d: any) => d.status === 'Online').length;
 
@@ -78,7 +58,8 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           hasData: visibleServers.length > 0,
           total: visibleServers.length,
           online: onlineServers,
-          offline: visibleServers.length - onlineServers,
+          offline: visibleServers.filter((server: any) => server.status === 'Offline').length,
+          warning: visibleServers.filter((server: any) => server.status === 'Atencao').length,
           avgCpu: average(visibleServers, 'cpu_usage'),
           lastUpdated: getLatestDate(visibleServers, 'last_updated'),
         },
@@ -104,8 +85,7 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
         health: calculateHealthScore({ servers: visibleServers, network: visibleNetwork, healthProfiles: assetProfiles }),
       };
     } catch (err: any) {
-      const scopedError = sendCompanyScopeError(reply, err);
-      if (scopedError) return scopedError;
+      if (err.name === 'CompanyScopeError') return sendCompanyScopeError(reply, err);
       return reply.code(500).send({ error: err.message });
     }
   });
@@ -135,7 +115,7 @@ function calculateHealthScore({
   servers: any[];
   network: any[];
   healthProfiles: any[];
-}): { healthy: number; warning: number; critical: number } {
+}): { hasData: boolean; healthy: number; warning: number; critical: number } {
   let healthy = 0;
   let warning = 0;
   let critical = 0;
@@ -153,21 +133,24 @@ function calculateHealthScore({
   const includedServers = servers.filter((server: any) => !excludedServers.has(server.id));
   const includedNetwork = network.filter((device: any) => !excludedNetworkDevices.has(device.id));
 
-  if (includedServers.length === 0) warning++;
   includedServers.forEach((server: any) => {
-    if (server.status !== 'Online' || server.cpu_usage > 90 || server.memory_usage > 90) {
+    if (server.status === 'Offline' || server.cpu_usage > 90 || server.memory_usage > 90) {
       critical++;
-    } else if (server.cpu_usage > 70 || server.memory_usage > 70) {
+    } else if (server.status !== 'Online' || server.cpu_usage > 70 || server.memory_usage > 70) {
       warning++;
     } else {
       healthy++;
     }
   });
 
-  if (includedNetwork.some((device: any) => device.status !== 'Online')) warning++;
+  includedNetwork.forEach((device: any) => {
+    if (device.status !== 'Online') critical++;
+    else healthy++;
+  });
 
   const total = Math.max(healthy + warning + critical, 1);
   return {
+    hasData: healthy + warning + critical > 0,
     healthy: Math.round((healthy / total) * 100),
     warning: Math.round((warning / total) * 100),
     critical: Math.round((critical / total) * 100),

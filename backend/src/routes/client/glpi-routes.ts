@@ -1,6 +1,9 @@
 // src/routes/client/glpi-routes.ts
 import type { FastifyInstance } from 'fastify';
 import { syncTickets, getTicketDetails } from '../../services/glpi-service';
+import { loadCompanyRows } from '../../services/portal-data-service';
+import { readableGlpiName } from '../../services/glpi-label-service';
+import { isResolvedTicket } from '../../services/ticket-status';
 import type { JWTPayload } from '../../types';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 
@@ -14,11 +17,13 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
     const { user } = request.user as JWTPayload;
     try {
       const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
-      let query = supabaseAdmin.from('glpi_tickets').select('*').order('created_at', { ascending: false });
-      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
-      const { data, error } = await query;
-      if (error) return reply.code(500).send({ error: error.message });
-      return data;
+      const data = await loadCompanyRows(supabaseAdmin, 'glpi_tickets', targetCompanyId);
+      data.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      return data.map(ticket => ({
+        ...ticket,
+        requester: readableGlpiName(ticket.requester) || 'Requerente não informado',
+        category: readableGlpiName(ticket.category) || 'Categoria não informada',
+      }));
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
@@ -55,16 +60,14 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
   fastify.get('/stats', async (request, reply) => {
     const { user } = request.user as JWTPayload;
 
-    let query = supabaseAdmin.from('glpi_tickets').select('*');
+    let tickets: any[];
     try {
       const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
-      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
-    } catch (err) {
-      return sendCompanyScopeError(reply, err);
+      tickets = await loadCompanyRows(supabaseAdmin, 'glpi_tickets', targetCompanyId);
+    } catch (err: any) {
+      if (err.name === 'CompanyScopeError') return sendCompanyScopeError(reply, err);
+      return reply.code(500).send({ error: err.message });
     }
-
-    const { data: tickets, error } = await query;
-    if (error) return reply.code(500).send({ error: error.message });
 
     const allTickets = tickets || [];
     const total = allTickets.length;
@@ -77,16 +80,18 @@ export default async function clientGlpiRoutes(fastify: FastifyInstance): Promis
     allTickets.forEach((t: any) => {
       byStatus[t.status] = (byStatus[t.status] || 0) + 1;
       if (t.priority) byPriority[t.priority] = (byPriority[t.priority] || 0) + 1;
-      if (t.category) byCategory[t.category] = (byCategory[t.category] || 0) + 1;
-      if (t.requester) byRequester[t.requester] = (byRequester[t.requester] || 0) + 1;
+      const category = readableGlpiName(t.category) || 'Categoria não informada';
+      byCategory[category] = (byCategory[category] || 0) + 1;
+      const requester = readableGlpiName(t.requester);
+      if (requester) byRequester[requester] = (byRequester[requester] || 0) + 1;
     });
 
     const openCount = allTickets.filter((t: any) =>
-      !['Resolvido', 'Fechado', '5', '6'].includes(t.status)
+      !isResolvedTicket(t.status)
     ).length;
 
     const resolvedCount = allTickets.filter((t: any) =>
-      ['Resolvido', 'Fechado', '5', '6'].includes(t.status)
+      isResolvedTicket(t.status)
     ).length;
 
     const slaOk = allTickets.filter((t: any) => t.sla_status === 'Dentro do SLA').length;

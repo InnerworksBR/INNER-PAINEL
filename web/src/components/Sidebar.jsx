@@ -188,10 +188,7 @@ const Sidebar = ({ isOpen, onClose }) => {
               >
                 <item.icon
                   size={20}
-                  className={`
-                    transition-colors duration-200
-                    ${isActive ? 'text-white' : 'text-white/40 group-hover:text-white/70'}
-                  `}
+                  className="transition-colors duration-200 text-white/40 group-hover:text-white/70"
                 />
                 <span>{item.label}</span>
               </NavLink>
@@ -200,7 +197,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             {/* Settings link for admins */}
             {user?.role === 'admin' && (
               <NavLink
-                to="/admin/config"
+                to="/admin/configAdmin"
                 onClick={onClose}
                 className={({ isActive }) => `
                   group flex items-center gap-3 px-4 py-3 rounded-xl

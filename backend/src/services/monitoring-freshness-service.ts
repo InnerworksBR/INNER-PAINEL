@@ -3,6 +3,15 @@ export type MetricFreshnessStatus = 'Online' | 'Atencao' | 'Offline';
 const STALE_AFTER_MS = 3 * 60 * 1000;
 const OFFLINE_AFTER_MS = 10 * 60 * 1000;
 
+export function applyServerFreshness(server: any) {
+  return {
+    ...server,
+    status: String(server.status || '').toLowerCase() === 'offline'
+      ? 'Offline'
+      : getMetricFreshnessStatus(server.last_metrics_at || server.last_updated),
+  };
+}
+
 export function getMetricFreshnessStatus(lastMetricsAt: string | null | undefined, now = new Date()): MetricFreshnessStatus {
   if (!lastMetricsAt) return 'Offline';
   const timestamp = new Date(lastMetricsAt).getTime();

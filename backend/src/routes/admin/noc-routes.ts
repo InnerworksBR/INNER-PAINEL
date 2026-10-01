@@ -2,28 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
 
-const OPEN_TICKET_STATUSES = new Set([
-  'open',
-  'pending',
-  'in_progress',
-  'new',
-  'novo',
-  'em andamento (atribuido)',
-  'em andamento (planejado)',
-  'pendente',
-  '1',
-  '2',
-  '3',
-  '4',
-]);
-
-function normalizeTicketStatus(status: unknown): string {
-  return String(status ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
+import { isResolvedTicket } from '../../services/ticket-status';
 
 export default async function adminNocRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -99,7 +78,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           (t: any) => t.company_id === company.id
         );
         const openTickets = companyTickets.filter(
-          (t: any) => OPEN_TICKET_STATUSES.has(normalizeTicketStatus(t.status))
+          (t: any) => !isResolvedTicket(t.status)
         );
         const criticalTickets = companyTickets.filter(
           (t: any) => t.sla_status === 'Fora do SLA' || t.priority === 'Alta' || t.priority === 'Muito Alta'

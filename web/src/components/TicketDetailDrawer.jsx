@@ -67,11 +67,11 @@ const TicketDetailDrawer = ({ isOpen, onClose, ticketId }) => {
               <div className="bg-white p-5 rounded-xl border border-slate-200 grid grid-cols-2 gap-4 text-sm shadow-sm">
                 <div className="flex items-center gap-2 text-slate-600">
                   <User size={16} className="text-slate-400" />
-                  <span className="font-medium text-slate-800">Requerente:</span> {data.ticket.users_id_recipient_name || 'N/A'}
+                  <span className="font-medium text-slate-800">Requerente:</span> {data.ticket.requester || 'Requerente não informado'}
                 </div>
                 <div className="flex items-center gap-2 text-slate-600">
                   <Tag size={16} className="text-slate-400" />
-                  <span className="font-medium text-slate-800">Categoria:</span> {data.ticket.itilcategories_id_name || 'N/A'}
+                  <span className="font-medium text-slate-800">Categoria:</span> {data.ticket.category || 'Categoria não informada'}
                 </div>
                 <div className="flex items-center gap-2 text-slate-600">
                   <CalendarIcon size={16} className="text-slate-400" />

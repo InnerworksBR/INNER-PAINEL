@@ -1,5 +1,6 @@
 // src/services/glpi-service.ts
 import axios from 'axios';
+import { resolveTicketLabels } from './glpi-label-service';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { recordSyncError, recordSyncSuccess } from './integration-status-service';
 
@@ -68,6 +69,7 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
       const response = await glpiApi.get('/Ticket', {
         params: {
           range: `${start}-${end}`,
+          expand_dropdowns: true,
           order: 'DESC',
           sort: 'id',
         },
@@ -85,14 +87,20 @@ export async function syncTickets(supabase: SupabaseClient, company_id: string):
     // mas pode não existir em ambientes que ainda não aplicaram a migration.
     // Para máxima compatibilidade, montamos o payload completo e, se o upsert
     // falhar especificamente por causa dessa coluna ausente, refazemos sem ela.
+    const labelCache = new Map<string, Promise<string | null>>();
+    for (let start = 0; start < tickets.length; start += 10) {
+      await Promise.all(tickets.slice(start, start + 10).map(async ticket => {
+        Object.assign(ticket, await resolveTicketLabels(glpiApi, ticket, labelCache));
+      }));
+    }
     const ticketsToUpsert = tickets.map((t: any) => ({
       glpi_id: t.id,
       title: t.name,
       status: mapGLPIStatus(t.status),
       sla_status: calculateSLA(t),
       priority: mapGLPIPriority(t.priority),
-      requester: t.users_id_recipient_name || t.users_id_recipient || null,
-      category: t.itilcategories_id_name || t.itilcategories_id || null,
+      requester: t.requester,
+      category: t.category,
       created_at: t.date_creation || t.date,
       glpi_date_mod: t.date_mod ? new Date(t.date_mod).toISOString() : null,
       company_id: company_id,
@@ -275,6 +283,7 @@ export async function getTicketDetails(supabase: SupabaseClient, company_id: str
     const rawTicket = ticketRes.data;
     const ticket = {
       ...rawTicket,
+      ...(await resolveTicketLabels(glpiApi, rawTicket)),
       sla_status: calculateSLA(rawTicket),
     };
     const tasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];

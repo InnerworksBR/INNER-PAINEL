@@ -25,12 +25,13 @@ const DashboardGeral = () => {
     );
   }
 
+  const hasHealthData = data?.health?.hasData ?? Boolean(data?.health);
   const healthData = data?.health ? [
     { name: 'Saudável', value: data.health.healthy || 0, color: '#10b981' },
     { name: 'Atenção', value: data.health.warning || 0, color: '#f59e0b' },
     { name: 'Crítico', value: data.health.critical || 0, color: '#ef4444' },
   ] : [
-    { name: 'Saudável', value: 100, color: '#10b981' },
+    { name: 'Saudável', value: 0, color: '#10b981' },
     { name: 'Atenção', value: 0, color: '#f59e0b' },
     { name: 'Crítico', value: 0, color: '#ef4444' },
   ];
@@ -48,29 +49,29 @@ const DashboardGeral = () => {
       icon: Cloud,
       trend: data?.ms365?.hasData ? '+12%' : null,
       color: { from: '#3b82f6', to: '#2563eb' },
-      status: ms365Status === 'Operacional' ? 'success' : 'warning',
+      status: ms365Status === 'Operacional' ? 'success' : 'empty',
       path: portalPath('ms365'),
     },
     {
       title: 'Servidores',
       subtitle: 'Monitoramento',
-      value: `${data?.servers?.online || 0}/${data?.servers?.total || 0}`,
-      subValue: `${data?.servers?.offline || 0} offline`,
+      value: data?.servers?.total ? `${data.servers.online || 0}/${data.servers.total}` : 'Sem dados',
+      subValue: `${data?.servers?.offline || 0} offline${data?.servers?.warning ? ` · ${data.servers.warning} em atenção` : ''}`,
       icon: Server,
       trend: null,
       color: { from: '#10b981', to: '#059669' },
-      status: (data?.servers?.offline || 0) === 0 ? 'success' : 'warning',
+      status: !data?.servers?.total ? 'empty' : data.servers.offline > 0 || data.servers.warning > 0 ? 'warning' : 'success',
       path: portalPath('servidores'),
     },
     {
       title: 'Saúde Geral',
       subtitle: 'Indicadores',
-      value: `${healthData[0].value}%`,
+      value: hasHealthData ? `${healthData[0].value}%` : 'Sem dados',
       subValue: 'índice de saúde',
       icon: Activity,
       trend: null,
       color: { from: '#8b5cf6', to: '#7c3aed' },
-      status: healthData[2].value > 0 ? 'warning' : 'success',
+      status: !hasHealthData ? 'empty' : healthData[2].value > 0 || healthData[1].value > 0 ? 'warning' : 'success',
       path: null,
     },
   ];
@@ -110,10 +111,10 @@ const DashboardGeral = () => {
     },
     {
       title: 'Chamados',
-      desc: 'GLPI tickets',
+      desc: 'Exclui resolvidos e fechados',
       icon: Ticket,
       path: portalPath('chamados'),
-      stat: `${data?.tickets?.open || 0} abertos`,
+      stat: `${data?.tickets?.open || 0} não solucionados`,
       color: { bg: 'from-rose-500/10 to-rose-600/5', border: 'border-rose-200/50', icon: 'text-rose-600', hover: 'hover:bg-rose-50 hover:border-rose-300' }
     },
     {
@@ -208,14 +209,14 @@ const DashboardGeral = () => {
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
                       ${card.status === 'success'
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : card.status === 'empty' ? 'bg-neutral-50 text-neutral-600 border border-neutral-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
                       }`}
                   >
                     <span
-                      className={`w-1.5 h-1.5 rounded-full ${card.status === 'success' ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                      className={`w-1.5 h-1.5 rounded-full ${card.status === 'success' ? 'bg-emerald-500' : card.status === 'empty' ? 'bg-neutral-400' : 'bg-amber-500'}`}
                       style={card.status === 'success' ? { animation: 'pulse 2s infinite' } : {}}
                     />
-                    {card.status === 'success' ? 'Operacional' : 'Atenção'}
+                    {card.status === 'success' ? 'Operacional' : card.status === 'empty' ? 'Sem dados' : 'Atenção'}
                   </span>
                 </div>
               )}
@@ -237,7 +238,7 @@ const DashboardGeral = () => {
         <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-neutral-100">
             <h2 className="text-lg font-semibold text-neutral-900">Saúde do Ambiente</h2>
-            <p className="text-sm text-neutral-500 mt-0.5">Distribuição por status</p>
+            <p className="text-sm text-neutral-500 mt-0.5">Disponibilidade e uso de recursos dos ativos incluídos</p>
           </div>
           <div className="p-6">
             <div className="relative h-48">
@@ -266,8 +267,8 @@ const DashboardGeral = () => {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-3xl font-bold text-neutral-900">{healthData[0].value}%</span>
-                <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Saudável</span>
+                <span className="text-3xl font-bold text-neutral-900">{hasHealthData ? `${healthData[0].value}%` : 'Sem dados'}</span>
+                <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">{hasHealthData ? 'Saudável' : 'Sem indicadores'}</span>
               </div>
             </div>
 
@@ -364,7 +365,7 @@ const DashboardGeral = () => {
                 </button>
               </div>
             )}
-            {(!data?.servers?.offline && !data?.tickets?.open) && (
+            {(hasHealthData && healthData[1].value === 0 && healthData[2].value === 0 && !data?.servers?.offline && !data?.tickets?.open) && (
               <div className="flex items-start gap-4 p-4 rounded-xl bg-emerald-50/50 border border-emerald-200/50">
                 <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
                   <CheckCircle size={20} className="text-emerald-600" />

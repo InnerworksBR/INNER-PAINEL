@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import api from '../../../services/api';
 import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
+import { isResolvedTicket } from '../../../utils/ticket-status';
 import TicketDetailDrawer from '../../../components/TicketDetailDrawer';
 
 const DEFAULT_FILTROS = {
@@ -35,7 +36,7 @@ const DEFAULT_FILTROS = {
 };
 
 // Status que NÃO são considerados "solucionados" (filtro padrão)
-const STATUS_SOLUCIONADOS = ['Resolvido', 'Fechado', 'Solucionado', 'Closed', 'Resolved'];
+
 
 const STATUS_CONFIG = {
   'Resolvido':         { bg: 'bg-emerald-50',  text: 'text-emerald-700',  border: 'border-emerald-200',  dot: 'bg-emerald-500' },
@@ -64,7 +65,7 @@ function priorityConfig(priority) {
 }
 
 function isResolved(status) {
-  return STATUS_SOLUCIONADOS.includes(status);
+  return isResolvedTicket(status);
 }
 
 function timeSince(dateStr) {

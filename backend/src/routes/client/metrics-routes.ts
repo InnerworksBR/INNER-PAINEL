@@ -6,7 +6,8 @@ import { writeAdminAuditLog } from '../../services/audit-service';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { buildAssetDetail } from '../../services/asset-profile-service';
 import { formatSseEvent } from '../../services/sse-service';
-import { getMetricFreshnessStatus } from '../../services/monitoring-freshness-service';
+import { applyServerFreshness } from '../../services/monitoring-freshness-service';
+import { loadCompanyRows } from '../../services/portal-data-service';
 
 export default async function clientMetricsRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -36,18 +37,8 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
 
       // Buscar servidores que foram monitorados por agente nativo
       // Inclui tanto hosts quanto VMs
-      let query = supabaseAdmin
-        .from('servers')
-        .select('*')
-        .eq('monitoring_source', 'agent_native')
-        .order('hostname', { ascending: true });
-
-      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
-
-      const { data, error } = await query;
-      if (error) return reply.code(500).send({ error: error.message });
-
-      return (data || []).map(applyServerFreshness);
+      const data = await loadCompanyRows(supabaseAdmin, 'servers', targetCompanyId, { monitoring_source: 'agent_native' });
+      return data.sort((a, b) => String(a.hostname).localeCompare(String(b.hostname))).map(applyServerFreshness);
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
@@ -218,14 +209,8 @@ export default async function clientMetricsRoutes(fastify: FastifyInstance): Pro
 }
 
 async function loadServerStreamSnapshot(supabaseAdmin: any, companyId: string | null) {
-  let serversQuery = supabaseAdmin
-    .from('servers')
-    .select('*')
-    .eq('monitoring_source', 'agent_native')
-    .order('hostname', { ascending: true });
-  if (companyId) serversQuery = serversQuery.eq('company_id', companyId);
-  const { data: servers, error: serversError } = await serversQuery;
-  if (serversError) throw serversError;
+  const servers = await loadCompanyRows(supabaseAdmin, 'servers', companyId, { monitoring_source: 'agent_native' });
+  servers.sort((a, b) => String(a.hostname).localeCompare(String(b.hostname)));
 
   let eventsQuery = supabaseAdmin
     .from('monitoring_events')
@@ -238,14 +223,4 @@ async function loadServerStreamSnapshot(supabaseAdmin: any, companyId: string | 
   if (eventsError) throw eventsError;
 
   return { servers: (servers || []).map(applyServerFreshness), events: events || [] };
-}
-
-function applyServerFreshness(server: any) {
-  const recordedStatus = String(server.status || '').toLowerCase();
-  return {
-    ...server,
-    status: recordedStatus === 'offline'
-      ? 'Offline'
-      : getMetricFreshnessStatus(server.last_metrics_at || server.last_updated),
-  };
 }

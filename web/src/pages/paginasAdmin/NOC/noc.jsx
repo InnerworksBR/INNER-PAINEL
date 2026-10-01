@@ -265,7 +265,7 @@ const NOC = () => {
                                                             style={{ width: `${hasSlaCompliance ? company.slaCompliance : 0}%` }}
                                                         />
                                                     </div>
-                                                    <span className="text-sm font-medium text-slate-300">{hasSlaCompliance ? `${company.slaCompliance}%` : 'N/A'}</span>
+                                                    <span className="text-sm font-medium text-slate-300">{hasSlaCompliance ? `${company.slaCompliance}%` : 'Sem dados'}</span>
                                                 </div>
                                             </td>
                                         </tr>
