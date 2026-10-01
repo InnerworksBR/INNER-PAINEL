@@ -221,22 +221,7 @@ function calculateSLA(t: any): string {
     }
   }
 
-  // 3. Fallback inteligente: usa heurística baseada em prioridade + idade do ticket
-  // Se é crítico (Alta/Muito Alta) e está aberto há mais de 7 dias, considera fora do SLA
-  if (['4', '5', '6'].includes(String(t.priority))) {
-    const created = t.date_creation ? new Date(t.date_creation) : null;
-    if (created && !isNaN(created.getTime())) {
-      const ageInDays = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
-      // SLA típico: Alta=24h, Muito Alta=4h
-      const limitDays = String(t.priority) === '5' ? 0.16 : (String(t.priority) === '6' ? 0.04 : 1);
-      if (ageInDays > limitDays && !['5', '6'].includes(String(t.status))) {
-        return 'Fora do SLA';
-      }
-    }
-  }
-
-  // 4. Sem dados suficientes para calcular — não classifica como N/A
-  // para não poluir as métricas
+  // Prioridade e idade não comprovam violação de SLA; sem estado ou prazo, não classifica.
   return 'Em Análise';
 }
 
@@ -287,7 +272,11 @@ export async function getTicketDetails(supabase: SupabaseClient, company_id: str
     const tasksRes = await glpiApi.get(`/Ticket/${ticket_id}/TicketTask`);
     const followupsRes = await glpiApi.get(`/Ticket/${ticket_id}/ITILFollowup`); // in newer GLPI it's ITILFollowup, but maybe TicketFollowup. Wait, GLPI 9.5+ uses ITILFollowup
 
-    const ticket = ticketRes.data;
+    const rawTicket = ticketRes.data;
+    const ticket = {
+      ...rawTicket,
+      sla_status: calculateSLA(rawTicket),
+    };
     const tasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
     const followups = Array.isArray(followupsRes.data) ? followupsRes.data : [];
 

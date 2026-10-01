@@ -79,7 +79,7 @@ const TicketDetailDrawer = ({ isOpen, onClose, ticketId }) => {
                 </div>
                 <div className="flex items-center gap-2 text-slate-600">
                   <Clock size={16} className="text-slate-400" />
-                  <span className="font-medium text-slate-800">SLA Estado:</span> {data.ticket.sla_ttr_state === 1 ? 'Fora do SLA' : 'Dentro do SLA'}
+                  <span className="font-medium text-slate-800">SLA Estado:</span> {data.ticket.sla_status || 'Em Análise'}
                 </div>
               </div>
 

@@ -1,7 +1,6 @@
 // src/routes/admin/noc-routes.ts
 import type { FastifyInstance } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
-import { getMetricFreshnessStatus } from '../../services/monitoring-freshness-service';
 
 const OPEN_TICKET_STATUSES = new Set([
   'open',
@@ -34,29 +33,33 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
 
   fastify.get('/stats', async (_request, reply) => {
     try {
-      // Fetch companies with their integrations
+      // Fetch companies for the NOC overview.
       const companiesRes = await supabaseAdmin
         .from('companies')
-        .select('id, name, status')
+        .select('id, name')
         .order('name');
 
       const companies = companiesRes.data || [];
 
       // Create company map for lookups
       const companyMap = new Map(companies.map(c => [c.id, c.name]));
-      const companyNameToId = new Map(companies.map(c => [c.name.toLowerCase(), c.id]));
 
-      // Fetch integrations for all companies
-      const integrationsRes = await supabaseAdmin
-        .from('company_integrations')
-        .select('company_id, ms365_last_sync_at, ms365_last_sync_error, glpi_last_sync_at, glpi_last_sync_error');
+      // Company health comes only from network device availability.
+      const networkDevices: any[] = [];
+      const devicePageSize = 500;
+      for (let offset = 0; ; offset += devicePageSize) {
+        const { data, error } = await supabaseAdmin
+          .from('network_devices')
+          .select('company_id, status')
+          .order('company_id')
+          .order('id')
+          .range(offset, offset + devicePageSize - 1);
 
-      const integrations = integrationsRes.data || [];
-
-      const agentsRes = await supabaseAdmin
-        .from('registered_agents')
-        .select('company_id, status, last_heartbeat, last_metrics_at');
-      const agents = agentsRes.data || [];
+        if (error) throw error;
+        const page = data || [];
+        networkDevices.push(...page);
+        if (page.length < devicePageSize) break;
+      }
 
       // Fetch all tickets for company aggregates; keep only the latest 20 for the recent list.
       const tickets: any[] = [];
@@ -82,13 +85,14 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         .order('created_at', { ascending: false })
         .limit(20);
 
-      // Calculate company statuses based on integrations and events
+      // Calculate company statuses from network devices only. Tickets and alerts stay as separate data.
       const companiesWithStatus = companies.map((company: any) => {
-        const companyIntegrations = integrations.filter(
-          (i: any) => i.company_id === company.id
+        const companyNetworkDevices = networkDevices.filter(
+          (device: any) => device.company_id === company.id
         );
-        const integration = companyIntegrations[0];
-        const companyAgents = agents.filter((agent: any) => agent.company_id === company.id);
+        const offlineNetworkDevices = companyNetworkDevices.filter(
+          (device: any) => String(device.status || '').trim().toLowerCase() !== 'online'
+        );
 
         // Count open/critical tickets for this company
         const companyTickets = tickets.filter(
@@ -107,36 +111,11 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         );
         const lastAlert = companyAlerts[0] || null;
 
-        // Determine status based on errors, sync status, and critical events
         let status: 'online' | 'warning' | 'critical' | 'offline' = 'online';
-
-        // Check for sync errors
-        const hasErrors = integration && (
-          integration.ms365_last_sync_error ||
-          integration.glpi_last_sync_error
-        );
-        const hasAgentProblem = companyAgents.length === 0 || companyAgents.some((agent: any) => {
-          if (String(agent.status || '').toLowerCase() !== 'online') return true;
-          return getMetricFreshnessStatus(agent.last_metrics_at) !== 'Online';
-        });
-
-        // Check for critical events
-        const hasCriticalEvent = companyAlerts.some(
-          (a: any) => a.severity === 'critical'
-        );
-
-        // Check for warning events
-        const hasWarningEvent = companyAlerts.some(
-          (a: any) => a.severity === 'warning'
-        );
-
-        // Determine status
-        if (hasCriticalEvent || criticalTickets.length > 0) {
-          status = 'critical';
-        } else if (hasErrors || hasWarningEvent || hasAgentProblem || openTickets.length > 3) {
-          status = 'warning';
-        } else if (String(company.status || '').toLowerCase() !== 'ativo') {
+        if (offlineNetworkDevices.length > 0 && offlineNetworkDevices.length === companyNetworkDevices.length) {
           status = 'offline';
+        } else if (offlineNetworkDevices.length > 0) {
+          status = 'critical';
         }
 
         // Measure actual SLA classifications; unresolved tickets can still be within SLA.
@@ -146,11 +125,9 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         const ticketsWithinSla = ticketsWithKnownSla.filter(
           (t: any) => t.sla_status === 'Dentro do SLA'
         ).length;
-        let slaCompliance = 0;
+        let slaCompliance: number | null = null;
         if (ticketsWithKnownSla.length > 0) {
           slaCompliance = Math.round((ticketsWithinSla / ticketsWithKnownSla.length) * 100);
-        } else if (companyTickets.length === 0) {
-          slaCompliance = 100;
         }
 
         return {

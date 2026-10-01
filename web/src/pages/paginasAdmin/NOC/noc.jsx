@@ -227,6 +227,7 @@ const NOC = () => {
                                 {(stats?.companies || []).map((company) => {
                                     const statusStyle = getStatusClasses(company.status);
                                     const StatusIcon = statusStyle.icon;
+                                    const hasSlaCompliance = Number.isFinite(company.slaCompliance);
                                     return (
                                         <tr key={company.id} className="hover:bg-slate-700/30 transition-colors">
                                             <td className="px-4 py-3">
@@ -259,12 +260,12 @@ const NOC = () => {
                                                 <div className="flex items-center justify-center gap-2">
                                                     <div className="w-16 h-2 rounded-full bg-slate-700 overflow-hidden">
                                                         <div
-                                                            className={`h-full rounded-full ${company.slaCompliance >= 80 ? 'bg-emerald-500' : company.slaCompliance >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                                                            className={`h-full rounded-full ${!hasSlaCompliance ? 'bg-slate-500' : company.slaCompliance >= 80 ? 'bg-emerald-500' : company.slaCompliance >= 50 ? 'bg-amber-500' : 'bg-red-500'
                                                                 }`}
-                                                            style={{ width: `${company.slaCompliance}%` }}
+                                                            style={{ width: `${hasSlaCompliance ? company.slaCompliance : 0}%` }}
                                                         />
                                                     </div>
-                                                    <span className="text-sm font-medium text-slate-300">{company.slaCompliance}%</span>
+                                                    <span className="text-sm font-medium text-slate-300">{hasSlaCompliance ? `${company.slaCompliance}%` : 'N/A'}</span>
                                                 </div>
                                             </td>
                                         </tr>
