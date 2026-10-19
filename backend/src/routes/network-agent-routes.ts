@@ -43,7 +43,7 @@ export default async function networkAgentRoutes(fastify: FastifyInstance): Prom
     const principal = await authenticateAgentRequest(request, reply, 'network'); if (!principal) return;
     try { return reply.send(await getAgentNetworkConfiguration(fastify.supabaseAdmin, principal.agent_id)); } catch (e) { return reply.code(503).send({ error: 'Could not load network configuration.' }); }
   });
-  fastify.post('/network/metrics', async (request, reply) => {
+  fastify.post('/network/metrics', { bodyLimit: 4 * 1024 * 1024 }, async (request, reply) => {
     const principal = await authenticateAgentRequest(request, reply, 'network'); if (!principal) return;
     try {
       const key = request.headers['idempotency-key'];

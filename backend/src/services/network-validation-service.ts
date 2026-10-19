@@ -2,6 +2,7 @@ import { AgentPayloadError } from '../types/agent';
 
 const MAX_ADDRESSES = 4096;
 const RESULTS = new Set(['success', 'partial', 'timeout', 'auth_error', 'protocol_error']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function record(v: unknown): v is Record<string, any> { return !!v && typeof v === 'object' && !Array.isArray(v); }
 function ipv4(value: unknown): number[] {
   if (typeof value !== 'string' || !/^\d{1,3}(\.\d{1,3}){3}$/.test(value)) throw new AgentPayloadError('INVALID_PAYLOAD', 'CIDR/IP inválido');
@@ -33,7 +34,8 @@ export function validateNetworkConfiguration(input: unknown): any {
     if (!Number.isInteger(item.snmp_port ?? 161) || (item.snmp_port ?? 161) < 1 || (item.snmp_port ?? 161) > 65535) throw new AgentPayloadError('INVALID_PAYLOAD', 'SNMP port invalid');
     if (!Array.isArray(item.excluded_ips ?? []) || !(item.excluded_ips ?? []).every((v: unknown) => typeof v === 'string' && ipNumber(v) >= start && ipNumber(v) <= end)) throw new AgentPayloadError('INVALID_PAYLOAD', 'excluded_ips must be IPv4 addresses within the CIDR');
     if (!Array.isArray(item.credential_ids ?? []) || (item.credential_ids ?? []).length > 4) throw new AgentPayloadError('INVALID_PAYLOAD', 'at most 4 credentials per network');
-    return { id: typeof item.id === 'string' ? item.id : undefined, cidr: item.cidr, enabled: item.enabled, snmp_port: item.snmp_port ?? 161, excluded_ips: item.excluded_ips ?? [], credential_ids: item.credential_ids ?? [] };
+    if (item.network_scope_id != null && (typeof item.network_scope_id !== 'string' || !UUID.test(item.network_scope_id))) throw new AgentPayloadError('INVALID_PAYLOAD', 'network_scope_id must be an authorized scope UUID');
+    return { id: typeof item.id === 'string' ? item.id : undefined, cidr: item.cidr, enabled: item.enabled, snmp_port: item.snmp_port ?? 161, excluded_ips: item.excluded_ips ?? [], credential_ids: item.credential_ids ?? [], ...(item.network_scope_id ? { network_scope_id: item.network_scope_id } : {}) };
   });
   if (typeof input.enabled !== 'boolean' || !Number.isInteger(input.collection_interval_seconds) || input.collection_interval_seconds < 30 || !Number.isInteger(input.discovery_interval_seconds) || input.discovery_interval_seconds < 60) throw new AgentPayloadError('INVALID_PAYLOAD', 'configuration intervals invalid');
   return { version: Number.isInteger(input.version) ? input.version : 0, enabled: input.enabled, collection_interval_seconds: input.collection_interval_seconds, discovery_interval_seconds: input.discovery_interval_seconds, networks };
@@ -48,7 +50,7 @@ export function validateNetworkBatch(input: unknown): any {
     const identity = `${device.network_id}:${device.device_uid}`;
     if (seenDevices.has(identity)) throw new AgentPayloadError('INVALID_PAYLOAD', 'duplicate device identity in batch');
     seenDevices.add(identity);
-    if (typeof device.observed_at !== 'string' || !Number.isFinite(Date.parse(device.observed_at))) throw new AgentPayloadError('INVALID_PAYLOAD', 'observed_at invalid');
+    if (typeof device.observed_at !== 'string' || !Number.isFinite(Date.parse(device.observed_at)) || Date.parse(device.observed_at) > Date.now() + 5 * 60_000) throw new AgentPayloadError('INVALID_PAYLOAD', 'observed_at invalid or too far in the future');
     for (const key of ['sys_object_id','sys_description','manufacturer','model','serial_number','firmware_version','location','engine_id']) if (device[key] != null && (typeof device[key] !== 'string' || device[key].length > 4096)) throw new AgentPayloadError('INVALID_PAYLOAD', `${key} must be a bounded string or null`);
     for (const key of ['uptime_seconds','response_time_ms']) if (device[key] != null && (typeof device[key] !== 'number' || !Number.isFinite(device[key]) || device[key] < 0)) throw new AgentPayloadError('INVALID_PAYLOAD', `${key} must be a non-negative number or null`);
     const interfaces = device.interfaces.map((item: unknown) => {

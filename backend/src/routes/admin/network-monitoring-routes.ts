@@ -39,6 +39,18 @@ export default async function adminNetworkMonitoringRoutes(fastify: FastifyInsta
       return { id: a.id, hostname: a.hostname, agent_version: a.agent_version, status: a.status, last_heartbeat: a.last_heartbeat, detected_networks: a.metadata?.detected_networks || [], device_count: count.count || 0 };
     }));
   });
+  fastify.get<{ Params: { companyId: string } }>('/companies/:companyId/network-scopes', async (request, reply) => {
+    const { data, error } = await fastify.supabaseAdmin.from('network_physical_scopes').select('id,name,created_at').eq('company_id', request.params.companyId).order('name');
+    if (error) return reply.code(500).send({ error: 'Could not list physical network scopes.' });
+    return data || [];
+  });
+  fastify.post<{ Params: { companyId: string } }>('/companies/:companyId/network-scopes', async (request, reply) => {
+    const body: any = request.body;
+    if (!body || typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 120) return reply.code(400).send({ error: 'Scope name must be between 1 and 120 characters.' });
+    const { data, error } = await fastify.supabaseAdmin.from('network_physical_scopes').insert({ company_id: request.params.companyId, name: body.name.trim() }).select('id,name,created_at').single();
+    if (error) return reply.code(error.code === '23505' ? 409 : 400).send({ error: 'Could not create physical network scope.' });
+    return reply.code(201).send(data);
+  });
   fastify.get<{ Params: { companyId: string; agentId: string } }>('/companies/:companyId/network-agents/:agentId/config', async (request, reply) => {
     const { data, error } = await fastify.supabaseAdmin.from('network_agent_configurations').select('version,enabled,collection_interval_seconds,discovery_interval_seconds,configuration').eq('company_id', request.params.companyId).eq('agent_id', request.params.agentId).maybeSingle();
     if (error) return reply.code(500).send({ error: 'Could not load configuration.' });
@@ -71,8 +83,13 @@ export default async function adminNetworkMonitoringRoutes(fastify: FastifyInsta
         ? { community: b.community }
         : { username: b.username, security_level: b.security_level, auth_protocol: b.auth_protocol, auth_password: b.auth_password, ...(b.security_level === 'authPriv' ? { privacy_protocol: b.privacy_protocol, privacy_password: b.privacy_password } : {}), ...(b.context_name ? { context_name: b.context_name } : {}) };
       const encrypted = encryptSnmpCredential(secret); const safe = { name: b.name.trim(), version: b.version, username: b.version === '3' ? b.username : null, security_level: b.version === '3' ? b.security_level : null, auth_protocol: b.version === '3' ? b.auth_protocol : null, privacy_protocol: b.version === '3' ? b.privacy_protocol || null : null, context_name: b.context_name || null, ...encrypted };
-      let query = id ? fastify.supabaseAdmin.from('network_snmp_credentials').update(safe).eq('id', id).eq('company_id', request.params.companyId) : fastify.supabaseAdmin.from('network_snmp_credentials').insert({ ...safe, company_id: request.params.companyId });
-      const { data, error } = await query.select('id,name,version,username,security_level,auth_protocol,privacy_protocol,context_name').single();
+      if (id) {
+        const { data, error } = await fastify.supabaseAdmin.rpc('replace_network_snmp_credential', { p_company_id: request.params.companyId, p_credential_id: id, p_values: safe });
+        if (error) return reply.code(400).send({ error: 'Could not save SNMP credential.' });
+        if (!data) return reply.code(404).send({ error: 'Credential not found.' });
+        return reply.code(200).send(data);
+      }
+      const { data, error } = await fastify.supabaseAdmin.from('network_snmp_credentials').insert({ ...safe, company_id: request.params.companyId }).select('id,name,version,username,security_level,auth_protocol,privacy_protocol,context_name').single();
       if (error) return reply.code(400).send({ error: 'Could not save SNMP credential.' });
       return reply.code(id ? 200 : 201).send(data);
     } catch (e) { const err = e as NetworkConfigError; return reply.code(err.statusCode || 400).send({ error: err.message }); }

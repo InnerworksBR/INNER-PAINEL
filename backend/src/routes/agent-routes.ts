@@ -7,6 +7,7 @@ import {
   enrollAgent,
   parseAgentClaims,
   rotateAgentRefreshToken,
+  rotateNetworkAgentRefreshToken,
 } from '../services/agent-auth-service';
 import {
   AgentIngestionError,
@@ -27,6 +28,7 @@ type EnrollmentBody = {
 
 type RefreshBody = {
   refresh_token?: string;
+  replacement_refresh_token?: string;
 };
 
 const AGENT_ACCESS_TOKEN_SECONDS = 15 * 60;
@@ -62,8 +64,15 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
       return reply.code(400).send({ error: 'refresh_token é obrigatório.' });
     }
 
+    const replacement = request.body?.replacement_refresh_token;
+    if (replacement !== undefined && (typeof replacement !== 'string' || replacement.length < 40 || replacement.length > 128)) {
+      return reply.code(400).send({ error: 'replacement_refresh_token deve conter entre 40 e 128 caracteres.' });
+    }
+
     try {
-      const result = await rotateAgentRefreshToken(fastify.supabaseAdmin, refreshToken);
+      const result = replacement === undefined
+        ? await rotateAgentRefreshToken(fastify.supabaseAdmin, refreshToken)
+        : await rotateNetworkAgentRefreshToken(fastify.supabaseAdmin, refreshToken, replacement);
       return reply.send(buildCredentialsResponse(fastify, result.agent, result.refresh_token));
     } catch (error) {
       return sendAgentAuthError(request, reply, error, 'Falha na renovação do agente');

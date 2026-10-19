@@ -201,3 +201,18 @@ export async function rotateAgentRefreshToken(
 
   return { agent: agent as AgentRecord, refresh_token: refreshToken };
 }
+
+export async function rotateNetworkAgentRefreshToken(
+  supabase: SupabaseClient,
+  rawRefreshToken: string,
+  replacementRefreshToken: string,
+): Promise<{ agent: AgentRecord; refresh_token: string }> {
+  const { data, error } = await supabase.rpc('rotate_network_agent_refresh_token', {
+    p_current_hash: hashOpaqueToken(rawRefreshToken),
+    p_replacement_hash: hashOpaqueToken(replacementRefreshToken),
+  });
+  if (error) throw new AgentAuthError('AUTH_STORAGE_ERROR', error.message);
+  const agent = (Array.isArray(data) ? data[0] : data) as AgentRecord | null;
+  if (!agent) throw new AgentAuthError('INVALID_REFRESH_TOKEN', 'Refresh token inválido, substituição incorreta ou agente revogado.');
+  return { agent, refresh_token: replacementRefreshToken };
+}

@@ -16,6 +16,26 @@ test('network batches strip unknown fields that could contain credentials before
   assert.equal(JSON.stringify(batch).includes('unsafe'), false);
 });
 
+test('network configuration preserves an explicit shared physical scope only when it is a UUID', () => {
+  const scope = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const config = validateNetworkConfiguration({
+    version: 1, enabled: true, collection_interval_seconds: 60, discovery_interval_seconds: 900,
+    networks: [{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', cidr: '10.44.0.0/24', enabled: true, network_scope_id: scope }],
+  });
+  assert.equal(config.networks[0].network_scope_id, scope);
+  assert.throws(() => validateNetworkConfiguration({
+    version: 1, enabled: true, collection_interval_seconds: 60, discovery_interval_seconds: 900,
+    networks: [{ cidr: '10.44.0.0/24', enabled: true, network_scope_id: 'not-a-uuid' }],
+  }), /scope/i);
+});
+
+test('rejects per-device observations too far in the future', () => {
+  assert.throws(() => validateNetworkBatch({ sequence: 1, collected_at: new Date().toISOString(), devices: [{
+    network_id: '11111111-1111-4111-8111-111111111111', device_uid: 'uid', ip_address: '10.0.0.1', device_name: 'sw', device_type: 'Switch',
+    observed_at: new Date(Date.now() + 6 * 60_000).toISOString(), result: 'success', interfaces: [],
+  }] }), /future/i);
+});
+
 test('network freshness distinguishes missing telemetry from physical device failure', () => {
   assert.equal(applyNetworkFreshness({ last_poll_at: '2026-10-19T12:00:00Z' }, new Date('2026-10-19T12:11:00Z')).telemetry_status, 'no_data');
 });

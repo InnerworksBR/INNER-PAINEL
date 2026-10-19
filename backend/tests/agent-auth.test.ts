@@ -9,6 +9,7 @@ import {
   hashOpaqueToken,
   isActivationTokenUsable,
   parseAgentClaims,
+  rotateNetworkAgentRefreshToken,
 } from '../src/services/agent-auth-service';
 
 test('gera tokens opacos e hashes determinísticos sem expor o segredo', () => {
@@ -95,4 +96,17 @@ test('faz enrollment por RPC atômico para consumir token e criar agente na mesm
   assert.equal(rpcArgs?.p_machine_id, 'machine-1');
   assert.equal(result.agent.id, 'agent-1');
   assert.ok(result.refresh_token.length >= 40);
+});
+
+test('network refresh persists a client-generated replacement and returns it for idempotent retries', async () => {
+  let args: Record<string, string> | undefined;
+  const supabase = { async rpc(name: string, values: Record<string, string>) {
+    assert.equal(name, 'rotate_network_agent_refresh_token');
+    args = values;
+    return { data: { id: 'network-agent', company_id: 'company', hostname: 'collector', agent_version: '1' }, error: null };
+  } } as any;
+  const result = await rotateNetworkAgentRefreshToken(supabase, 'persisted-old-token', 'persisted-new-token');
+  assert.equal(args?.p_current_hash, hashOpaqueToken('persisted-old-token'));
+  assert.equal(args?.p_replacement_hash, hashOpaqueToken('persisted-new-token'));
+  assert.equal(result.refresh_token, 'persisted-new-token');
 });

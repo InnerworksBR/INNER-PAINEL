@@ -5,10 +5,18 @@ import { syncMS365Metrics } from '../services/ms-graph-service';
 import { isDetailedLoggingEnabled } from '../services/settings-service';
 
 const SCHEDULED_SYNC_TYPES = ['glpi', 'ms365'] as const;
+export const NETWORK_RAW_RETENTION_CRON = '0 0 * * * *';
 type ScheduledSyncType = typeof SCHEDULED_SYNC_TYPES[number];
 
 export function getScheduledSyncTypes(): readonly ScheduledSyncType[] {
   return SCHEDULED_SYNC_TYPES;
+}
+
+export async function purgeRetainedAgentData(supabaseAdmin: SupabaseClient): Promise<void> {
+  const { error } = await supabaseAdmin.rpc('purge_agent_metrics', { retention_days: 30 });
+  if (error) console.error('[CRON] Falha na retenção de métricas do agente:', error.message);
+  const networkRetention = await supabaseAdmin.rpc('purge_network_agent_raw_data', { p_batch_limit: 5000 });
+  if (networkRetention.error) console.error('[CRON] Falha na retenção dos dados SNMP:', networkRetention.error.message);
 }
 
 export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
@@ -22,12 +30,11 @@ export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
     await syncAllCompanies(supabaseAdmin, 'ms365');
   });
 
-  cron.schedule('0 0 3 * * *', async () => {
-    const { error } = await supabaseAdmin.rpc('purge_agent_metrics', { retention_days: 30 });
-    if (error) console.error('[CRON] Falha na retenção de métricas do agente:', error.message);
+  cron.schedule(NETWORK_RAW_RETENTION_CRON, async () => {
+    await purgeRetainedAgentData(supabaseAdmin);
   });
 
-  console.log('Scheduler configurado: GLPI 30min, MS365 6h, retenção do agente 30d. Servidores: agente nativo.');
+  console.log('Scheduler configurado: GLPI 30min, MS365 6h, retenção de métricas 30d, limpeza SNMP 30d em lotes horários. Servidores: agente nativo.');
 }
 
 async function syncAllCompanies(

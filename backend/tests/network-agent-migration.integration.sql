@@ -1,10 +1,11 @@
--- Run only against a disposable PostgreSQL database after migration_022_network_agent.sql.
+-- Run only against a disposable PostgreSQL database after migrations 022 and 023.
 -- The schema fixture must include companies, registered_agents, network_devices,
 -- network_status_history, monitoring_events, and asset_profiles from migrations 001-019.
 DO $$
 DECLARE
-  company_a uuid; company_b uuid; pairing uuid; credential uuid; machine text := gen_random_uuid()::text; code_hash text := encode(gen_random_bytes(32),'hex'); secret text := repeat('s',64); refresh_hash text := repeat('r',64);
-  agent jsonb; config jsonb; network_id text; batch jsonb; result jsonb; device uuid;
+  company_a uuid; company_b uuid; pairing uuid; pairing2 uuid; pairing3 uuid; pairing4 uuid; pairing5 uuid; credential uuid; machine text := gen_random_uuid()::text; code_hash text := encode(gen_random_bytes(32),'hex'); secret text := repeat('s',64); refresh_hash text := encode(gen_random_bytes(32),'hex'); replacement_hash text := encode(gen_random_bytes(32),'hex');
+  agent jsonb; other_agent jsonb; config jsonb; network_id text; batch jsonb; result jsonb; device uuid;
+  shared_scope uuid; shared_device uuid; second_agent jsonb; second_config jsonb; third_agent jsonb; third_config jsonb; fourth_agent jsonb; fourth_config jsonb; before_version bigint; removed jsonb;
 BEGIN
   INSERT INTO companies(name) VALUES ('network-test-a') RETURNING id INTO company_a;
   INSERT INTO companies(name) VALUES ('network-test-b') RETURNING id INTO company_b;
@@ -31,6 +32,10 @@ BEGIN
     jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,
       'networks',jsonb_build_array(jsonb_build_object('cidr','10.44.0.0/24','enabled',true,'snmp_port',161,'excluded_ips','[]'::jsonb,'credential_ids',jsonb_build_array(credential::text)))));
   IF jsonb_array_length(get_agent_network_configuration((agent->>'agent_id')::uuid)->'credentials')<>1 THEN RAISE EXCEPTION 'agent did not receive assigned credential'; END IF;
+  before_version := (config->>'version')::bigint;
+  PERFORM replace_network_snmp_credential(company_a,credential,jsonb_build_object('name','integration-test-replaced','version','2c','key_version','v1','iv','iv-new','ciphertext','cipher-new','auth_tag','tag-new'));
+  config := get_agent_network_configuration((agent->>'agent_id')::uuid);
+  IF (config->>'version')::bigint <= before_version OR config->'credentials'->0->>'ciphertext' <> 'cipher-new' THEN RAISE EXCEPTION 'linked credential replacement did not update agent config/version atomically'; END IF;
   IF NOT delete_network_snmp_credential(company_a,credential) THEN RAISE EXCEPTION 'credential deletion failed'; END IF;
   IF jsonb_array_length(get_agent_network_configuration((agent->>'agent_id')::uuid)->'credentials')<>0 THEN RAISE EXCEPTION 'deleted credential remained linked'; END IF;
   -- Re-add the saved network with no credential so subsequent ingest scopes remain stable.
@@ -81,4 +86,67 @@ BEGIN
     RAISE EXCEPTION 'out-of-scope address accepted';
   EXCEPTION WHEN OTHERS THEN IF SQLERRM='out-of-scope address accepted' THEN RAISE; END IF; END;
   IF has_function_privilege('anon','ingest_network_metric_batch(uuid,uuid,jsonb)','EXECUTE') THEN RAISE EXCEPTION 'anon can execute ingestion'; END IF;
+
+  -- Retention is bounded and affects only raw payloads, not current state or audit history.
+  INSERT INTO network_agent_batches(agent_id,company_id,sequence,collected_at,payload) VALUES
+    ((agent->>'agent_id')::uuid,company_a,998,now()-interval '32 days','{}'::jsonb),
+    ((agent->>'agent_id')::uuid,company_a,999,now()-interval '31 days','{}'::jsonb);
+  INSERT INTO network_device_samples(device_id,company_id,agent_id,sequence,observed_at,result,payload) VALUES
+    (device,company_a,(agent->>'agent_id')::uuid,998,now()-interval '32 days','success','{}'::jsonb),
+    (device,company_a,(agent->>'agent_id')::uuid,999,now()-interval '31 days','success','{}'::jsonb);
+  removed := purge_network_agent_raw_data(1);
+  IF (removed->>'batches_deleted')::integer <> 1 OR (removed->>'samples_deleted')::integer <> 1 THEN RAISE EXCEPTION 'bounded raw retention did not delete one old row of each kind'; END IF;
+  IF (SELECT count(*) FROM network_agent_batches WHERE agent_id=(agent->>'agent_id')::uuid AND collected_at<now()-interval '30 days') <> 1 OR (SELECT count(*) FROM network_device_samples WHERE agent_id=(agent->>'agent_id')::uuid AND observed_at<now()-interval '30 days') <> 1 THEN RAISE EXCEPTION 'raw retention exceeded the requested batch bound'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=device AND status='Atencao') THEN RAISE EXCEPTION 'raw retention deleted current state'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_status_history WHERE network_device_id=device) THEN RAISE EXCEPTION 'raw retention deleted status history'; END IF;
+
+  -- Shared physical scopes require an authorized same-company record and trusted identity.
+  IF to_regclass('public.network_physical_scopes') IS NULL THEN RAISE EXCEPTION 'physical scope registry is missing'; END IF;
+  INSERT INTO network_physical_scopes(company_id,name) VALUES(company_a,'HQ core') RETURNING id INTO shared_scope;
+  pairing4 := create_network_pairing(gen_random_uuid()::text,'other-company-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('o',64),now()+interval '15 minutes');
+  PERFORM claim_network_pairing(company_b,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing4));
+  other_agent := complete_network_pairing(pairing4,repeat('o',64),encode(gen_random_bytes(32),'hex'),encode(gen_random_bytes(32),'hex'));
+  BEGIN
+    PERFORM save_network_agent_configuration((other_agent->>'agent_id')::uuid,company_b,jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,'networks',jsonb_build_array(jsonb_build_object('cidr','10.45.0.0/24','enabled',true,'network_scope_id',shared_scope))));
+    RAISE EXCEPTION 'cross-company physical scope assignment accepted';
+  EXCEPTION WHEN OTHERS THEN IF SQLERRM='cross-company physical scope assignment accepted' THEN RAISE; END IF; END;
+  pairing2 := create_network_pairing(gen_random_uuid()::text,'second-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('t',64),now()+interval '15 minutes');
+  PERFORM claim_network_pairing(company_a,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing2));
+  second_agent := complete_network_pairing(pairing2,repeat('t',64),repeat('u',64),repeat('v',64));
+  second_config := save_network_agent_configuration((second_agent->>'agent_id')::uuid,company_a,
+    jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,
+      'networks',jsonb_build_array(jsonb_build_object('cidr','10.44.1.0/24','enabled',true,'network_scope_id',shared_scope,'credential_ids','[]'::jsonb))));
+  -- Chassis/serial can reconcile devices only inside the same explicit shared scope.
+  batch := jsonb_build_object('sequence',1,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','different-local-uid','ip_address','10.44.1.9','device_name','renamed-switch','device_type','Switch','serial_number',' CHASSIS-42 ','observed_at',now(),'result','success','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
+  SELECT id INTO shared_device FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42';
+  IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_kind='serial' AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'shared trusted serial identity created duplicate device'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=shared_device AND ip_address::inet='10.44.1.9'::inet AND device_name='renamed-switch') THEN RAISE EXCEPTION 'shared trusted serial identity did not reconcile current device'; END IF;
+  pairing3 := create_network_pairing(gen_random_uuid()::text,'third-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('w',64),now()+interval '15 minutes');
+  PERFORM claim_network_pairing(company_a,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing3));
+  third_agent := complete_network_pairing(pairing3,repeat('w',64),repeat('x',64),repeat('y',64));
+  third_config := save_network_agent_configuration((third_agent->>'agent_id')::uuid,company_a,
+    jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,
+      'networks',jsonb_build_array(jsonb_build_object('cidr','10.44.2.0/24','enabled',true,'network_scope_id',shared_scope,'credential_ids','[]'::jsonb))));
+  batch := jsonb_build_object('sequence',1,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',third_config->'networks'->0->>'id','device_uid','third-local-uid','ip_address','10.44.2.9','device_name','renamed-switch-2','device_type','Switch','serial_number','chassis-42','observed_at',now()+interval '1 second','result','success','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((third_agent->>'agent_id')::uuid,company_a,batch);
+  IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'shared physical scope did not reconcile across collectors'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=shared_device AND ip_address::inet='10.44.2.9'::inet) THEN RAISE EXCEPTION 'shared cross-collector observation did not update current device'; END IF;
+  pairing5 := create_network_pairing(gen_random_uuid()::text,'separate-scope-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('p',64),now()+interval '15 minutes');
+  PERFORM claim_network_pairing(company_a,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing5));
+  fourth_agent := complete_network_pairing(pairing5,repeat('p',64),encode(gen_random_bytes(32),'hex'),encode(gen_random_bytes(32),'hex'));
+  fourth_config := save_network_agent_configuration((fourth_agent->>'agent_id')::uuid,company_a,jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,'networks',jsonb_build_array(jsonb_build_object('cidr','10.44.2.0/24','enabled',true,'credential_ids','[]'::jsonb))));
+  batch := jsonb_build_object('sequence',1,'collected_at',now(),'devices',jsonb_build_array(jsonb_build_object('network_id',fourth_config->'networks'->0->>'id','device_uid','local-only-uid','ip_address','10.44.2.9','device_name','renamed-switch-2','device_type','Switch','serial_number','chassis-42','observed_at',now()+interval '2 seconds','result','success','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((fourth_agent->>'agent_id')::uuid,company_a,batch);
+  IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND trusted_identity_value='chassis-42') <> 2 THEN RAISE EXCEPTION 'separate default scopes merged by IP/name/serial without authorization'; END IF;
+
+  -- Refresh requests are idempotent only for the already-stored replacement hash and active network agents.
+  result := rotate_network_agent_refresh_token(refresh_hash,replacement_hash);
+  IF result->>'id' <> agent->>'agent_id' THEN RAISE EXCEPTION 'network refresh rotation failed'; END IF;
+  IF rotate_network_agent_refresh_token(refresh_hash,replacement_hash)->>'id' <> agent->>'agent_id' THEN RAISE EXCEPTION 'lost-response refresh retry failed'; END IF;
+  IF rotate_network_agent_refresh_token(refresh_hash,encode(gen_random_bytes(32),'hex')) IS NOT NULL THEN RAISE EXCEPTION 'wrong refresh replacement accepted'; END IF;
+  UPDATE registered_agents SET status='Revoked' WHERE id=(agent->>'agent_id')::uuid;
+  IF rotate_network_agent_refresh_token(replacement_hash,encode(gen_random_bytes(32),'hex')) IS NOT NULL THEN RAISE EXCEPTION 'revoked network refresh accepted'; END IF;
 END $$;
