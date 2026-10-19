@@ -6,17 +6,61 @@ import { isDetailedLoggingEnabled } from '../services/settings-service';
 
 const SCHEDULED_SYNC_TYPES = ['glpi', 'ms365'] as const;
 export const NETWORK_RAW_RETENTION_CRON = '0 0 * * * *';
+let retentionRunActive = false;
 type ScheduledSyncType = typeof SCHEDULED_SYNC_TYPES[number];
 
 export function getScheduledSyncTypes(): readonly ScheduledSyncType[] {
   return SCHEDULED_SYNC_TYPES;
 }
 
-export async function purgeRetainedAgentData(supabaseAdmin: SupabaseClient): Promise<void> {
-  const { error } = await supabaseAdmin.rpc('purge_agent_metrics', { retention_days: 30 });
-  if (error) console.error('[CRON] Falha na retenção de métricas do agente:', error.message);
-  const networkRetention = await supabaseAdmin.rpc('purge_network_agent_raw_data', { p_batch_limit: 5000 });
-  if (networkRetention.error) console.error('[CRON] Falha na retenção dos dados SNMP:', networkRetention.error.message);
+export async function purgeRetainedAgentData(
+  supabaseAdmin: SupabaseClient,
+  options: { batchSize?: number; maxBatches?: number; timeBudgetMs?: number } = {},
+): Promise<{ batches: number; samplesDeleted: number; batchesDeleted: number; backlogRemaining: boolean; skipped: boolean }> {
+  if (retentionRunActive) {
+    console.warn('[CRON] Limpeza de retenção já está em execução; execução duplicada ignorada.');
+    return { batches: 0, samplesDeleted: 0, batchesDeleted: 0, backlogRemaining: true, skipped: true };
+  }
+  retentionRunActive = true;
+  try {
+    const { error } = await supabaseAdmin.rpc('purge_agent_metrics', { retention_days: 30 });
+    if (error) console.error('[CRON] Falha na retenção de métricas do agente:', error.message);
+
+    const batchSize = Math.min(Math.max(options.batchSize ?? 5000, 1), 5000);
+    const maxBatches = Math.min(Math.max(options.maxBatches ?? 64, 1), 64);
+    const timeBudgetMs = Math.min(Math.max(options.timeBudgetMs ?? 45_000, 1), 45_000);
+    const startedAt = Date.now();
+    let batches = 0;
+    let samplesDeleted = 0;
+    let batchesDeleted = 0;
+    let backlogRemaining = true;
+    while (batches < maxBatches && Date.now() - startedAt < timeBudgetMs) {
+      const remainingMs = Math.max(1, timeBudgetMs - (Date.now() - startedAt));
+      let response: any;
+      try {
+        response = await supabaseAdmin.rpc('purge_network_agent_raw_data', { p_batch_limit: batchSize })
+          .abortSignal(AbortSignal.timeout(remainingMs));
+      } catch (error) {
+        console.error('[CRON] Falha na retenção dos dados SNMP:', error instanceof Error ? error.message : error);
+        backlogRemaining = true;
+        break;
+      }
+      if (response.error || !response.data) {
+        console.error('[CRON] Falha na retenção dos dados SNMP:', response.error?.message || 'Resposta vazia da RPC');
+        backlogRemaining = true;
+        break;
+      }
+      batches++;
+      samplesDeleted += Number(response.data.samples_deleted || 0);
+      batchesDeleted += Number(response.data.batches_deleted || 0);
+      backlogRemaining = Boolean(response.data.has_more_batches || response.data.has_more_samples);
+      if (!backlogRemaining) break;
+    }
+    if (backlogRemaining) console.warn(`[CRON] Retenção SNMP deixou backlog após ${batches} lotes (${samplesDeleted} amostras, ${batchesDeleted} lotes removidos); continuará na próxima execução.`);
+    return { batches, samplesDeleted, batchesDeleted, backlogRemaining, skipped: false };
+  } finally {
+    retentionRunActive = false;
+  }
 }
 
 export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {

@@ -5,8 +5,13 @@ DO $$
 DECLARE
   company_a uuid; company_b uuid; pairing uuid; pairing2 uuid; pairing3 uuid; pairing4 uuid; pairing5 uuid; credential uuid; machine text := gen_random_uuid()::text; code_hash text := encode(gen_random_bytes(32),'hex'); secret text := repeat('s',64); refresh_hash text := encode(gen_random_bytes(32),'hex'); replacement_hash text := encode(gen_random_bytes(32),'hex');
   agent jsonb; other_agent jsonb; config jsonb; network_id text; batch jsonb; result jsonb; device uuid;
-  shared_scope uuid; shared_device uuid; second_agent jsonb; second_config jsonb; third_agent jsonb; third_config jsonb; fourth_agent jsonb; fourth_config jsonb; before_version bigint; removed jsonb;
+  shared_scope uuid; shared_device uuid; second_agent jsonb; second_config jsonb; third_agent jsonb; third_config jsonb; fourth_agent jsonb; fourth_config jsonb; before_version bigint; removed jsonb; cleanup_iteration integer;
 BEGIN
+  -- Keep repeated fixture runs deterministic by draining leftovers from earlier successful runs.
+  FOR cleanup_iteration IN 1..10 LOOP
+    removed := purge_network_agent_raw_data(5000);
+    EXIT WHEN removed->>'has_more_batches'='false' AND removed->>'has_more_samples'='false';
+  END LOOP;
   INSERT INTO companies(name) VALUES ('network-test-a') RETURNING id INTO company_a;
   INSERT INTO companies(name) VALUES ('network-test-b') RETURNING id INTO company_b;
 
@@ -96,7 +101,10 @@ BEGIN
     (device,company_a,(agent->>'agent_id')::uuid,999,now()-interval '31 days','success','{}'::jsonb);
   removed := purge_network_agent_raw_data(1);
   IF (removed->>'batches_deleted')::integer <> 1 OR (removed->>'samples_deleted')::integer <> 1 THEN RAISE EXCEPTION 'bounded raw retention did not delete one old row of each kind'; END IF;
+  IF removed->>'has_more_batches' <> 'true' OR removed->>'has_more_samples' <> 'true' THEN RAISE EXCEPTION 'bounded raw retention failed to report backlog'; END IF;
   IF (SELECT count(*) FROM network_agent_batches WHERE agent_id=(agent->>'agent_id')::uuid AND collected_at<now()-interval '30 days') <> 1 OR (SELECT count(*) FROM network_device_samples WHERE agent_id=(agent->>'agent_id')::uuid AND observed_at<now()-interval '30 days') <> 1 THEN RAISE EXCEPTION 'raw retention exceeded the requested batch bound'; END IF;
+  removed := purge_network_agent_raw_data(1);
+  IF (removed->>'batches_deleted')::integer <> 1 OR (removed->>'samples_deleted')::integer <> 1 OR removed->>'has_more_batches' <> 'false' OR removed->>'has_more_samples' <> 'false' THEN RAISE EXCEPTION 'bounded raw retention did not report an empty backlog'; END IF;
   IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=device AND status='Atencao') THEN RAISE EXCEPTION 'raw retention deleted current state'; END IF;
   IF NOT EXISTS(SELECT 1 FROM network_status_history WHERE network_device_id=device) THEN RAISE EXCEPTION 'raw retention deleted status history'; END IF;
 
@@ -118,7 +126,7 @@ BEGIN
       'networks',jsonb_build_array(jsonb_build_object('cidr','10.44.1.0/24','enabled',true,'network_scope_id',shared_scope,'credential_ids','[]'::jsonb))));
   -- Chassis/serial can reconcile devices only inside the same explicit shared scope.
   batch := jsonb_build_object('sequence',1,'collected_at',now(),'devices',jsonb_build_array(
-    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','different-local-uid','ip_address','10.44.1.9','device_name','renamed-switch','device_type','Switch','serial_number',' CHASSIS-42 ','observed_at',now(),'result','success','interfaces','[]'::jsonb)));
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','different-local-uid','ip_address','10.44.1.9','device_name','renamed-switch','device_type','Switch','serial_number',' CHASSIS-42 ','manufacturer','Acme','model','Core S1','firmware_version','1.0','location','Rack A','engine_id','engine-a','observed_at',now(),'result','success','interfaces','[]'::jsonb)));
   PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
   SELECT id INTO shared_device FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42';
   IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_kind='serial' AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'shared trusted serial identity created duplicate device'; END IF;
@@ -130,10 +138,11 @@ BEGIN
     jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,
       'networks',jsonb_build_array(jsonb_build_object('cidr','10.44.2.0/24','enabled',true,'network_scope_id',shared_scope,'credential_ids','[]'::jsonb))));
   batch := jsonb_build_object('sequence',1,'collected_at',now(),'devices',jsonb_build_array(
-    jsonb_build_object('network_id',third_config->'networks'->0->>'id','device_uid','third-local-uid','ip_address','10.44.2.9','device_name','renamed-switch-2','device_type','Switch','serial_number','chassis-42','observed_at',now()+interval '1 second','result','success','interfaces','[]'::jsonb)));
+    jsonb_build_object('network_id',third_config->'networks'->0->>'id','device_uid','third-local-uid','ip_address','10.44.2.9','device_name','renamed-switch-2','device_type','Switch','serial_number','chassis-42','manufacturer','OtherVendor','model','Conflict Model','firmware_version','9.9','location','Other Rack','engine_id','engine-b','observed_at',now()-interval '1 minute','result','timeout','interfaces','[]'::jsonb)));
   PERFORM ingest_network_metric_batch((third_agent->>'agent_id')::uuid,company_a,batch);
   IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'shared physical scope did not reconcile across collectors'; END IF;
-  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=shared_device AND ip_address::inet='10.44.2.9'::inet) THEN RAISE EXCEPTION 'shared cross-collector observation did not update current device'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=shared_device AND ip_address::inet='10.44.1.9'::inet AND device_name='renamed-switch' AND status='Online' AND manufacturer='Acme' AND model='Core S1' AND serial_number=' CHASSIS-42 ' AND firmware_version='1.0' AND location='Rack A' AND engine_id='engine-a') THEN RAISE EXCEPTION 'stale shared-scope observation regressed device metadata or state'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM asset_profiles WHERE company_id=company_a AND source_type='network_device' AND source_id=shared_device AND manufacturer='Acme' AND model='Core S1' AND firmware_version='1.0' AND location='Rack A') THEN RAISE EXCEPTION 'stale shared-scope observation regressed the derived asset profile'; END IF;
   pairing5 := create_network_pairing(gen_random_uuid()::text,'separate-scope-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('p',64),now()+interval '15 minutes');
   PERFORM claim_network_pairing(company_a,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing5));
   fourth_agent := complete_network_pairing(pairing5,repeat('p',64),encode(gen_random_bytes(32),'hex'),encode(gen_random_bytes(32),'hex'));
