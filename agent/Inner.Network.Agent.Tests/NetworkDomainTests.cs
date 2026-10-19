@@ -26,6 +26,17 @@ public sealed class NetworkDomainTests
         Assert.Throws<InvalidOperationException>(() => ranges.ExpandDistinct(["192.168.1.0/29"]));
     }
 
+    [Theory]
+    [InlineData("010.0.0.0/24")]
+    [InlineData("10.0/16")]
+    [InlineData("10.010.0.0/16")]
+    public void ExpandDistinct_rejects_noncanonical_ipv4_that_platform_parsing_would_reinterpret(string cidr)
+    {
+        var ranges = new NetworkRangePlanner(maxAddresses: 4096);
+
+        Assert.Throws<InvalidOperationException>(() => ranges.ExpandDistinct([cidr]));
+    }
+
     [Fact]
     public void Calculate_suppresses_rates_after_device_reboot_or_counter_reset()
     {

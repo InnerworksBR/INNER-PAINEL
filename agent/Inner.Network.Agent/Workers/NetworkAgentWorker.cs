@@ -1,11 +1,7 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Inner.Network.Agent.Discovery;
-using Inner.Network.Agent.Metrics;
 using Inner.Network.Agent.Persistence;
 using Inner.Network.Agent.Security;
 using Inner.Network.Agent.Snmp;
@@ -21,28 +17,36 @@ public sealed record NetworkDeviceMetric(
     DateTimeOffset ObservedAt, string Result, string? SysObjectId = null, string? SysDescription = null,
     long? UptimeSeconds = null, double? ResponseTimeMs = null, string? Manufacturer = null,
     string? Model = null, string? SerialNumber = null, string? FirmwareVersion = null,
-    string? Location = null, string? EngineId = null, IReadOnlyList<NetworkInterfaceMetric>? Interfaces = null);
+    string? Location = null, string? EngineId = null, IReadOnlyList<NetworkInterfaceMetric>? Interfaces = null,
+    string? SysContact = null);
 public sealed record NetworkInterfaceMetric(
     int IfIndex, string Name, string? Description = null, string? MacAddress = null,
     int? AdminStatus = null, int? OperStatus = null, long? SpeedBps = null,
     string? InOctets = null, string? OutOctets = null, string? InErrors = null,
     string? OutErrors = null, string? InDiscards = null, string? OutDiscards = null,
-    double? InBps = null, double? OutBps = null);
+    double? InBps = null, double? OutBps = null, int? IfType = null);
 
-public sealed class NetworkAgentWorker(
-    ILogger<NetworkAgentWorker> logger,
-    IConfiguration configuration) : BackgroundService
+public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConfiguration configuration) : BackgroundService
 {
+    private const string Version = "1.1.0";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
     private readonly string _dataDirectory = configuration["Agent:DataDirectory"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "InnerWorks", "NetworkAgent");
+    private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private NetworkAgentStore _store = null!;
     private NetworkSecretStore _secrets = null!;
     private NetworkApiClient _api = null!;
-    private SnmpClient _snmp = null!;
+    private NetworkOutboxSender _sender = null!;
+    private NetworkTokenRefreshCoordinator _refresh = null!;
+    private NetworkCollectionCoordinator _collector = null!;
+    private NetworkConfigurationCache _configurationCache = null!;
+    private volatile bool _revoked;
+    private volatile string _lastCollectionResult = "success";
+    private volatile string? _lastErrorCode;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -50,12 +54,20 @@ public sealed class NetworkAgentWorker(
         _store = new NetworkAgentStore(Path.Combine(_dataDirectory, "network-agent.db"));
         await _store.InitializeAsync(stoppingToken);
         _secrets = new NetworkSecretStore(Path.Combine(_dataDirectory, "secrets"));
+        _revoked = string.Equals(_secrets.Read("agent_revoked"), "true", StringComparison.Ordinal);
+        _configurationCache = new NetworkConfigurationCache(_secrets);
         _api = new NetworkApiClient(new HttpClient { Timeout = TimeSpan.FromSeconds(15) }, configuration["Agent:ApiBaseUrl"] ?? "https://innerworks-painelbackend.zvzr4n.easypanel.host");
-        _snmp = new SnmpClient();
+        _sender = new NetworkOutboxSender(_store, _api);
+        _refresh = new NetworkTokenRefreshCoordinator(_api, _secrets);
+        var snmp = new SnmpClient();
+        _collector = new NetworkCollectionCoordinator(_store, new SharpNetworkDeviceProbe(snmp, _store));
+
         var provisioning = ProvisionAndConfigureAsync(stoppingToken);
         var collection = CollectionLoopAsync(stoppingToken);
+        var discovery = DiscoveryLoopAsync(stoppingToken);
         var sending = SendingLoopAsync(stoppingToken);
-        await Task.WhenAll(provisioning, collection, sending);
+        var heartbeat = new NetworkHeartbeatLoop(PublishHeartbeatAsync, logger).RunAsync(stoppingToken);
+        await Task.WhenAll(provisioning, collection, discovery, sending, heartbeat);
     }
 
     private async Task ProvisionAndConfigureAsync(CancellationToken ct)
@@ -64,14 +76,14 @@ public sealed class NetworkAgentWorker(
         {
             try
             {
-                if (_secrets.Read("refresh_token") is null)
+                var agentId = _secrets.Read("agent_id");
+                if (agentId is null)
                     await PairUntilApprovedAsync(ct);
-
-                if (_secrets.Read("access_token") is null)
-                    await RefreshAccessAsync(ct);
+                else if (_secrets.Read("access_token") is null)
+                    await RefreshAccessAsync(null, ct);
 
                 var access = _secrets.Read("access_token");
-                if (access is not null)
+                if (_secrets.Read("agent_id") is not null && access is not null)
                 {
                     try
                     {
@@ -80,7 +92,8 @@ public sealed class NetworkAgentWorker(
                     }
                     catch (NetworkApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
                     {
-                        await RefreshAccessAsync(ct);
+                        if (ex.ConfirmsAgentRevocation) MarkRevoked();
+                        else await RefreshAccessAsync(access, ct);
                     }
                 }
             }
@@ -96,20 +109,21 @@ public sealed class NetworkAgentWorker(
         var deviceSecret = _secrets.Read("device_secret");
         if (pairingId is null || deviceSecret is null)
         {
-            var request = new PairingRequest(await _store.GetOrCreateMachineIdAsync(ct), Environment.MachineName, "1.0.0", Environment.OSVersion.VersionString, GetDetectedNetworks());
+            var request = new PairingRequest(await _store.GetOrCreateMachineIdAsync(ct), Environment.MachineName,
+                Version, Environment.OSVersion.VersionString, GetDetectedNetworks());
             var pairing = await _api.CreatePairingAsync(request, ct);
             pairingId = pairing.PairingId;
             deviceSecret = pairing.DeviceSecret;
             _secrets.Save("pairing_id", pairingId);
             _secrets.Save("device_secret", deviceSecret);
             WritePairingStatus(pairing.UserCode, pairing.ExpiresAt, pairing.VerificationUrl, "pending");
-            logger.LogInformation("Pairing code {UserCode} valid until {ExpiresAt:u}. Open {VerificationUrl} and claim this agent.", pairing.UserCode, pairing.ExpiresAt, pairing.VerificationUrl);
+            logger.LogInformation("Pairing session {PairingId} created; valid until {ExpiresAt:u}. Open {VerificationUrl} to claim this agent.", pairingId, pairing.ExpiresAt, pairing.VerificationUrl);
         }
 
-        while (!ct.IsCancellationRequested && _secrets.Read("refresh_token") is null)
+        while (!ct.IsCancellationRequested && _secrets.Read("agent_id") is null)
         {
             var status = await _api.GetPairingStatusAsync(pairingId, deviceSecret, ct);
-            if (status.State == "approved")
+            if (status.State is "approved" or "completed")
             {
                 var credentials = await new PairingCoordinator(_api, _secrets).CompleteAsync(pairingId, deviceSecret, ct);
                 _secrets.Save("agent_id", credentials.AgentId);
@@ -119,34 +133,38 @@ public sealed class NetworkAgentWorker(
                 WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "completed");
                 return;
             }
-            if (status.State is "expired" or "completed")
+            if (status.State == "expired")
             {
                 _secrets.Delete("pairing_id");
                 _secrets.Delete("device_secret");
-                WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, status.State);
+                _secrets.Delete("pairing_initial_refresh_token");
+                _secrets.Delete("pairing_session");
+                _secrets.Delete("refresh_token");
+                WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "expired");
                 return;
             }
             await Task.Delay(TimeSpan.FromSeconds(5), ct);
         }
     }
 
-    private async Task RefreshAccessAsync(CancellationToken ct)
+    private async Task RefreshAccessAsync(string? rejectedToken, CancellationToken ct)
     {
         try
         {
-            var credentials = await new NetworkTokenManager(_api, _secrets).RefreshAsync(ct);
-            if (!string.IsNullOrWhiteSpace(credentials.AgentId)) _secrets.Save("agent_id", credentials.AgentId);
-            if (!string.IsNullOrWhiteSpace(credentials.CompanyId)) _secrets.Save("company_id", credentials.CompanyId);
+            var credentials = await _refresh.RefreshAsync(rejectedToken, ct);
+            if (credentials is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(credentials.AgentId)) _secrets.Save("agent_id", credentials.AgentId);
+                if (!string.IsNullOrWhiteSpace(credentials.CompanyId)) _secrets.Save("company_id", credentials.CompanyId);
+            }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) { logger.LogWarning("Access token refresh deferred: {ErrorType}", ex.GetType().Name); }
     }
 
     private async Task PersistConfigurationAsync(NetworkAgentConfiguration config, CancellationToken ct)
     {
-        if (config.Version < 0 || config.Networks.Count > 256 || config.Credentials.Count > 1024)
-            throw new InvalidOperationException("Server returned configuration outside collector limits.");
-        var normalized = JsonSerializer.Serialize(config, JsonOptions);
-        _secrets.Save("configuration_cache", normalized);
+        _configurationCache.Replace(config);
         await _store.SaveConfigurationAsync(JsonSerializer.Serialize(new { config.Version, config.Enabled }, JsonOptions), ct);
     }
 
@@ -157,114 +175,33 @@ public sealed class NetworkAgentWorker(
             var delaySeconds = 60;
             try
             {
-                var json = _secrets.Read("configuration_cache");
-                if (json is not null)
+                var config = ReadCachedConfiguration();
+                if (!_revoked && config is { Enabled: true })
                 {
-                    var config = JsonSerializer.Deserialize<NetworkAgentConfiguration>(json, JsonOptions);
-                    if (config is { Enabled: true })
-                    {
-                        delaySeconds = Math.Clamp(config.CollectionIntervalSeconds, 30, 3600);
-                        await CollectOnceAsync(config, ct);
-                    }
+                    delaySeconds = Math.Clamp(config.CollectionIntervalSeconds, 30, 3600);
+                    var result = await _collector.PollKnownAsync(config, DateTimeOffset.UtcNow, ct);
+                    _lastCollectionResult = result.Devices.Any(device => device.Result is "timeout" or "auth_error" or "protocol_error") ? "partial" : "success";
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-            catch (Exception ex) { logger.LogWarning("Network collection cycle failed; cached configuration remains active: {ErrorType}", ex.GetType().Name); }
+            catch (Exception ex) { _lastCollectionResult = "failed"; logger.LogWarning("Network collection cycle failed; cached configuration remains active: {ErrorType}", ex.GetType().Name); }
             await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
         }
     }
 
-    private async Task CollectOnceAsync(NetworkAgentConfiguration config, CancellationToken ct)
+    private async Task DiscoveryLoopAsync(CancellationToken ct)
     {
-        var activeNetworks = config.Networks.Where(n => n.Enabled).ToArray();
-        var ips = new NetworkRangePlanner(4096).ExpandDistinct(activeNetworks.Select(n => n.Cidr));
-        var byIp = ips.ToDictionary(ip => ip.ToString(), ip => activeNetworks.First(n => Contains(n.Cidr, ip)), StringComparer.OrdinalIgnoreCase);
-        var results = new System.Collections.Concurrent.ConcurrentBag<NetworkDeviceMetric>();
-        using var concurrency = new SemaphoreSlim(16, 16);
-        var tasks = ips.Select(async ip =>
-        {
-            var ipText = ip.ToString();
-            var network = byIp[ipText];
-            if (network.ExcludedIps.Contains(ipText, StringComparer.OrdinalIgnoreCase)) return;
-            await concurrency.WaitAsync(ct);
-            try { results.Add(await CollectDeviceAsync(ip, network, config, ct)); }
-            finally { concurrency.Release(); }
-        });
-        await Task.WhenAll(tasks);
-        var sequence = await _store.NextSequenceAsync(ct);
-        var batch = new NetworkMetricBatch(sequence, DateTimeOffset.UtcNow, results.OrderBy(d => d.IpAddress, StringComparer.Ordinal).ToArray());
-        await _store.EnqueueAsync(sequence, JsonSerializer.Serialize(batch, JsonOptions), ct);
-    }
-
-    private async Task<NetworkDeviceMetric> CollectDeviceAsync(IPAddress ip, NetworkDefinition network, NetworkAgentConfiguration config, CancellationToken ct)
-    {
-        var started = Stopwatch.GetTimestamp();
-        var endpoint = new IPEndPoint(ip, Math.Clamp(network.SnmpPort, 1, 65535));
-        Exception? lastError = null;
-        foreach (var credential in config.Credentials.Where(c => network.CredentialIds.Contains(c.Id)).Take(4))
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                var values = await RetryOnceAsync(() => _snmp.GetAsync(endpoint, credential,
-                    ["1.3.6.1.2.1.1.1.0", "1.3.6.1.2.1.1.2.0", "1.3.6.1.2.1.1.3.0", "1.3.6.1.2.1.1.5.0", "1.3.6.1.2.1.1.6.0"], TimeSpan.FromSeconds(2), ct), ct);
-                var valuesByOid = values.ToDictionary(v => v.Oid, v => v.Value);
-                var engineId = values.FirstOrDefault(v => v.Oid == "1.3.6.1.6.3.10.2.1.1.0")?.Value;
-                var name = valuesByOid.GetValueOrDefault("1.3.6.1.2.1.1.5.0");
-                var description = valuesByOid.GetValueOrDefault("1.3.6.1.2.1.1.1.0");
-                var uptime = ParseUnsigned(valuesByOid.GetValueOrDefault("1.3.6.1.2.1.1.3.0"));
-                var scope = network.NetworkScopeId ?? network.Id;
-                var deviceId = await _store.GetOrCreateDeviceIdAsync(scope, ip.ToString(), engineId, ct);
-                var interfaces = await CollectInterfacesAsync(endpoint, credential, deviceId, (ulong)Math.Max(0, uptime ?? 0), ct);
-                return new(network.Id, deviceId.ToString("D"), ip.ToString(), string.IsNullOrWhiteSpace(name) ? ip.ToString() : name,
-                    Classify(description), DateTimeOffset.UtcNow, values.Count >= 2 ? "success" : "partial",
-                    valuesByOid.GetValueOrDefault("1.3.6.1.2.1.1.2.0"), description,
-                    uptime is null ? null : uptime.Value / 100,
-                    Stopwatch.GetElapsedTime(started).TotalMilliseconds, EngineId: engineId, Location: valuesByOid.GetValueOrDefault("1.3.6.1.2.1.1.6.0"), Interfaces: interfaces);
+                var config = ReadCachedConfiguration();
+                if (!_revoked && config is { Enabled: true }) await _collector.DiscoverAsync(config, DateTimeOffset.UtcNow, ct);
             }
-            catch (Exception ex) when (ex is TimeoutException or SnmpProtocolException or SnmpAuthenticationException or ArgumentException)
-            {
-                lastError = ex;
-                if (ex is SnmpAuthenticationException) continue;
-            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception ex) { logger.LogWarning("Network discovery cycle failed; known-device polling continues: {ErrorType}", ex.GetType().Name); }
+            await Task.Delay(TimeSpan.FromSeconds(30), ct);
         }
-        var uid = await _store.GetOrCreateDeviceIdAsync(network.NetworkScopeId ?? network.Id, ip.ToString(), null, ct);
-        var outcome = lastError is SnmpAuthenticationException ? "auth_error" : lastError is SnmpProtocolException ? "protocol_error" : "timeout";
-        return new(network.Id, uid.ToString("D"), ip.ToString(), ip.ToString(), "Outro", DateTimeOffset.UtcNow, outcome,
-            ResponseTimeMs: null);
-    }
-
-    private async Task<IReadOnlyList<NetworkInterfaceMetric>> CollectInterfacesAsync(IPEndPoint endpoint, SnmpCredential credential, Guid deviceId, ulong uptimeTicks, CancellationToken ct)
-    {
-        try
-        {
-            var descriptions = await RetryOnceAsync(() => _snmp.WalkAsync(endpoint, credential, "1.3.6.1.2.1.2.2.1.2", 128, TimeSpan.FromSeconds(2), ct), ct);
-            var indices = descriptions.Select(v => ParseIndex(v.Oid)).Where(i => i > 0).Take(128).ToArray();
-            var result = new List<NetworkInterfaceMetric>();
-            foreach (var index in indices)
-            {
-                var suffix = "." + index;
-                var oids = new[] { "1.3.6.1.2.1.31.1.1.1.1", "1.3.6.1.2.1.2.2.1.6", "1.3.6.1.2.1.2.2.1.7", "1.3.6.1.2.1.2.2.1.8", "1.3.6.1.2.1.2.2.1.5", "1.3.6.1.2.1.31.1.1.1.6", "1.3.6.1.2.1.31.1.1.1.10", "1.3.6.1.2.1.2.2.1.14", "1.3.6.1.2.1.2.2.1.20", "1.3.6.1.2.1.2.2.1.13", "1.3.6.1.2.1.2.2.1.19" }.Select(oid => oid + suffix);
-                var values = (await RetryOnceAsync(() => _snmp.GetAsync(endpoint, credential, oids, TimeSpan.FromSeconds(2), ct), ct)).ToDictionary(v => v.Oid, v => v.Value);
-                var description = descriptions.First(v => ParseIndex(v.Oid) == index).Value;
-                var currentIn = ToUnsigned(values.GetValueOrDefault("1.3.6.1.2.1.31.1.1.1.6" + suffix));
-                var currentOut = ToUnsigned(values.GetValueOrDefault("1.3.6.1.2.1.31.1.1.1.10" + suffix));
-                var observedAt = DateTimeOffset.UtcNow;
-                var inPrevious = currentIn is null ? null : await _store.RecordCounterAsync(deviceId.ToString("D"), index, "in", currentIn.Value, uptimeTicks, observedAt, ct);
-                var outPrevious = currentOut is null ? null : await _store.RecordCounterAsync(deviceId.ToString("D"), index, "out", currentOut.Value, uptimeTicks, observedAt, ct);
-                var rateCalculator = new InterfaceRateCalculator();
-                var inBps = inPrevious is null ? null : rateCalculator.Calculate(inPrevious.Octets, currentIn!.Value, (observedAt - inPrevious.ObservedAt).TotalSeconds, inPrevious.Restarted);
-                var outBps = outPrevious is null ? null : rateCalculator.Calculate(outPrevious.Octets, currentOut!.Value, (observedAt - outPrevious.ObservedAt).TotalSeconds, outPrevious.Restarted);
-                result.Add(new(index,
-                    values.GetValueOrDefault("1.3.6.1.2.1.31.1.1.1.1" + suffix) ?? description, description,
-                    values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.6" + suffix), ParseInt(values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.7" + suffix)),
-                    ParseInt(values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.8" + suffix)), ParseLong(values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.5" + suffix)),
-                    ToDecimal(values.GetValueOrDefault("1.3.6.1.2.1.31.1.1.1.6" + suffix)), ToDecimal(values.GetValueOrDefault("1.3.6.1.2.1.31.1.1.1.10" + suffix)),
-                    ToDecimal(values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.14" + suffix)), ToDecimal(values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.20" + suffix)),
-                    ToDecimal(values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.13" + suffix)), ToDecimal(values.GetValueOrDefault("1.3.6.1.2.1.2.2.1.19" + suffix)), inBps, outBps));
-            }
-            return result;
-        }
-        catch (TimeoutException) { return []; }
     }
 
     private async Task SendingLoopAsync(CancellationToken ct)
@@ -275,19 +212,24 @@ public sealed class NetworkAgentWorker(
             {
                 var access = _secrets.Read("access_token");
                 var agentId = _secrets.Read("agent_id");
-                if (access is not null && agentId is not null)
+                if (!_revoked && access is not null && agentId is not null)
                 {
                     foreach (var batch in await _store.ReadPendingAsync(50, ct))
                     {
-                        using var document = JsonDocument.Parse(batch.Payload);
                         try
                         {
-                            await _api.SendMetricsAsync(agentId, access, batch.Sequence, document.RootElement, ct);
-                            await _store.AcknowledgeAsync(batch.Sequence, ct);
+                            var accepted = await _sender.SendOneAsync(agentId, access, batch, ct);
+                            if (!accepted)
+                            {
+                                _lastErrorCode = "metrics_rejected_400_413";
+                                logger.LogError("Network metrics batch was permanently rejected by backend validation: sequence {Sequence}.", batch.Sequence);
+                            }
+                            else _lastErrorCode = null;
                         }
+                        catch (NetworkApiException ex) when (ex.ConfirmsAgentRevocation) { MarkRevoked(); break; }
                         catch (NetworkApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
                         {
-                            await RefreshAccessAsync(ct);
+                            await RefreshAccessAsync(access, ct);
                             break;
                         }
                     }
@@ -299,6 +241,39 @@ public sealed class NetworkAgentWorker(
         }
     }
 
+    private async Task PublishHeartbeatAsync(CancellationToken ct)
+    {
+        var access = _secrets.Read("access_token");
+        if (_revoked || access is null || _secrets.Read("agent_id") is null) return;
+        var outbox = await _store.GetOutboxStatusAsync(ct);
+        var heartbeat = new NetworkHeartbeatPayload(DateTimeOffset.UtcNow, (long)_uptime.Elapsed.TotalSeconds, Version,
+            outbox.CreatedSequence, outbox.AcknowledgedSequence, outbox.PendingCount, outbox.PendingBytes,
+            _lastCollectionResult, _lastErrorCode, await _store.GetDiscoveryStateAsync(ct),
+            await _store.GetLastDiscoveredDeviceCountAsync(ct), await _store.GetLastDiscoveryAtAsync(ct));
+        try { await _api.SendHeartbeatAsync(access, heartbeat, ct); }
+        catch (NetworkApiException ex) when (ex.ConfirmsAgentRevocation) { MarkRevoked(); throw; }
+    }
+
+    private NetworkAgentConfiguration? ReadCachedConfiguration()
+    {
+        if (_revoked) return null;
+        var json = _secrets.Read("configuration_cache");
+        if (json is null) return null;
+        var cached = JsonSerializer.Deserialize<NetworkAgentConfiguration>(json, JsonOptions);
+        if (cached is null) return null;
+        NetworkConfigurationValidator.Validate(cached);
+        return cached;
+    }
+
+    private void MarkRevoked()
+    {
+        _revoked = true;
+        _secrets.Save("agent_revoked", "true");
+        logger.LogError("Network agent enrollment was revoked by the server; cached network collection has stopped.");
+        try { WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "revoked"); }
+        catch (Exception ex) { logger.LogWarning("Could not persist revoked status: {ErrorType}", ex.GetType().Name); }
+    }
+
     private void WritePairingStatus(string code, DateTimeOffset expiresAt, string url, string state)
     {
         var path = Path.Combine(_dataDirectory, "pairing-status.json");
@@ -307,57 +282,16 @@ public sealed class NetworkAgentWorker(
 
     private static IReadOnlyList<string> GetDetectedNetworks()
     {
-        var found = new List<string>();
-        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up))
-        foreach (var unicast in nic.GetIPProperties().UnicastAddresses.Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork && a.IPv4Mask is not null))
+        var networks = new List<string>();
+        foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up))
+        foreach (var address in nic.GetIPProperties().UnicastAddresses.Where(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && a.IPv4Mask is not null))
         {
-            var address = unicast.Address.GetAddressBytes();
-            var mask = unicast.IPv4Mask!.GetAddressBytes();
-            var network = address.Zip(mask, (a, m) => (byte)(a & m)).ToArray();
-            var prefix = mask.Sum(b => System.Numerics.BitOperations.PopCount((uint)b));
-            if (prefix is >= 1 and <= 30) found.Add($"{string.Join('.', network)}/{prefix}");
+            var ip = address.Address.GetAddressBytes();
+            var mask = address.IPv4Mask!.GetAddressBytes();
+            var network = ip.Zip(mask, (octet, maskOctet) => (byte)(octet & maskOctet)).ToArray();
+            var prefix = mask.Sum(octet => System.Numerics.BitOperations.PopCount((uint)octet));
+            if (prefix is >= 1 and <= 30) networks.Add($"{string.Join('.', network)}/{prefix}");
         }
-        return found.Distinct(StringComparer.Ordinal).Take(64).ToArray();
-    }
-
-    private static bool Contains(string cidr, IPAddress candidate)
-    {
-        var parts = cidr.Split('/');
-        var baseAddress = IPAddress.Parse(parts[0]).GetAddressBytes();
-        var address = candidate.GetAddressBytes();
-        var prefix = int.Parse(parts[1]);
-        for (var i = 0; i < 4; i++)
-        {
-            var bits = Math.Clamp(prefix - i * 8, 0, 8);
-            var mask = bits == 0 ? 0 : 0xff << (8 - bits);
-            if ((baseAddress[i] & mask) != (address[i] & mask)) return false;
-        }
-        return true;
-    }
-
-    private static int ParseIndex(string oid) => int.TryParse(oid[(oid.LastIndexOf('.') + 1)..], out var index) ? index : 0;
-    private static long? ParseUnsigned(string? value) => ulong.TryParse(value, out var number) && number <= long.MaxValue ? (long)number : null;
-    private static int? ParseInt(string? value) => int.TryParse(value, out var number) ? number : null;
-    private static long? ParseLong(string? value) => long.TryParse(value, out var number) ? number : null;
-    private static string? ToDecimal(string? value) => ulong.TryParse(value, out var number) ? number.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
-    private static ulong? ToUnsigned(string? value) => ulong.TryParse(value, out var number) ? number : null;
-    private static string Classify(string? description)
-    {
-        var text = description ?? string.Empty;
-        if (text.Contains("router", StringComparison.OrdinalIgnoreCase)) return "Roteador";
-        if (text.Contains("switch", StringComparison.OrdinalIgnoreCase)) return "Switch";
-        if (text.Contains("printer", StringComparison.OrdinalIgnoreCase) || text.Contains("impress", StringComparison.OrdinalIgnoreCase)) return "Impressora";
-        if (text.Contains("firewall", StringComparison.OrdinalIgnoreCase)) return "Firewall";
-        if (text.Contains("access point", StringComparison.OrdinalIgnoreCase) || text.Contains("wireless", StringComparison.OrdinalIgnoreCase)) return "Access point";
-        return "Outro";
-    }
-
-    private static async Task<T> RetryOnceAsync<T>(Func<Task<T>> operation, CancellationToken ct)
-    {
-        for (var attempt = 0; ; attempt++)
-        {
-            try { return await operation(); }
-            catch (TimeoutException) when (attempt == 0 && !ct.IsCancellationRequested) { }
-        }
+        return networks.Distinct(StringComparer.Ordinal).Take(64).ToArray();
     }
 }

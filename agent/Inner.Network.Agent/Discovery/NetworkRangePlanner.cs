@@ -13,7 +13,7 @@ public sealed class NetworkRangePlanner(int maxAddresses)
         foreach (var cidr in cidrs)
         {
             var parts = cidr.Split('/', StringSplitOptions.TrimEntries);
-            if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var address) || address.AddressFamily != AddressFamily.InterNetwork ||
+            if (parts.Length != 2 || !TryParseCanonicalIpv4(parts[0], out var address) ||
                 !int.TryParse(parts[1], out var prefix) || prefix is < 0 or > 32)
                 throw new InvalidOperationException($"Invalid IPv4 CIDR: {cidr}");
 
@@ -44,4 +44,19 @@ public sealed class NetworkRangePlanner(int maxAddresses)
 
     private static uint ToUInt32(IPAddress address) => BitConverter.ToUInt32(address.GetAddressBytes().Reverse().ToArray());
     private static IPAddress FromUInt32(uint address) => new(BitConverter.GetBytes(address).Reverse().ToArray());
+
+    private static bool TryParseCanonicalIpv4(string value, out IPAddress address)
+    {
+        address = IPAddress.None;
+        var octets = value.Split('.');
+        if (octets.Length != 4) return false;
+        var bytes = new byte[4];
+        for (var index = 0; index < octets.Length; index++)
+        {
+            if (octets[index].Length is < 1 or > 3 || octets[index].Length > 1 && octets[index][0] == '0' ||
+                !byte.TryParse(octets[index], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out bytes[index])) return false;
+        }
+        address = new IPAddress(bytes);
+        return true;
+    }
 }

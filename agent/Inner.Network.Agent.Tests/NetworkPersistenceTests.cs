@@ -84,4 +84,34 @@ public sealed class NetworkPersistenceTests
             if (File.Exists(path + "-wal")) File.Delete(path + "-wal");
         }
     }
+
+    [Fact]
+    public async Task Outbox_status_reports_created_acknowledged_and_pending_counters()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"network-agent-status-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var store = new NetworkAgentStore(path);
+            await store.InitializeAsync();
+            var sequence = await store.NextSequenceAsync();
+            const string payload = "{\"sequence\":1}";
+            await store.EnqueueAsync(sequence, payload);
+
+            var pending = await store.GetOutboxStatusAsync();
+            Assert.Equal(sequence, pending.CreatedSequence);
+            Assert.Equal(0, pending.AcknowledgedSequence);
+            Assert.Equal(1, pending.PendingCount);
+            Assert.Equal(System.Text.Encoding.UTF8.GetByteCount(payload), pending.PendingBytes);
+
+            await store.AcknowledgeAsync(sequence);
+            var acknowledged = await store.GetOutboxStatusAsync();
+            Assert.Equal(sequence, acknowledged.AcknowledgedSequence);
+            Assert.Equal(0, acknowledged.PendingCount);
+            Assert.Equal(0, acknowledged.PendingBytes);
+        }
+        finally
+        {
+            foreach (var file in new[] { path, path + "-shm", path + "-wal" }) if (File.Exists(file)) File.Delete(file);
+        }
+    }
 }

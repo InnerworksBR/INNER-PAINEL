@@ -17,5 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="SnmpSimulator\**\*" />
+    <None Update="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

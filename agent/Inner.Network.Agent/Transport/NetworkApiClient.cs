@@ -79,8 +79,17 @@ public sealed class NetworkApiClient(HttpClient httpClient, string apiBaseUrl)
     public Task<NetworkAgentConfiguration> GetConfigurationAsync(string accessToken, CancellationToken ct = default) =>
         SendAsync<object, NetworkAgentConfiguration>(HttpMethod.Get, "/network/config", null, accessToken, ct);
 
-    public Task<JsonElement> SendMetricsAsync(string agentId, string accessToken, long sequence, JsonElement batch, CancellationToken ct = default) =>
-        SendAsync<JsonElement, JsonElement>(HttpMethod.Post, "/network/metrics", batch, accessToken, ct, $"{agentId}-{sequence}");
+    public async Task<JsonElement> SendMetricsAsync(string agentId, string accessToken, long sequence, JsonElement batch, CancellationToken ct = default)
+    {
+        var acknowledgement = await SendAsync<JsonElement, JsonElement>(HttpMethod.Post, "/network/metrics", batch, accessToken, ct, $"{agentId}-{sequence}");
+        if (acknowledgement.ValueKind != JsonValueKind.Object ||
+            !acknowledgement.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String ||
+            status.GetString() is not ("accepted" or "duplicate") ||
+            !acknowledgement.TryGetProperty("sequence", out var acceptedSequence) || acceptedSequence.ValueKind != JsonValueKind.Number ||
+            !acceptedSequence.TryGetInt64(out var actualSequence) || actualSequence != sequence)
+            throw new NetworkApiException(HttpStatusCode.BadGateway, "Metrics acknowledgement did not match the submitted batch.");
+        return acknowledgement;
+    }
 
     public Task SendHeartbeatAsync(string accessToken, object heartbeat, CancellationToken ct = default) =>
         SendAsync<object, JsonElement>(HttpMethod.Post, "/heartbeat", heartbeat, accessToken, ct);
@@ -119,6 +128,8 @@ public sealed class NetworkApiException(HttpStatusCode statusCode, string messag
 {
     public HttpStatusCode StatusCode { get; } = statusCode;
     public TimeSpan? RetryAfter { get; } = retryAfter;
+    public bool ConfirmsAgentRevocation => StatusCode == HttpStatusCode.Unauthorized &&
+        Message.Contains("Agente revogado ou não encontrado", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class PairingCoordinator(NetworkApiClient api, INetworkSecretStore secrets)
@@ -140,9 +151,11 @@ public sealed class PairingCoordinator(NetworkApiClient api, INetworkSecretStore
         secrets.Save(RefreshKey, pending);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pending))).ToLowerInvariant();
         var credentials = await api.CompletePairingAsync(pairingId, deviceSecret, hash, ct);
+        secrets.Save("agent_id", credentials.AgentId);
+        secrets.Save("company_id", credentials.CompanyId);
+        secrets.Save("access_token", credentials.AccessToken);
         secrets.Delete(PendingTokenKey);
         secrets.Delete(PendingSessionKey);
-        secrets.Save("access_token", credentials.AccessToken);
         return credentials with { RefreshToken = pending };
     }
 
@@ -167,5 +180,22 @@ public sealed class NetworkTokenManager(NetworkApiClient api, INetworkSecretStor
         secrets.Delete("refresh_pending_new");
         secrets.Save("access_token", credentials.AccessToken);
         return credentials with { RefreshToken = replacement };
+    }
+}
+
+public sealed class NetworkTokenRefreshCoordinator(NetworkApiClient api, INetworkSecretStore secrets)
+{
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    public async Task<NetworkCredentials?> RefreshAsync(string? rejectedAccessToken = null, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            if (rejectedAccessToken is not null && !string.Equals(secrets.Read("access_token"), rejectedAccessToken, StringComparison.Ordinal))
+                return null;
+            return await new NetworkTokenManager(api, secrets).RefreshAsync(ct);
+        }
+        finally { _gate.Release(); }
     }
 }

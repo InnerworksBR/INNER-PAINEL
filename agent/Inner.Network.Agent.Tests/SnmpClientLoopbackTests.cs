@@ -24,25 +24,29 @@ public sealed class SnmpClientLoopbackTests
         Assert.Equal("loopback-snmp-device", Assert.Single(result).Value);
     }
 
-    [Fact]
-    public async Task V3_authNoPriv_sha256_get_reads_a_real_response_from_loopback_udp_simulator()
+    [Theory]
+    [InlineData("SHA1")]
+    [InlineData("SHA256")]
+    public async Task V3_authNoPriv_get_reads_a_real_response_from_loopback_udp_simulator(string authProtocol)
     {
-        using var simulator = new LoopbackSnmpSimulator(version3: true, authPriv: false);
+        using var simulator = new LoopbackSnmpSimulator(version3: true, authPriv: false, authProtocol);
         simulator.Start();
         var result = await new SnmpClient().GetAsync(simulator.Endpoint,
-            new SnmpCredential("credential", "read", "3", Username: "snmp-user", SecurityLevel: "authNoPriv", AuthProtocol: "SHA256", AuthPassword: "auth-pass-123"),
+            new SnmpCredential("credential", "read", "3", Username: "snmp-user", SecurityLevel: "authNoPriv", AuthProtocol: authProtocol, AuthPassword: "auth-pass-123"),
             [SysDescr], TimeSpan.FromSeconds(2));
 
         Assert.Equal("loopback-snmp-device", Assert.Single(result).Value);
     }
 
-    [Fact]
-    public async Task V3_authPriv_sha256_aes128_get_reads_a_real_response_from_loopback_udp_simulator()
+    [Theory]
+    [InlineData("SHA1")]
+    [InlineData("SHA256")]
+    public async Task V3_authPriv_aes128_get_reads_a_real_response_from_loopback_udp_simulator(string authProtocol)
     {
-        using var simulator = new LoopbackSnmpSimulator(version3: true, authPriv: true);
+        using var simulator = new LoopbackSnmpSimulator(version3: true, authPriv: true, authProtocol);
         simulator.Start();
         var result = await new SnmpClient().GetAsync(simulator.Endpoint,
-            new SnmpCredential("credential", "read", "3", Username: "snmp-user", SecurityLevel: "authPriv", AuthProtocol: "SHA256", AuthPassword: "auth-pass-123", PrivacyProtocol: "AES128", PrivacyPassword: "privacy-pass-123"),
+            new SnmpCredential("credential", "read", "3", Username: "snmp-user", SecurityLevel: "authPriv", AuthProtocol: authProtocol, AuthPassword: "auth-pass-123", PrivacyProtocol: "AES128", PrivacyPassword: "privacy-pass-123"),
             [SysDescr], TimeSpan.FromSeconds(2));
 
         Assert.Equal("loopback-snmp-device", Assert.Single(result).Value);
@@ -62,7 +66,7 @@ public sealed class SnmpClientLoopbackTests
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(2));
     }
 
-    private sealed class LoopbackSnmpSimulator(bool version3, bool authPriv = false) : IDisposable
+    private sealed class LoopbackSnmpSimulator(bool version3, bool authPriv = false, string authProtocol = "SHA256") : IDisposable
     {
         private readonly byte[] _engineId = [0x80, 0x00, 0x4f, 0xb8, 0x05, 0x06, 0x01, 0x02];
         private readonly int _port = GetFreePort();
@@ -74,7 +78,9 @@ public sealed class SnmpClientLoopbackTests
             var users = new UserRegistry();
             if (version3)
             {
-                IAuthenticationProvider authentication = new SHA256AuthenticationProvider(new OctetString("auth-pass-123"));
+                IAuthenticationProvider authentication = authProtocol == "SHA1"
+                    ? new SHA1AuthenticationProvider(new OctetString("auth-pass-123"))
+                    : new SHA256AuthenticationProvider(new OctetString("auth-pass-123"));
                 IPrivacyProvider privacy = authPriv
                     ? new AESPrivacyProvider(new OctetString("privacy-pass-123"), authentication)
                     : new DefaultPrivacyProvider(authentication);

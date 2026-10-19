@@ -34,7 +34,9 @@ public sealed class SnmpClient
             var pdu = response.Pdu();
             if (pdu.TypeCode != SnmpType.ResponsePdu) throw new SnmpProtocolException($"SNMP returned {pdu.TypeCode}.");
             if (pdu.ErrorStatus.ToInt32() != 0) throw new SnmpProtocolException($"SNMP error status {pdu.ErrorStatus}.");
-            return pdu.Variables.Select(v => new SnmpValue(v.Id.ToString(), v.Data.ToString(), v.Data.TypeCode)).ToArray();
+            return pdu.Variables
+                .Where(v => v.Data.TypeCode is not (SnmpType.NoSuchObject or SnmpType.NoSuchInstance or SnmpType.EndOfMibView))
+                .Select(v => new SnmpValue(v.Id.ToString(), v.Data.ToString(), v.Data.TypeCode)).ToArray();
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -56,44 +58,50 @@ public sealed class SnmpClient
         using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         requestTimeout.CancelAfter(timeout);
         var token = requestTimeout.Token;
-        var rows = new List<SnmpValue>();
-        var current = new ObjectIdentifier(rootOid);
-        ISnmpMessage? v3Report = null;
-        IPrivacyProvider? privacy = null;
-        UserRegistry? registry = null;
-        if (credential.Version == "3")
+        try
         {
-            (privacy, registry) = CreateV3Security(credential);
-            v3Report = await Messenger.GetNextDiscovery(SnmpType.GetRequestPdu).GetResponseAsync(endpoint, token);
-        }
-        while (rows.Count < Math.Clamp(maxRows, 1, 256))
-        {
-            ISnmpMessage response;
-            if (credential.Version == "2c")
+            var rows = new List<SnmpValue>();
+            var current = new ObjectIdentifier(rootOid);
+            ISnmpMessage? v3Report = null;
+            IPrivacyProvider? privacy = null;
+            UserRegistry? registry = null;
+            if (credential.Version == "3")
             {
-                var request = new GetNextRequestMessage(Messenger.NextRequestId, VersionCode.V2,
-                    new OctetString(credential.Community ?? throw new ArgumentException("SNMP v2c credential has no community.")),
-                    [new Variable(current)]);
-                response = await request.GetResponseAsync(endpoint, new UserRegistry(), token);
+                (privacy, registry) = CreateV3Security(credential);
+                v3Report = await Messenger.GetNextDiscovery(SnmpType.GetRequestPdu).GetResponseAsync(endpoint, token);
             }
-            else
+            while (rows.Count < Math.Clamp(maxRows, 1, 256))
             {
-                var request = new GetNextRequestMessage(VersionCode.V3, Messenger.NextMessageId, Messenger.NextRequestId,
-                    new OctetString(credential.Username!), new OctetString(credential.ContextName ?? string.Empty),
-                    [new Variable(current)], privacy!, Messenger.MaxMessageSize, v3Report!);
-                response = await request.GetResponseAsync(endpoint, registry!, token);
+                ISnmpMessage response;
+                if (credential.Version == "2c")
+                {
+                    var request = new GetNextRequestMessage(Messenger.NextRequestId, VersionCode.V2,
+                        new OctetString(credential.Community ?? throw new ArgumentException("SNMP v2c credential has no community.")),
+                        [new Variable(current)]);
+                    response = await request.GetResponseAsync(endpoint, new UserRegistry(), token);
+                }
+                else
+                {
+                    var request = new GetNextRequestMessage(VersionCode.V3, Messenger.NextMessageId, Messenger.NextRequestId,
+                        new OctetString(credential.Username!), new OctetString(credential.ContextName ?? string.Empty),
+                        [new Variable(current)], privacy!, Messenger.MaxMessageSize, v3Report!);
+                    response = await request.GetResponseAsync(endpoint, registry!, token);
+                }
+                var pdu = response.Pdu();
+                if (pdu.TypeCode == SnmpType.ReportPdu)
+                    throw new SnmpAuthenticationException("SNMP v3 security report during table walk.");
+                if (pdu.TypeCode != SnmpType.ResponsePdu || pdu.ErrorStatus.ToInt32() != 0) break;
+                var next = pdu.Variables.FirstOrDefault();
+                if (next is null || !next.Id.ToString().StartsWith(rootOid + ".", StringComparison.Ordinal) || next.Data.TypeCode == SnmpType.EndOfMibView ||
+                    next.Data.TypeCode is SnmpType.NoSuchObject or SnmpType.NoSuchInstance) break;
+                rows.Add(new(next.Id.ToString(), next.Data.ToString(), next.Data.TypeCode));
+                current = next.Id;
             }
-            var pdu = response.Pdu();
-            if (pdu.TypeCode == SnmpType.ReportPdu)
-                throw new SnmpAuthenticationException("SNMP v3 security report during table walk.");
-            if (pdu.TypeCode != SnmpType.ResponsePdu || pdu.ErrorStatus.ToInt32() != 0) break;
-            var next = pdu.Variables.FirstOrDefault();
-            if (next is null || !next.Id.ToString().StartsWith(rootOid + ".", StringComparison.Ordinal) || next.Data.TypeCode == SnmpType.EndOfMibView)
-                break;
-            rows.Add(new(next.Id.ToString(), next.Data.ToString(), next.Data.TypeCode));
-            current = next.Id;
+            return rows;
         }
-        return rows;
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new SnmpTimeoutException(endpoint, timeout); }
+        catch (Lextm.SharpSnmpLib.Messaging.TimeoutException) { throw new SnmpTimeoutException(endpoint, timeout); }
+        catch (System.Net.Sockets.SocketException) when (!ct.IsCancellationRequested) { throw new SnmpTimeoutException(endpoint, timeout); }
     }
 
     private static async Task<ISnmpMessage> GetV3Async(IPEndPoint endpoint, Transport.SnmpCredential credential, List<Variable> variables, CancellationToken ct)
