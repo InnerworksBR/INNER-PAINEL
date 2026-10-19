@@ -10,6 +10,9 @@ namespace Inner.Network.Agent.Tests;
 
 public sealed class NetworkCollectionCoordinatorTests
 {
+    private const string NetworkId = "00000000-0000-4000-8000-000000000010";
+    private const string CredentialId = "00000000-0000-4000-8000-000000000020";
+    private const string ScopeId = "00000000-0000-4000-8000-000000000030";
     [Fact]
     public async Task Discovery_does_not_create_inventory_or_enqueue_a_timeout_for_unknown_addresses()
     {
@@ -68,7 +71,7 @@ public sealed class NetworkCollectionCoordinatorTests
         await WithStore(async store =>
         {
             var now = DateTimeOffset.Parse("2026-10-19T12:00:00Z");
-            await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.1", null, null, now.AddHours(-1), TimeSpan.FromMinutes(15));
+            await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.1", null, null, now.AddHours(-1), TimeSpan.FromMinutes(15));
             var probe = new FakeProbe((_, _, _) => Task.FromException<NetworkProbeResult?>(expected == "auth_error"
                 ? new SnmpAuthenticationException("test-only") : new SnmpProtocolException("test-only")));
 
@@ -129,12 +132,12 @@ public sealed class NetworkCollectionCoordinatorTests
         {
             var now = DateTimeOffset.Parse("2026-10-19T12:00:00Z");
             var oldConfig = Config("192.0.2.0/30");
-            var first = await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.1", "engine-a", "serial-a", now, TimeSpan.FromMinutes(15));
-            var moved = await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.2", "engine-a", "serial-a", now.AddMinutes(16), TimeSpan.FromMinutes(15));
+            var first = await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.1", "engine-a", "serial-a", now, TimeSpan.FromMinutes(15));
+            var moved = await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.2", "engine-a", "serial-a", now.AddMinutes(16), TimeSpan.FromMinutes(15));
             Assert.Equal(first, moved);
             Assert.Collection(await store.GetKnownTargetsAsync(), target => Assert.Equal("192.0.2.2", target.IpAddress));
 
-            var duplicate = await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.1", "engine-a", "serial-a", now.AddMinutes(17), TimeSpan.FromMinutes(15));
+            var duplicate = await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.1", "engine-a", "serial-a", now.AddMinutes(17), TimeSpan.FromMinutes(15));
             Assert.NotEqual(moved, duplicate);
             Assert.Equal(2, (await store.GetKnownTargetsAsync()).Select(t => t.DeviceUid).Distinct().Count());
         });
@@ -146,7 +149,7 @@ public sealed class NetworkCollectionCoordinatorTests
         await WithStore(async store =>
         {
             var now = DateTimeOffset.Parse("2026-10-19T12:00:00Z");
-            await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.2", "engine-known", "serial-known", now, TimeSpan.FromMinutes(15));
+            await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.2", "engine-known", "serial-known", now, TimeSpan.FromMinutes(15));
             var discoveryEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var releaseDiscovery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var phase = 0;
@@ -195,12 +198,12 @@ public sealed class NetworkCollectionCoordinatorTests
         await WithStore(async store =>
         {
             var now = DateTimeOffset.Parse("2026-10-19T12:00:00Z");
-            var first = await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.1", "engine-shared", "serial-one", now, TimeSpan.FromMinutes(15));
-            var second = await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.2", "engine-shared", "serial-two", now.AddMinutes(1), TimeSpan.FromMinutes(15));
-            var unrelatedIpIdentity = await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.3", null, null, now.AddMinutes(2), TimeSpan.FromMinutes(15));
-            await store.RemoveTargetAsync("network-1", "192.0.2.3");
+            var first = await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.1", "engine-shared", "serial-one", now, TimeSpan.FromMinutes(15));
+            var second = await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.2", "engine-shared", "serial-two", now.AddMinutes(1), TimeSpan.FromMinutes(15));
+            var unrelatedIpIdentity = await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.3", null, null, now.AddMinutes(2), TimeSpan.FromMinutes(15));
+            await store.RemoveTargetAsync(NetworkId, "192.0.2.3");
 
-            var ambiguous = await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", "192.0.2.3", "engine-shared", "serial-three", now.AddMinutes(3), TimeSpan.FromMinutes(15));
+            var ambiguous = await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.3", "engine-shared", "serial-three", now.AddMinutes(3), TimeSpan.FromMinutes(15));
 
             Assert.NotEqual(first, second);
             Assert.NotEqual(unrelatedIpIdentity, ambiguous);
@@ -217,7 +220,7 @@ public sealed class NetworkCollectionCoordinatorTests
             for (var index = 1; index <= deviceCount; index++)
             {
                 var address = new IPAddress(new byte[] { 10, 10, 0, (byte)index });
-                await store.ResolveAndUpsertTargetAsync("network-1", "scope-1", address.ToString(), null, null, now.AddHours(-1), TimeSpan.FromMinutes(15));
+                await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, address.ToString(), null, null, now.AddHours(-1), TimeSpan.FromMinutes(15));
             }
             var timeoutIp = "10.10.0.7";
             var probe = new FakeProbe((ip, network, _) => Task.FromResult<NetworkProbeResult?>(ip.ToString() == timeoutIp
@@ -227,8 +230,8 @@ public sealed class NetworkCollectionCoordinatorTests
                         .Select(index => new NetworkInterfaceMetric(index, new string('n', 255), new string('d', 255),
                             "00:11:22:33:44:55", 1, 1, 1_000_000_000, "4294967298", "9007199254741001", "2", "3", "4", "5", 2048, 512, 6)).ToArray()), null, null)));
             var config = new NetworkAgentConfiguration(1, true, 60, 900,
-                [new NetworkDefinition("network-1", "10.10.0.0/20", true, 161, [], ["credential-1"], "scope-1")],
-                [new SnmpCredential("credential-1", "readonly", "2c", Community: "test-only")]);
+                [new NetworkDefinition(NetworkId, "10.10.0.0/20", true, 161, [], [CredentialId], ScopeId)],
+                [new SnmpCredential(CredentialId, "readonly", "2c", Community: "test-only")]);
             var coordinator = new NetworkCollectionCoordinator(store, probe);
 
             var result = await coordinator.PollKnownAsync(config, now);
@@ -254,8 +257,8 @@ public sealed class NetworkCollectionCoordinatorTests
 
     private static NetworkAgentConfiguration Config(string cidr, int discoverySeconds = 900) => new(
         1, true, 60, discoverySeconds,
-        [new NetworkDefinition("network-1", cidr, true, 161, [], ["credential-1"], "scope-1")],
-        [new SnmpCredential("credential-1", "readonly", "2c", Community: "test-only")]);
+        [new NetworkDefinition(NetworkId, cidr, true, 161, [], [CredentialId], ScopeId)],
+        [new SnmpCredential(CredentialId, "readonly", "2c", Community: "test-only")]);
 
     private static NetworkProbeResult Success(string networkId, string ip, string engineId) => new(
         new NetworkDeviceMetric(networkId, string.Empty, ip, "switch", "Switch", DateTimeOffset.UtcNow, "success", EngineId: engineId, Interfaces: []), engineId, null);

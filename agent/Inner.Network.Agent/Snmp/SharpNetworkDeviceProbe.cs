@@ -8,7 +8,8 @@ using Inner.Network.Agent.Workers;
 
 namespace Inner.Network.Agent.Snmp;
 
-public sealed class SharpNetworkDeviceProbe(SnmpClient snmp, NetworkAgentStore store) : INetworkDeviceProbe
+public sealed class SharpNetworkDeviceProbe(SnmpClient snmp, NetworkAgentStore store,
+    Func<IPAddress, int, IPEndPoint>? endpointResolver = null) : INetworkDeviceProbe
 {
     private const string SysDescr = "1.3.6.1.2.1.1.1.0";
     private const string SysObjectId = "1.3.6.1.2.1.1.2.0";
@@ -28,7 +29,7 @@ public sealed class SharpNetworkDeviceProbe(SnmpClient snmp, NetworkAgentStore s
         {
             try
             {
-                var endpoint = new IPEndPoint(ip, Math.Clamp(network.SnmpPort, 1, 65535));
+                var endpoint = endpointResolver?.Invoke(ip, network.SnmpPort) ?? new IPEndPoint(ip, Math.Clamp(network.SnmpPort, 1, 65535));
                 var started = Stopwatch.GetTimestamp();
                 var values = await RetryOnceAsync(() => snmp.GetAsync(endpoint, credential,
                     [SysDescr, SysObjectId, SysUptime, SysName, SysContact, SysLocation, EngineIdOid], TimeSpan.FromSeconds(2), ct), ct);
@@ -40,15 +41,18 @@ public sealed class SharpNetworkDeviceProbe(SnmpClient snmp, NetworkAgentStore s
                 var partial = false;
                 var entity = await TryReadEntityAsync(endpoint, credential, ct);
                 partial |= entity.Failed;
-                var interfaces = await TryReadInterfacesAsync(endpoint, credential, ip, network, uptimeTicks, ct);
+                var observed = DateTimeOffset.UtcNow;
+                var deviceUid = await store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
+                    ip.ToString(), engineId, entity.SerialNumber, observed, TimeSpan.FromMinutes(15), ct);
+                var interfaces = await TryReadInterfacesAsync(endpoint, credential, deviceUid, uptimeTicks, ct);
                 partial |= interfaces.Failed;
-                var result = new NetworkDeviceMetric(network.Id, string.Empty, ip.ToString(),
-                    Value(system, SysName) ?? ip.ToString(), Classify(description), DateTimeOffset.UtcNow,
+                var result = new NetworkDeviceMetric(network.Id, deviceUid.ToString("D"), ip.ToString(),
+                    Value(system, SysName) ?? ip.ToString(), Classify(description), observed,
                     partial ? "partial" : "success", Value(system, SysObjectId), description,
                     uptimeTicks / 100 <= long.MaxValue ? (long)(uptimeTicks / 100) : null, Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                     entity.Manufacturer, entity.Model, entity.SerialNumber, entity.FirmwareVersion,
                     Value(system, SysLocation), engineId, interfaces.Interfaces, Value(system, SysContact));
-                return new(result, engineId, entity.SerialNumber);
+                return new(result, engineId, entity.SerialNumber, deviceUid);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) when (ex is TimeoutException or SnmpProtocolException or SnmpAuthenticationException or ArgumentException or System.Net.Sockets.SocketException)
@@ -86,7 +90,7 @@ public sealed class SharpNetworkDeviceProbe(SnmpClient snmp, NetworkAgentStore s
     }
 
     private async Task<(bool Failed, IReadOnlyList<NetworkInterfaceMetric> Interfaces)> TryReadInterfacesAsync(
-        IPEndPoint endpoint, SnmpCredential credential, IPAddress ip, NetworkDefinition network, ulong uptimeTicks, CancellationToken ct)
+        IPEndPoint endpoint, SnmpCredential credential, Guid deviceUid, ulong uptimeTicks, CancellationToken ct)
     {
         IReadOnlyList<SnmpValue> descriptions;
         try { descriptions = await RetryOnceAsync(() => snmp.WalkAsync(endpoint, credential, IfDescr, 128, TimeSpan.FromSeconds(2), ct), ct); }
@@ -127,8 +131,6 @@ public sealed class SharpNetworkDeviceProbe(SnmpClient snmp, NetworkAgentStore s
                 var outOctets = Unsigned(Value(values, oids[8])) ?? Unsigned(Value(values, oids[10]));
                 var discontinuity = Unsigned(Value(values, oids[15])) ?? 0;
                 var observed = DateTimeOffset.UtcNow;
-                var deviceUid = await store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
-                    ip.ToString(), null, null, observed, TimeSpan.FromMinutes(15), ct);
                 var inPrevious = inOctets is null ? null : await store.RecordCounterAsync(deviceUid.ToString("D"), index, "in", inOctets.Value, uptimeTicks, observed, discontinuity, ct);
                 var outPrevious = outOctets is null ? null : await store.RecordCounterAsync(deviceUid.ToString("D"), index, "out", outOctets.Value, uptimeTicks, observed, discontinuity, ct);
                 var rates = new InterfaceRateCalculator();

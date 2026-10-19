@@ -42,9 +42,9 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
     private NetworkApiClient _api = null!;
     private NetworkOutboxSender _sender = null!;
     private NetworkTokenRefreshCoordinator _refresh = null!;
+    private NetworkAgentAuthorizationLifecycle _authorization = null!;
     private NetworkCollectionCoordinator _collector = null!;
     private NetworkConfigurationCache _configurationCache = null!;
-    private volatile bool _revoked;
     private volatile string _lastCollectionResult = "success";
     private volatile string? _lastErrorCode;
 
@@ -54,7 +54,9 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
         _store = new NetworkAgentStore(Path.Combine(_dataDirectory, "network-agent.db"));
         await _store.InitializeAsync(stoppingToken);
         _secrets = new NetworkSecretStore(Path.Combine(_dataDirectory, "secrets"));
-        _revoked = string.Equals(_secrets.Read("agent_revoked"), "true", StringComparison.Ordinal);
+        _authorization = new NetworkAgentAuthorizationLifecycle(_secrets);
+        if (_authorization.AuthorizationLost)
+            WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "relink_required");
         _configurationCache = new NetworkConfigurationCache(_secrets);
         _api = new NetworkApiClient(new HttpClient { Timeout = TimeSpan.FromSeconds(15) }, configuration["Agent:ApiBaseUrl"] ?? "https://innerworks-painelbackend.zvzr4n.easypanel.host");
         _sender = new NetworkOutboxSender(_store, _api);
@@ -128,6 +130,7 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
                 var credentials = await new PairingCoordinator(_api, _secrets).CompleteAsync(pairingId, deviceSecret, ct);
                 _secrets.Save("agent_id", credentials.AgentId);
                 _secrets.Save("company_id", credentials.CompanyId);
+                _authorization.ClearAfterSuccessfulRelink();
                 _secrets.Delete("pairing_id");
                 _secrets.Delete("device_secret");
                 WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "completed");
@@ -151,11 +154,16 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
     {
         try
         {
-            var credentials = await _refresh.RefreshAsync(rejectedToken, ct);
+            var credentials = await _authorization.RefreshAfterAccessRejectedAsync(_refresh, rejectedToken, ct);
             if (credentials is not null)
             {
                 if (!string.IsNullOrWhiteSpace(credentials.AgentId)) _secrets.Save("agent_id", credentials.AgentId);
                 if (!string.IsNullOrWhiteSpace(credentials.CompanyId)) _secrets.Save("company_id", credentials.CompanyId);
+            }
+            else if (_authorization.AuthorizationLost)
+            {
+                logger.LogError("Network agent authorization was rejected during refresh; a new pairing is required and cached network collection has stopped.");
+                WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "relink_required");
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -176,7 +184,7 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
             try
             {
                 var config = ReadCachedConfiguration();
-                if (!_revoked && config is { Enabled: true })
+                if (_authorization.CanUseCachedQueries && config is { Enabled: true })
                 {
                     delaySeconds = Math.Clamp(config.CollectionIntervalSeconds, 30, 3600);
                     var result = await _collector.PollKnownAsync(config, DateTimeOffset.UtcNow, ct);
@@ -196,7 +204,7 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
             try
             {
                 var config = ReadCachedConfiguration();
-                if (!_revoked && config is { Enabled: true }) await _collector.DiscoverAsync(config, DateTimeOffset.UtcNow, ct);
+                if (_authorization.CanUseCachedQueries && config is { Enabled: true }) await _collector.DiscoverAsync(config, DateTimeOffset.UtcNow, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex) { logger.LogWarning("Network discovery cycle failed; known-device polling continues: {ErrorType}", ex.GetType().Name); }
@@ -212,7 +220,7 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
             {
                 var access = _secrets.Read("access_token");
                 var agentId = _secrets.Read("agent_id");
-                if (!_revoked && access is not null && agentId is not null)
+                if (_authorization.CanUseCachedQueries && access is not null && agentId is not null)
                 {
                     foreach (var batch in await _store.ReadPendingAsync(50, ct))
                     {
@@ -244,7 +252,7 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
     private async Task PublishHeartbeatAsync(CancellationToken ct)
     {
         var access = _secrets.Read("access_token");
-        if (_revoked || access is null || _secrets.Read("agent_id") is null) return;
+        if (!_authorization.CanUseCachedQueries || access is null || _secrets.Read("agent_id") is null) return;
         var outbox = await _store.GetOutboxStatusAsync(ct);
         var heartbeat = new NetworkHeartbeatPayload(DateTimeOffset.UtcNow, (long)_uptime.Elapsed.TotalSeconds, Version,
             outbox.CreatedSequence, outbox.AcknowledgedSequence, outbox.PendingCount, outbox.PendingBytes,
@@ -256,7 +264,7 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
 
     private NetworkAgentConfiguration? ReadCachedConfiguration()
     {
-        if (_revoked) return null;
+        if (!_authorization.CanUseCachedQueries) return null;
         var json = _secrets.Read("configuration_cache");
         if (json is null) return null;
         var cached = JsonSerializer.Deserialize<NetworkAgentConfiguration>(json, JsonOptions);
@@ -267,11 +275,10 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
 
     private void MarkRevoked()
     {
-        _revoked = true;
-        _secrets.Save("agent_revoked", "true");
-        logger.LogError("Network agent enrollment was revoked by the server; cached network collection has stopped.");
-        try { WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "revoked"); }
-        catch (Exception ex) { logger.LogWarning("Could not persist revoked status: {ErrorType}", ex.GetType().Name); }
+        _authorization.MarkAgentRevoked();
+        logger.LogError("Network agent enrollment was revoked by the server; a new pairing is required and cached network collection has stopped.");
+        try { WritePairingStatus(string.Empty, DateTimeOffset.UtcNow, string.Empty, "relink_required"); }
+        catch (Exception ex) { logger.LogWarning("Could not persist relink status: {ErrorType}", ex.GetType().Name); }
     }
 
     private void WritePairingStatus(string code, DateTimeOffset expiresAt, string url, string state)

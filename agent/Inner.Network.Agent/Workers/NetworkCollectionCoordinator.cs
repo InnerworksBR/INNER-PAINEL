@@ -9,7 +9,7 @@ using Inner.Network.Agent.Transport;
 
 namespace Inner.Network.Agent.Workers;
 
-public sealed record NetworkProbeResult(NetworkDeviceMetric Metric, string? EngineId, string? SerialNumber);
+public sealed record NetworkProbeResult(NetworkDeviceMetric Metric, string? EngineId, string? SerialNumber, Guid? DeviceUid = null);
 
 public interface INetworkDeviceProbe
 {
@@ -111,7 +111,7 @@ public sealed class NetworkCollectionCoordinator
         {
             var result = await ProbeBoundedAsync(ip, network, GetCredentials(network, config), ct);
             if (result is null) return null;
-            var uid = await _store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
+            var uid = result.DeviceUid ?? await _store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
                 ip.ToString(), result.EngineId, result.SerialNumber, now,
                 TimeSpan.FromSeconds(Math.Clamp(config.DiscoveryIntervalSeconds, 60, 86_400)), ct);
             return result.Metric with { DeviceUid = uid.ToString("D") };
@@ -129,7 +129,7 @@ public sealed class NetworkCollectionCoordinator
             var result = await ProbeBoundedAsync(ip, network, GetCredentials(network, config), ct);
             if (result is not null)
             {
-                var uid = await _store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
+                var uid = result.DeviceUid ?? await _store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
                     target.IpAddress, result.EngineId, result.SerialNumber, now,
                     TimeSpan.FromSeconds(Math.Clamp(config.DiscoveryIntervalSeconds, 60, 86_400)), ct);
                 return result.Metric with { DeviceUid = uid.ToString("D") };

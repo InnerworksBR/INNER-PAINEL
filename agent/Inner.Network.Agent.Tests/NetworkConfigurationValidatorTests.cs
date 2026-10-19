@@ -52,6 +52,21 @@ public sealed class NetworkConfigurationValidatorTests
     }
 
     [Theory]
+    [InlineData("network-1", "00000000-0000-4000-8000-000000000020")]
+    [InlineData("00000000-0000-4000-8000-000000000010", "credential-1")]
+    public void Rejects_non_uuid_network_and_credential_ids(string networkId, string credentialId)
+    {
+        var valid = Config();
+        var invalid = valid with
+        {
+            Networks = [valid.Networks[0] with { Id = networkId, CredentialIds = [credentialId] }],
+            Credentials = [valid.Credentials[0] with { Id = credentialId }]
+        };
+
+        Assert.Throws<InvalidOperationException>(() => NetworkConfigurationValidator.Validate(invalid));
+    }
+
+    [Theory]
     [InlineData("HTTP 401: Agente revogado ou não encontrado.", true)]
     [InlineData("HTTP 401: Token do agente inválido ou expirado.", false)]
     [InlineData("HTTP 403: Tipo de agente incompatível.", false)]
@@ -63,8 +78,8 @@ public sealed class NetworkConfigurationValidatorTests
     }
 
     private static NetworkAgentConfiguration Config() => new(1, true, 60, 900,
-        [new NetworkDefinition("network-1", "10.0.0.0/24", true, 161, [], ["credential-1"], "00000000-0000-4000-8000-000000000001")],
-        [new SnmpCredential("credential-1", "readonly", "2c", Community: "community")]);
+        [new NetworkDefinition("00000000-0000-4000-8000-000000000010", "10.0.0.0/24", true, 161, [], ["00000000-0000-4000-8000-000000000020"], "00000000-0000-4000-8000-000000000001")],
+        [new SnmpCredential("00000000-0000-4000-8000-000000000020", "readonly", "2c", Community: "community")]);
 
     private sealed class MemorySecretStore : INetworkSecretStore
     {

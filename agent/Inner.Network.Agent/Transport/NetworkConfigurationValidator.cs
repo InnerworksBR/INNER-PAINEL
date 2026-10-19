@@ -14,12 +14,14 @@ public static class NetworkConfigurationValidator
         if (config.Networks.Select(n => n.Id).Distinct(StringComparer.Ordinal).Count() != config.Networks.Count ||
             config.Credentials.Select(c => c.Id).Distinct(StringComparer.Ordinal).Count() != config.Credentials.Count)
             throw new InvalidOperationException("Server returned duplicate network or credential IDs.");
+        if (config.Networks.Any(n => !Guid.TryParseExact(n.Id, "D", out _)) ||
+            config.Credentials.Any(c => !Guid.TryParseExact(c.Id, "D", out _)))
+            throw new InvalidOperationException("Server returned a network or credential ID that is not a UUID.");
 
         var totalAddresses = 0L;
         var ranges = new List<(uint Start, uint End)>();
         foreach (var network in config.Networks)
         {
-            if (string.IsNullOrWhiteSpace(network.Id)) throw new InvalidOperationException("Server returned a network without an ID.");
             var (start, prefix) = ParseCidr(network.Cidr);
             var size = 1L << (32 - prefix);
             var first = (uint)(start / size * size);
@@ -41,7 +43,7 @@ public static class NetworkConfigurationValidator
 
         foreach (var credential in config.Credentials)
         {
-            if (string.IsNullOrWhiteSpace(credential.Id) || string.IsNullOrWhiteSpace(credential.Name) ||
+            if (string.IsNullOrWhiteSpace(credential.Name) ||
                 credential.Version is not ("2c" or "3"))
                 throw new InvalidOperationException("Server returned an invalid SNMP credential.");
             if (credential.Version == "2c" && string.IsNullOrWhiteSpace(credential.Community))
