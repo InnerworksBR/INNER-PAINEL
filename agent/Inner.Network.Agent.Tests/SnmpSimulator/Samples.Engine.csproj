@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <SignAssembly>false</SignAssembly>
+    <AssemblyName>Samples.Engine</AssemblyName>
+    <RootNamespace>Lextm.SharpSnmpLib</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416;CS0618;SYSLIB0051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Lextm.SharpSnmpLib" Version="12.5.7" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Properties\AssemblyInfo.cs" />
+    <Compile Remove="Pipeline\MessageHandlerFactory.cs;Pipeline\HandlerMapping.cs;Pipeline\SnmpApplication.cs;Pipeline\SnmpApplicationFactory.cs;Pipeline\IAssemblyLoader.cs;Pipeline\DefaultTypeResolver.cs;Pipeline\IMessageHandler.cs;Pipeline\NullMessageHandler.cs;Pipeline\GetBulkMessageHandler.cs;Pipeline\GetMessageHandler.cs;Pipeline\GetNextMessageHandler.cs;Pipeline\GetNextV1MessageHandler.cs;Pipeline\GetV1MessageHandler.cs;Pipeline\InformRequestMessageHandler.cs;Pipeline\SetMessageHandler.cs;Pipeline\SetV1MessageHandler.cs;Pipeline\TrapV1MessageHandler.cs;Pipeline\TrapV2MessageHandler.cs" />
+  </ItemGroup>
+</Project>
