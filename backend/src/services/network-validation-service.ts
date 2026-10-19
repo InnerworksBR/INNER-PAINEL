@@ -34,7 +34,8 @@ export function validateNetworkConfiguration(input: unknown): any {
     if (item.id && ids.has(item.id.toLowerCase())) throw new AgentPayloadError('INVALID_PAYLOAD', 'duplicate network id');
     if (item.id) ids.add(item.id.toLowerCase());
     const size = cidrSize(item.cidr); total += size;
-    const [ip] = item.cidr.split('/'); const start = Math.floor(ipNumber(ip) / size) * size; const end = start + size - 1;
+    const [ip] = item.cidr.split('/'); const address = ipNumber(ip); const start = Math.floor(address / size) * size; const end = start + size - 1;
+    if (address !== start) throw new AgentPayloadError('INVALID_PAYLOAD', 'CIDR network address must be canonical with host bits zero');
     const prohibited = [[0, 0x00ffffff], [0x7f000000, 0x7fffffff], [0xa9fe0000, 0xa9feffff], [0xe0000000, 0xefffffff]];
     if (prohibited.some(([lo, hi]) => start <= hi && end >= lo)) throw new AgentPayloadError('INVALID_PAYLOAD', 'CIDR contains loopback, link-local, multicast or reserved addresses');
     if (ranges.some(([lo, hi]) => start <= hi && end >= lo)) throw new AgentPayloadError('INVALID_PAYLOAD', 'overlapping network CIDRs are not allowed');

@@ -1,0 +1,8 @@
+-- Deterministic test-only rows for the two-session shared-identity race.
+INSERT INTO companies(id,name) VALUES ('10000000-0000-4000-8000-000000000001','concurrent-identity-test');
+INSERT INTO registered_agents(id,company_id,agent_type,agent_kind,hostname,machine_id,status) VALUES
+ ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','endpoint','network','race-a','race-a','Online'),
+ ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001','endpoint','network','race-b','race-b','Online');
+INSERT INTO network_physical_scopes(id,company_id,name) VALUES ('30000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','race-scope');
+SELECT save_network_agent_configuration('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,'networks',jsonb_build_array(jsonb_build_object('id','40000000-0000-4000-8000-000000000001','cidr','10.66.1.0/24','enabled',true,'network_scope_id','30000000-0000-4000-8000-000000000001','credential_ids','[]'::jsonb))));
+SELECT save_network_agent_configuration('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000001',jsonb_build_object('version',1,'enabled',true,'collection_interval_seconds',60,'discovery_interval_seconds',900,'networks',jsonb_build_array(jsonb_build_object('id','40000000-0000-4000-8000-000000000002','cidr','10.66.2.0/24','enabled',true,'network_scope_id','30000000-0000-4000-8000-000000000001','credential_ids','[]'::jsonb))));

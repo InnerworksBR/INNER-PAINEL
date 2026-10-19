@@ -29,6 +29,7 @@ test('accepts the Windows serializer fixture fields and preserves nullable SNMP 
 test('requires canonical IPv4 and collector-compatible bounded configurations', () => {
   const make = (cidr: string) => ({ version: 1, enabled: true, collection_interval_seconds: 60, discovery_interval_seconds: 900, networks: [{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', cidr, enabled: true, credential_ids: [] }] });
   assert.throws(() => validateNetworkConfiguration(make('010.0.0.0/24')), /canonical/i);
+  assert.throws(() => validateNetworkConfiguration(make('10.0.0.1/24')), /host bits|network address/i);
   assert.throws(() => validateNetworkConfiguration(make('10.0.0.0/024')), /prefix/i);
   assert.throws(() => validateNetworkConfiguration({ ...make('10.0.0.0/24'), collection_interval_seconds: 29 }), /interval/i);
   assert.throws(() => validateNetworkConfiguration({ ...make('10.0.0.0/24'), discovery_interval_seconds: 86401 }), /interval/i);
