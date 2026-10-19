@@ -12,15 +12,16 @@ const labels = {
   firmware_version: 'Firmware',
   physical_or_virtual: 'Formato',
   location: 'Localização',
+  sys_contact: 'Contato SNMP',
 };
 
-const AssetDetailDrawer = ({ asset, onClose }) => {
+const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) => {
   const requestConfig = useClientRequestConfig();
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const sourceType = asset?.hostname ? 'server' : 'network';
+  const sourceType = requestedSourceType === 'network_device' ? 'network' : asset?.hostname ? 'server' : 'network';
 
   useEffect(() => {
     if (!asset) return;
@@ -47,8 +48,12 @@ const AssetDetailDrawer = ({ asset, onClose }) => {
   if (!asset) return null;
 
   const telemetry = detail?.telemetry || {};
-  const technicalFields = Object.entries(labels).filter(([key]) => detail?.[key]);
+  const networkTelemetry = telemetry.network_device || telemetry;
+  const technicalFields = Object.entries(labels).filter(([key]) => detail?.[key] || networkTelemetry?.[key]);
   const isServer = sourceType === 'server';
+  const networkInterfaces = Array.isArray(networkTelemetry.interfaces) ? networkTelemetry.interfaces : [];
+  const telemetryFreshness = telemetry.telemetry_status || networkTelemetry.telemetry_status || detail?.telemetry_status;
+  const lastObserved = networkTelemetry.last_poll_at || detail?.last_poll_at;
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
@@ -179,13 +184,37 @@ const AssetDetailDrawer = ({ asset, onClose }) => {
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-xl bg-neutral-50/50 border border-neutral-100 p-4">
-                      <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">Status</p>
-                      <p className="text-lg font-bold text-neutral-900">{telemetry.status || '-'}</p>
+                      <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">Estado do equipamento</p>
+                      <p className="text-lg font-bold text-neutral-900">{networkTelemetry.status || detail?.status || '-'}</p>
                     </div>
                     <div className="rounded-xl bg-neutral-50/50 border border-neutral-100 p-4">
                       <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">IP</p>
-                      <p className="text-lg font-bold text-neutral-900 font-mono">{telemetry.ip_address || '-'}</p>
+                      <p className="text-lg font-bold text-neutral-900 font-mono">{networkTelemetry.ip_address || '-'}</p>
                     </div>
+                    <div className="rounded-xl bg-neutral-50/50 border border-neutral-100 p-4">
+                      <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">Atualização SNMP</p>
+                      <p className="text-sm font-semibold text-neutral-900">{telemetryFreshness === 'fresh' ? 'Atualizada' : telemetryFreshness === 'stale' ? 'Atrasada' : telemetryFreshness === 'no_data' ? 'Sem dados recentes' : '—'}</p>
+                    </div>
+                    <div className="rounded-xl bg-neutral-50/50 border border-neutral-100 p-4">
+                      <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">Resultado da consulta</p>
+                      <p className="text-sm font-semibold text-neutral-900">{networkTelemetry.result === 'timeout' || networkTelemetry.status === 'Sem resposta SNMP' ? 'Sem resposta SNMP' : networkTelemetry.result || '—'}</p>
+                    </div>
+                    <div className="col-span-2 rounded-xl bg-neutral-50/50 border border-neutral-100 p-4">
+                      <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">Última observação</p>
+                      <p className="text-sm font-semibold text-neutral-900">{formatDate(lastObserved)}</p>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {!isServer && networkInterfaces.length > 0 && (
+                <section className="rounded-2xl border border-neutral-200/60 p-5">
+                  <h3 className="text-sm font-semibold text-neutral-700 flex items-center gap-2 mb-4"><Wifi size={16} className="text-blue-600" />Interfaces</h3>
+                  <div className="space-y-3">
+                    {networkInterfaces.map((iface) => <div key={iface.if_index} className="rounded-xl border border-neutral-100 bg-neutral-50/50 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-neutral-900">{iface.name || iface.description || `Interface ${iface.if_index}`}</p><p className="mt-1 text-xs text-neutral-500">Índice {iface.if_index} · Tipo {iface.if_type ?? '—'} · MAC {iface.mac_address || '—'}</p></div><div className="text-right text-xs text-neutral-600"><p>Admin: {iface.admin_status ?? '—'}</p><p>Operação: {iface.oper_status ?? '—'}</p></div></div>
+                      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-neutral-600"><div><dt>Entrada (octetos)</dt><dd className="font-medium text-neutral-900">{iface.in_octets ?? '—'}</dd></div><div><dt>Saída (octetos)</dt><dd className="font-medium text-neutral-900">{iface.out_octets ?? '—'}</dd></div><div><dt>Entrada</dt><dd className="font-medium text-neutral-900">{iface.in_bps == null ? '—' : `${iface.in_bps} bps`}</dd></div><div><dt>Saída</dt><dd className="font-medium text-neutral-900">{iface.out_bps == null ? '—' : `${iface.out_bps} bps`}</dd></div></dl>
+                    </div>)}
                   </div>
                 </section>
               )}
@@ -201,7 +230,7 @@ const AssetDetailDrawer = ({ asset, onClose }) => {
                     {technicalFields.map(([key, label]) => (
                       <div key={key} className="bg-neutral-50/50 rounded-xl p-3">
                         <dt className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">{label}</dt>
-                        <dd className="text-sm font-semibold text-neutral-900">{detail[key]}</dd>
+                        <dd className="text-sm font-semibold text-neutral-900">{detail[key] ?? networkTelemetry[key] ?? '—'}</dd>
                       </div>
                     ))}
                   </dl>

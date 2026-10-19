@@ -4,6 +4,7 @@ import { useCompanies } from '../../../context/CompanyContext';
 import api from '../../../services/api';
 import { useNavigate } from 'react-router-dom';
 import OnboardingWizard from '../Onboarding/onboarding';
+import NetworkAgentIntegration from '../../../components/NetworkAgentIntegration';
 
 const EmpresasAdmin = () => {
     const { companies, addCompany, updateCompany, deleteCompany, updateIntegrations, refreshCompanies } = useCompanies();
@@ -511,6 +512,8 @@ const EmpresasAdmin = () => {
                                 )}
                             </div>
 
+                            <NetworkAgentIntegration key={integrationsCompany.id} companyId={integrationsCompany.id} />
+
                             {/* Microsoft 365 */}
                             <div className="p-4 border border-slate-200 rounded-2xl bg-white shadow-sm">
                                 <h3 className="font-semibold text-slate-800 mb-4 flex border-b pb-2">Microsoft 365 (Licenças)</h3>
@@ -598,7 +601,7 @@ const EmpresasAdmin = () => {
             <OnboardingWizard
                 isOpen={isOnboardingOpen}
                 onClose={() => setIsOnboardingOpen(false)}
-                onSuccess={(company) => {
+                onSuccess={() => {
                     refreshCompanies();
                     setIsOnboardingOpen(false);
                 }}

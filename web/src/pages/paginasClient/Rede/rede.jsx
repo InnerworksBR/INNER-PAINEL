@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { CheckCircle, Server, AlertTriangle, RefreshCw, Wifi, Search, Activity } from "lucide-react";
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { CheckCircle, Server, AlertTriangle, RefreshCw, Wifi, Search, Activity, Clock3 } from "lucide-react";
 import api from '../../../services/api';
-import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
+import { useClientRequestConfig, useClientPreview } from '../../../context/ClientPreviewContext';
 import AssetDetailDrawer from '../../../components/AssetDetailDrawer';
 
 const Rede = () => {
@@ -13,40 +13,52 @@ const Rede = () => {
   const [deviceSearch, setDeviceSearch] = useState('');
   const [deviceStatusFilter, setDeviceStatusFilter] = useState('Todos');
   const requestConfig = useClientRequestConfig();
+  const preview = useClientPreview();
+  const companyId = preview?.companyId || requestConfig?.params?.company_id || null;
+  const [refreshError, setRefreshError] = useState('');
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 120000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async (isActive = () => true, background = false) => {
+    if (!background && isActive()) setLoading(true);
+    setRefreshError('');
     try {
-      const [devicesRes, statsRes] = await Promise.all([
+      const [devicesRes, statsRes, eventsRes] = await Promise.all([
         api.get('/client/network/devices', requestConfig),
         api.get('/client/network/stats', requestConfig),
+        api.get('/client/network/events', requestConfig).catch((eventsError) => {
+          console.warn('Network events unavailable:', eventsError);
+          return { data: [] };
+        }),
       ]);
+      if (!isActive()) return;
       setDevices(devicesRes.data || []);
       setStats(statsRes.data || null);
-
-      try {
-        const eventsRes = await api.get('/client/network/events', requestConfig);
-        setEvents(eventsRes.data || []);
-      } catch (eventsError) {
-        console.warn('Network events unavailable:', eventsError);
-        setEvents([]);
-      }
+      setEvents(eventsRes.data || []);
     } catch (error) {
-      console.error('Error fetching network data:', error);
+      if (isActive()) setRefreshError(error.response?.data?.error || 'Não foi possível atualizar o inventário de rede.');
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
-  };
+  }, [requestConfig]);
+
+  useEffect(() => {
+    let active = true;
+    setDevices([]);
+    setStats(null);
+    setEvents([]);
+    setDetailDevice(null);
+    setLoading(true);
+    setRefreshError('');
+    fetchData(() => active);
+    const interval = setInterval(() => fetchData(() => active, true), 30000);
+    return () => { active = false; clearInterval(interval); };
+  }, [companyId, fetchData]);
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
       case 'online': return 'bg-emerald-100 text-emerald-800';
       case 'offline': return 'bg-red-100 text-red-800';
+      case 'sem resposta snmp': return 'bg-amber-100 text-amber-800';
+      case 'atencao': return 'bg-amber-100 text-amber-800';
       default: return 'bg-slate-100 text-slate-600';
     }
   };
@@ -65,7 +77,7 @@ const Rede = () => {
         || (d.device_name || '').toLowerCase().includes(query)
         || (d.ip_address || '').toLowerCase().includes(query)
         || (d.device_type || '').toLowerCase().includes(query);
-      const matchesStatus = deviceStatusFilter === 'Todos' || d.status === deviceStatusFilter;
+      const matchesStatus = deviceStatusFilter === 'Todos' || d.status === deviceStatusFilter || d.telemetry_status === deviceStatusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [devices, deviceSearch, deviceStatusFilter]);
@@ -86,14 +98,15 @@ const Rede = () => {
           <h1 className="text-3xl font-bold text-slate-800">Rede</h1>
           <p className="text-slate-500 mt-2">Inventário e status de infraestrutura de rede</p>
         </div>
-        <button onClick={fetchData} className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <button type="button" onClick={() => fetchData()} className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50">
           <RefreshCw size={16} />
           Atualizar
         </button>
       </div>
+      {refreshError && <p role="alert" className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{refreshError} Os dados já exibidos foram mantidos.</p>}
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-8">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-slate-500 font-medium text-sm">Equipamentos</h3>
@@ -101,7 +114,7 @@ const Rede = () => {
               <Server size={20} />
             </div>
           </div>
-          <span className="text-3xl font-bold text-slate-800">{stats?.total || 0}</span>
+          <span className="text-3xl font-bold text-slate-800">{stats?.total ?? '—'}</span>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -111,7 +124,7 @@ const Rede = () => {
               <CheckCircle size={20} />
             </div>
           </div>
-          <span className="text-3xl font-bold text-slate-800">{stats?.online || 0}</span>
+          <span className="text-3xl font-bold text-slate-800">{stats?.online ?? '—'}</span>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -121,7 +134,16 @@ const Rede = () => {
               <AlertTriangle size={20} />
             </div>
           </div>
-          <span className="text-3xl font-bold text-slate-800">{stats?.offline || 0}</span>
+          <span className="text-3xl font-bold text-slate-800">{stats?.offline ?? '—'}</span>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4"><h3 className="text-slate-500 font-medium text-sm">Sem resposta SNMP</h3><div className="p-2 bg-amber-50 text-amber-700 rounded-lg"><AlertTriangle size={20} /></div></div>
+          <span className="text-3xl font-bold text-slate-800">{stats?.no_response ?? '—'}</span>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-4"><h3 className="text-slate-500 font-medium text-sm">Dados atrasados</h3><div className="p-2 bg-amber-50 text-amber-700 rounded-lg"><Clock3 size={20} /></div></div>
+          <span className="text-3xl font-bold text-slate-800">{stats?.stale ?? '—'}</span>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -132,8 +154,9 @@ const Rede = () => {
             </div>
           </div>
           <span className="text-3xl font-bold text-slate-800">
-            {stats?.avgUptime != null ? stats.avgUptime.toFixed(1) + '%' : '—'}
+            {typeof stats?.avgUptime === 'number' && Number.isFinite(stats.avgUptime) ? stats.avgUptime.toFixed(1) + '%' : '—'}
           </span>
+          <span className="mt-1 text-xs text-slate-500">Cobertura: {typeof stats?.uptime_coverage_percent === 'number' ? `${stats.uptime_coverage_percent.toFixed(1)}%` : '—'}</span>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -144,7 +167,7 @@ const Rede = () => {
             </div>
           </div>
           <span className="text-3xl font-bold text-slate-800">
-            {stats?.byType ? Object.keys(stats.byType).length : 0}
+            {stats?.byType ? Object.keys(stats.byType).length : '—'}
           </span>
         </div>
       </div>
@@ -196,7 +219,7 @@ const Rede = () => {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-800">Inventário de Equipamentos</h2>
-          <p className="text-sm text-slate-500 mt-1">{devices.length} dispositivo(s) encontrado(s)</p>
+          <p className="text-sm text-slate-500 mt-1">{devices.length} equipamento(s) visível(is) para esta empresa</p>
         </div>
 
         {/* Busca e filtro */}
@@ -219,6 +242,9 @@ const Rede = () => {
             <option value="Todos">Todos os Status</option>
             <option value="Online">Online</option>
             <option value="Offline">Offline</option>
+            <option value="Sem resposta SNMP">Sem resposta SNMP</option>
+            <option value="stale">Dados atrasados</option>
+            <option value="no_data">Sem dados recentes</option>
           </select>
         </div>
         <div className="overflow-x-auto">
@@ -230,6 +256,8 @@ const Rede = () => {
                 <th className="px-6 py-4 whitespace-nowrap">IP</th>
                 <th className="px-6 py-4 whitespace-nowrap">Localização</th>
                 <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                <th className="px-6 py-4 whitespace-nowrap">Telemetria SNMP</th>
+                <th className="px-6 py-4 whitespace-nowrap">Última consulta</th>
                 <th className="px-6 py-4 whitespace-nowrap">Uptime</th>
                 <th className="px-6 py-4 whitespace-nowrap">Contrato</th>
               </tr>
@@ -237,13 +265,13 @@ const Rede = () => {
             <tbody className="text-sm text-slate-700 divide-y divide-slate-100">
               {devices.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
-                    Nenhum equipamento de rede registrado.
+                  <td colSpan="9" className="px-6 py-12 text-center text-slate-500">
+                    Nenhum equipamento visível para esta empresa. A lista vazia não confirma a ausência de coletor; peça ao administrador para conferir Empresas → Integrações.
                   </td>
                 </tr>
               ) : filteredDevices.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan="9" className="px-6 py-10 text-center text-slate-400 text-sm">
                     Nenhum dispositivo encontrado com os filtros aplicados.{' '}
                     <button
                       onClick={() => { setDeviceSearch(''); setDeviceStatusFilter('Todos'); }}
@@ -265,9 +293,14 @@ const Rede = () => {
                   <td className="px-6 py-4 whitespace-nowrap">{item.location || '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
-                      {item.status}
+                      {item.status || '—'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
+                    {item.telemetry_status === 'fresh' ? item.result === 'timeout' || item.status === 'Sem resposta SNMP' ? 'Sem resposta SNMP' : 'Atualizada'
+                      : item.telemetry_status === 'stale' ? 'Atrasada' : item.telemetry_status === 'no_data' ? 'Sem dados' : '—'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">{item.last_poll_at ? new Date(item.last_poll_at).toLocaleString('pt-BR') : '—'}</td>
                   <td className={`px-6 py-4 whitespace-nowrap font-medium ${getUptimeColor(item.uptime_percent)}`}>
                     {item.uptime_percent != null ? item.uptime_percent.toFixed(1) + '%' : '—'}
                   </td>
