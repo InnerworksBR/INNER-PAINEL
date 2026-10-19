@@ -81,7 +81,8 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           (t: any) => !isResolvedTicket(t.status)
         );
         const criticalTickets = companyTickets.filter(
-          (t: any) => t.sla_status === 'Fora do SLA' || t.priority === 'Alta' || t.priority === 'Muito Alta'
+          (t: any) => !isResolvedTicket(t.status) &&
+            (t.sla_status === 'Fora do SLA' || t.priority === 'Alta' || t.priority === 'Muito Alta')
         );
 
         // Get last alert for this company
@@ -135,16 +136,19 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
       };
 
       // Format recent tickets - resolve company name from company_id
-      const recentTickets = tickets.slice(0, 20).map((ticket: any) => ({
-        id: ticket.glpi_id || ticket.id,
-        companyId: ticket.company_id,
-        companyName: companyMap.get(ticket.company_id) || 'N/A',
-        title: ticket.title || '(sem título)',
-        status: ticket.status,
-        urgency: ticket.sla_status === 'Fora do SLA' ? 'critical' :
-          (ticket.priority === 'Alta' || ticket.priority === 'Muito Alta') ? 'high' : 'info',
-        createdAt: ticket.created_at,
-      }));
+      const recentTickets = tickets
+        .filter((ticket: any) => !isResolvedTicket(ticket.status))
+        .slice(0, 20)
+        .map((ticket: any) => ({
+          id: ticket.glpi_id || ticket.id,
+          companyId: ticket.company_id,
+          companyName: companyMap.get(ticket.company_id) || 'N/A',
+          title: ticket.title || '(sem título)',
+          status: ticket.status,
+          urgency: ticket.sla_status === 'Fora do SLA' ? 'critical' :
+            (ticket.priority === 'Alta' || ticket.priority === 'Muito Alta') ? 'high' : 'info',
+          createdAt: ticket.created_at,
+        }));
 
       // Format recent alerts
       const recentAlerts = (alertsRes.data || []).map((alert: any) => ({
