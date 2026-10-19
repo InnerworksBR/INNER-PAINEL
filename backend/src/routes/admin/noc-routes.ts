@@ -81,7 +81,8 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           (t: any) => !isResolvedTicket(t.status)
         );
         const criticalTickets = companyTickets.filter(
-          (t: any) => t.sla_status === 'Fora do SLA' || t.priority === 'Alta' || t.priority === 'Muito Alta'
+          (t: any) => !isResolvedTicket(t.status) &&
+            (t.sla_status === 'Fora do SLA' || t.priority === 'Alta' || t.priority === 'Muito Alta')
         );
 
         // Get last alert for this company
