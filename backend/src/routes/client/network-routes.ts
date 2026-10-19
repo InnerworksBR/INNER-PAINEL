@@ -2,6 +2,12 @@
 import type { JWTPayload } from '../../types';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { buildAssetDetail } from '../../services/asset-profile-service';
+import { applyNetworkFreshness } from '../../services/network-freshness-service';
+
+function safeNetworkDevice(row: any) {
+  const { snmp_community: _community, community_string: _legacyCommunity, ...safe } = row;
+  return applyNetworkFreshness(safe);
+}
 
 export default async function clientNetworkRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -26,7 +32,7 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
       if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
       const { data, error } = await query.order('device_name');
       if (error) return reply.code(500).send({ error: error.message });
-      return data;
+      return (data || []).map(safeNetworkDevice);
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
@@ -57,7 +63,8 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
     if (error) return reply.code(500).send({ error: error.message });
     const allDevices = devices || [];
     const total = allDevices.length;
-    const online = allDevices.filter((d: any) => d.status === 'Online').length;
+    const withFreshness = allDevices.map(safeNetworkDevice);
+    const online = withFreshness.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Online').length;
     const avgUptime = total > 0
       ? (allDevices.reduce((acc: number, d: any) => acc + (d.uptime_percent || 0), 0) / total).toFixed(2)
       : '0';
@@ -65,7 +72,7 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
     allDevices.forEach((d: any) => {
       byType[d.device_type] = (byType[d.device_type] || 0) + 1;
     });
-    return { total, online, offline: total - online, avgUptime: parseFloat(avgUptime), byType };
+    return { total, online, offline: withFreshness.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Offline').length, no_data: withFreshness.filter((d: any) => d.telemetry_status === 'no_data').length, stale: withFreshness.filter((d: any) => d.telemetry_status === 'stale').length, avgUptime: parseFloat(avgUptime), byType };
   });
 
   fastify.get('/events', async (request, reply) => {
@@ -99,7 +106,7 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
 
     const { data: device, error: deviceError } = await supabaseAdmin
       .from('network_devices')
-      .select('id, company_id, device_name')
+      .select('id, company_id, device_name, monitoring_source')
       .eq('id', id)
       .single();
     if (deviceError || !device) return reply.code(404).send({ error: 'Equipamento não encontrado' });
@@ -107,13 +114,16 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
       return reply.code(403).send({ error: 'Sem permissão para acessar este equipamento' });
     }
 
-    const { data, error } = await supabaseAdmin
+    let historyQuery = supabaseAdmin
       .from('network_status_history')
       .select('*')
       .eq('company_id', device.company_id)
-      .eq('device_name', device.device_name)
       .order('collected_at', { ascending: false })
       .limit(100);
+    historyQuery = device.monitoring_source === 'agent_snmp'
+      ? historyQuery.eq('network_device_id', id)
+      : historyQuery.eq('device_name', device.device_name);
+    const { data, error } = await historyQuery;
     if (error) return reply.code(500).send({ error: error.message });
     return (data || []).reverse();
   });
@@ -132,7 +142,7 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
     const detail = await buildAssetDetail(supabaseAdmin, 'network_device', id, targetCompanyId);
     if (!detail) return reply.code(404).send({ error: 'Equipamento não encontrado' });
     if (!detail.customer_visible) return reply.code(404).send({ error: 'Equipamento não encontrado' });
-    return detail;
+    return safeNetworkDevice(detail);
   });
 
   fastify.post<{ Body: { company_id?: string } }>('/sync', async (request, reply) => {

@@ -134,6 +134,10 @@ export async function buildAssetDetail(
     .maybeSingle();
   if (sourceError) throw sourceError;
   if (!source) return null;
+  if (sourceType === 'network_device') {
+    delete source.snmp_community;
+    delete source.community_string;
+  }
 
   const { data: profile, error: profileError } = await supabase
     .from('asset_profiles')

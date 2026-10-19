@@ -15,6 +15,8 @@ import adminSettingsRoutes from './routes/admin/settings-routes';
 import adminUserRoutes from './routes/admin/users-routes';
 import adminNocRoutes from './routes/admin/noc-routes';
 import agentRoutes from './routes/agent-routes';
+import networkAgentRoutes from './routes/network-agent-routes';
+import adminNetworkMonitoringRoutes from './routes/admin/network-monitoring-routes';
 import authRoutes from './routes/auth';
 import clientDashboardRoutes from './routes/client/dashboard-routes';
 import clientDocsRoutes from './routes/client/docs-routes';
@@ -45,6 +47,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(clientNetworkRoutes, { prefix: '/api/client/network' });
   fastify.register(clientSecurityRoutes, { prefix: '/api/client/security' });
   fastify.register(agentRoutes, { prefix: '/api/agent/v1' });
+  fastify.register(networkAgentRoutes, { prefix: '/api/agent/v1' });
 
   fastify.register(adminUserRoutes, { prefix: '/api/admin/users' });
   fastify.register(adminCompaniesRoutes, { prefix: '/api/admin/companies' });
@@ -54,6 +57,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(adminAuditRoutes, { prefix: '/api/admin/audit-logs' });
   fastify.register(adminInventoryRoutes, { prefix: '/api/admin/inventory' });
   fastify.register(adminMonitoringRoutes, { prefix: '/api/admin/monitoring' });
+  fastify.register(adminNetworkMonitoringRoutes, { prefix: '/api/admin/monitoring' });
   fastify.register(adminMs365Routes, { prefix: '/api/admin/ms365' });
   fastify.register(adminSecurityRoutes, { prefix: '/api/admin/security' });
   fastify.register(adminDocumentCreatorRoutes, { prefix: '/api/admin/documents' });

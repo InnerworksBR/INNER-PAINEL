@@ -38,6 +38,9 @@ export interface HeartbeatRequest {
   pending_bytes: number;
   last_collection_result: 'success' | 'partial' | 'failed' | null;
   last_error_code: string | null;
+  discovery_state?: 'idle' | 'discovering' | 'complete' | 'failed' | null;
+  discovered_devices?: number;
+  last_discovery_at?: string | null;
 }
 
 export interface AgentPrincipal {

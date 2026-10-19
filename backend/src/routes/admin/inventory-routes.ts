@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
 import { writeAdminAuditLog } from '../../services/audit-service';
 import { calculateCompleteness, extractManualProfileUpdates, mergeAssetProfile } from '../../services/asset-profile-service';
+import { applyNetworkFreshness } from '../../services/network-freshness-service';
 
 interface InventoryQuery {
   company_id?: string;
@@ -62,6 +63,11 @@ export default async function adminInventoryRoutes(fastify: FastifyInstance): Pr
     const sourceTable = profile.source_type === 'server' ? 'servers' : 'network_devices';
     const { data: source, error: sourceError } = await supabaseAdmin.from(sourceTable).select('*').eq('id', profile.source_id).maybeSingle();
     if (sourceError) return reply.code(500).send({ error: sourceError.message });
+    if (profile.source_type === 'network_device' && source) {
+      delete source.snmp_community;
+      delete source.community_string;
+      return mergeAssetProfile(profile, applyNetworkFreshness(source));
+    }
     return mergeAssetProfile(profile, source);
   });
 

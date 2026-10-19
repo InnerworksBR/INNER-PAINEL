@@ -108,6 +108,7 @@ export default async function agentRoutes(fastify: FastifyInstance): Promise<voi
 export async function authenticateAgentRequest(
   request: FastifyRequest,
   reply: FastifyReply,
+  expectedAgentKind?: 'hyperv' | 'network',
 ): Promise<ReturnType<typeof parseAgentClaims> | null> {
   try {
     await request.jwtVerify({
@@ -122,7 +123,7 @@ export async function authenticateAgentRequest(
 
     const { data: agent, error } = await request.server.supabaseAdmin
       .from('registered_agents')
-      .select('id, company_id, status')
+      .select('id, company_id, status, agent_kind')
       .eq('id', principal.agent_id)
       .eq('company_id', principal.company_id)
       .neq('status', 'Revoked')
@@ -134,6 +135,10 @@ export async function authenticateAgentRequest(
     }
     if (!agent) {
       await reply.code(401).send({ error: 'Agente revogado ou não encontrado.' });
+      return null;
+    }
+    if (expectedAgentKind && (agent.agent_kind || 'hyperv') !== expectedAgentKind) {
+      await reply.code(403).send({ error: 'Tipo de agente incompatível.' });
       return null;
     }
     return principal;

@@ -80,6 +80,9 @@ export async function recordAgentHeartbeat(
         pending_count: heartbeat.pending_count,
         pending_bytes: heartbeat.pending_bytes,
         last_collection_result: heartbeat.last_collection_result,
+        ...(heartbeat.discovery_state !== undefined ? { discovery_state: heartbeat.discovery_state } : {}),
+        ...(heartbeat.discovered_devices !== undefined ? { discovered_devices: heartbeat.discovered_devices } : {}),
+        ...(heartbeat.last_discovery_at !== undefined ? { last_discovery_at: heartbeat.last_discovery_at } : {}),
       },
       updated_at: new Date().toISOString(),
     })
@@ -106,6 +109,9 @@ function validateHeartbeat(heartbeat: HeartbeatRequest): void {
   if (typeof heartbeat.agent_version !== 'string' || !heartbeat.agent_version.trim()) {
     throw new AgentPayloadError('INVALID_PAYLOAD', 'agent_version is required');
   }
+  if (heartbeat.discovery_state != null && !['idle','discovering','complete','failed'].includes(heartbeat.discovery_state)) throw new AgentPayloadError('INVALID_PAYLOAD', 'discovery_state is invalid');
+  if (heartbeat.discovered_devices != null && (!Number.isInteger(heartbeat.discovered_devices) || heartbeat.discovered_devices < 0)) throw new AgentPayloadError('INVALID_METRIC', 'discovered_devices must be a non-negative integer');
+  if (heartbeat.last_discovery_at != null && (typeof heartbeat.last_discovery_at !== 'string' || !Number.isFinite(Date.parse(heartbeat.last_discovery_at)))) throw new AgentPayloadError('INVALID_PAYLOAD', 'last_discovery_at must be an ISO timestamp');
 
   for (const [field, value] of [
     ['uptime_seconds', heartbeat.uptime_seconds],

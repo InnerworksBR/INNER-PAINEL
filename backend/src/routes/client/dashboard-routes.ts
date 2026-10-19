@@ -4,6 +4,7 @@ import { applyServerFreshness } from '../../services/monitoring-freshness-servic
 import { isResolvedTicket } from '../../services/ticket-status';
 import type { JWTPayload } from '../../types';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
+import { applyNetworkFreshness } from '../../services/network-freshness-service';
 
 export default async function clientDashboardRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -33,7 +34,7 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           .filter((profile: any) => profile.source_type === 'network_device' && profile.customer_visible === true)
           .map((profile: any) => profile.source_id)
       );
-      const visibleNetwork = network.filter((device: any) => visibleNetworkDeviceIds.has(device.id));
+      const visibleNetwork = network.filter((device: any) => visibleNetworkDeviceIds.has(device.id)).map((device: any) => applyNetworkFreshness(device));
 
       const validMs365 = ms365.filter((metric: any) => metric.include_in_dashboard === true);
       const totalLicenses = validMs365.reduce((acc: number, m: any) => acc + (m.total || 0), 0);
@@ -43,7 +44,8 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
       const onlineServers = visibleServers.filter((s: any) => s.status === 'Online').length;
       const openTickets = tickets.filter((t: any) => !isResolvedTicket(t.status)).length;
       const resolvedTickets = tickets.length - openTickets;
-      const onlineDevices = visibleNetwork.filter((d: any) => d.status === 'Online').length;
+      const onlineDevices = visibleNetwork.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Online').length;
+      const physicallyOfflineDevices = visibleNetwork.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Offline').length;
 
       return {
         ms365: {
@@ -74,7 +76,9 @@ export default async function clientDashboardRoutes(fastify: FastifyInstance): P
           hasData: visibleNetwork.length > 0,
           total: visibleNetwork.length,
           online: onlineDevices,
-          offline: visibleNetwork.length - onlineDevices,
+          offline: physicallyOfflineDevices,
+          stale: visibleNetwork.filter((d: any) => d.telemetry_status === 'stale').length,
+          noData: visibleNetwork.filter((d: any) => d.telemetry_status === 'no_data').length,
           lastUpdated: getLatestDate(visibleNetwork, 'last_updated'),
         },
         documents: {
@@ -144,7 +148,11 @@ function calculateHealthScore({
   });
 
   includedNetwork.forEach((device: any) => {
-    if (device.status !== 'Online') critical++;
+    const fresh = device.telemetry_status || 'fresh';
+    if (fresh === 'no_data') return;
+    if (fresh === 'stale') warning++;
+    else if (device.status === 'Offline') critical++;
+    else if (device.status === 'Atencao') warning++;
     else healthy++;
   });
 

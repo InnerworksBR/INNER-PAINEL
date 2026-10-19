@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
 
 import { isResolvedTicket } from '../../services/ticket-status';
+import { applyNetworkFreshness } from '../../services/network-freshness-service';
 
 export default async function adminNocRoutes(fastify: FastifyInstance): Promise<void> {
   const { supabaseAdmin } = fastify;
@@ -29,7 +30,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
       for (let offset = 0; ; offset += devicePageSize) {
         const { data, error } = await supabaseAdmin
           .from('network_devices')
-          .select('company_id, status')
+          .select('company_id, status, last_poll_at, last_updated, monitoring_source')
           .order('company_id')
           .order('id')
           .range(offset, offset + devicePageSize - 1);
@@ -69,8 +70,14 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
         const companyNetworkDevices = networkDevices.filter(
           (device: any) => device.company_id === company.id
         );
-        const offlineNetworkDevices = companyNetworkDevices.filter(
-          (device: any) => String(device.status || '').trim().toLowerCase() !== 'online'
+        const classifiedDevices = companyNetworkDevices.map((device: any) => ({ device, freshness: applyNetworkFreshness(device).telemetry_status }));
+        const telemetryCounts = {
+          fresh: classifiedDevices.filter((item: any) => item.freshness === 'fresh').length,
+          stale: classifiedDevices.filter((item: any) => item.freshness === 'stale').length,
+          no_data: classifiedDevices.filter((item: any) => item.freshness === 'no_data').length,
+        };
+        const offlineNetworkDevices = classifiedDevices.filter((item: any) =>
+          item.freshness === 'fresh' && String(item.device.status || '').trim().toLowerCase() === 'offline'
         );
 
         // Count open/critical tickets for this company
@@ -114,6 +121,7 @@ export default async function adminNocRoutes(fastify: FastifyInstance): Promise<
           id: company.id,
           name: company.name,
           status,
+          networkTelemetry: { ...telemetryCounts, physical_offline: offlineNetworkDevices.length },
           ticketCount: {
             open: openTickets.length,
             critical: criticalTickets.length,
