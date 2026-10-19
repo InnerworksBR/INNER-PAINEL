@@ -3,10 +3,22 @@ import type { JWTPayload } from '../../types';
 import { resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { buildAssetDetail } from '../../services/asset-profile-service';
 import { applyNetworkFreshness } from '../../services/network-freshness-service';
+import { loadCompanyRows } from '../../services/portal-data-service';
 
 function safeNetworkDevice(row: any) {
   const { snmp_community: _community, community_string: _legacyCommunity, ...safe } = row;
+  if (safe.telemetry && typeof safe.telemetry === 'object') {
+    const telemetry = applyNetworkFreshness(safe.telemetry);
+    return { ...applyNetworkFreshness({ ...safe, ...telemetry }), telemetry };
+  }
   return applyNetworkFreshness(safe);
+}
+
+async function visibleNetworkRows(db: any, companyId: string | null) {
+  const profiles = await loadCompanyRows(db, 'asset_profiles', companyId, { source_type: 'network_device', customer_visible: 'true' });
+  const visible = new Set(profiles.map((p: any) => `${p.company_id}:${p.source_id}`));
+  const devices = await loadCompanyRows(db, 'network_devices', companyId);
+  return devices.filter((d: any) => visible.has(`${d.company_id}:${d.id}`)).map(safeNetworkDevice);
 }
 
 export default async function clientNetworkRoutes(fastify: FastifyInstance): Promise<void> {
@@ -17,22 +29,7 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
     const { user } = request.user as JWTPayload;
     try {
       const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
-      let visibleProfiles = supabaseAdmin
-        .from('asset_profiles')
-        .select('source_id')
-        .eq('source_type', 'network_device')
-        .eq('customer_visible', true);
-      if (targetCompanyId) visibleProfiles = visibleProfiles.eq('company_id', targetCompanyId);
-      const { data: profiles, error: profilesError } = await visibleProfiles;
-      if (profilesError) return reply.code(500).send({ error: profilesError.message });
-      const visibleIds = (profiles || []).map((profile: any) => profile.source_id);
-      if (visibleIds.length === 0) return [];
-
-      let query = supabaseAdmin.from('network_devices').select('*').in('id', visibleIds);
-      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
-      const { data, error } = await query.order('device_name');
-      if (error) return reply.code(500).send({ error: error.message });
-      return (data || []).map(safeNetworkDevice);
+      return (await visibleNetworkRows(supabaseAdmin, targetCompanyId)).sort((a: any, b: any) => String(a.device_name).localeCompare(String(b.device_name)));
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
@@ -41,54 +38,34 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
   fastify.get('/stats', async (request, reply) => {
     const { user } = request.user as JWTPayload;
     let targetCompanyId: string | null = null;
-    let visibleProfiles = supabaseAdmin
-      .from('asset_profiles')
-      .select('source_id')
-      .eq('source_type', 'network_device')
-      .eq('customer_visible', true);
     try {
       ({ targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id));
-      if (targetCompanyId) visibleProfiles = visibleProfiles.eq('company_id', targetCompanyId);
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
 
-    const { data: profiles, error: profilesError } = await visibleProfiles;
-    if (profilesError) return reply.code(500).send({ error: profilesError.message });
-    const visibleIds = (profiles || []).map((profile: any) => profile.source_id);
-    if (visibleIds.length === 0) return { total: 0, online: 0, offline: 0, avgUptime: 0, byType: {} };
-    let query = supabaseAdmin.from('network_devices').select('*').in('id', visibleIds);
-    if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
-    const { data: devices, error } = await query;
-    if (error) return reply.code(500).send({ error: error.message });
-    const allDevices = devices || [];
+    let allDevices: any[];
+    try { allDevices = await visibleNetworkRows(supabaseAdmin, targetCompanyId); }
+    catch (error: any) { return reply.code(500).send({ error: error.message }); }
     const total = allDevices.length;
     const withFreshness = allDevices.map(safeNetworkDevice);
     const online = withFreshness.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Online').length;
-    const avgUptime = total > 0
-      ? (allDevices.reduce((acc: number, d: any) => acc + (d.uptime_percent || 0), 0) / total).toFixed(2)
-      : '0';
+    const uptimeValues = allDevices.map((d: any) => d.uptime_percent).filter((value: any) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100);
+    const avgUptime = uptimeValues.length > 0 ? Number((uptimeValues.reduce((a: number, b: number) => a + b, 0) / uptimeValues.length).toFixed(2)) : null;
     const byType: Record<string, number> = {};
     allDevices.forEach((d: any) => {
       byType[d.device_type] = (byType[d.device_type] || 0) + 1;
     });
-    return { total, online, offline: withFreshness.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Offline').length, no_data: withFreshness.filter((d: any) => d.telemetry_status === 'no_data').length, stale: withFreshness.filter((d: any) => d.telemetry_status === 'stale').length, avgUptime: parseFloat(avgUptime), byType };
+    return { total, online, offline: withFreshness.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Offline').length, no_response: withFreshness.filter((d: any) => d.telemetry_status === 'fresh' && d.status === 'Sem resposta SNMP').length, no_data: withFreshness.filter((d: any) => d.telemetry_status === 'no_data').length, stale: withFreshness.filter((d: any) => d.telemetry_status === 'stale').length, avgUptime, uptime_measured_count: uptimeValues.length, uptime_coverage_percent: total ? Number((uptimeValues.length * 100 / total).toFixed(2)) : 0, byType };
   });
 
   fastify.get('/events', async (request, reply) => {
     const { user } = request.user as JWTPayload;
     try {
       const { targetCompanyId } = await resolveCompanyScope(supabaseAdmin, user, (request.query as any)?.company_id);
-      let query = supabaseAdmin
-        .from('monitoring_events')
-        .select('*')
-        .eq('source', 'network')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (targetCompanyId) query = query.eq('company_id', targetCompanyId);
-      const { data, error } = await query;
+      const { data, error } = await supabaseAdmin.rpc('get_visible_network_events', { p_company_id: targetCompanyId, p_limit: 50 });
       if (error) return reply.code(500).send({ error: error.message });
-      return data;
+      return data || [];
     } catch (err) {
       return sendCompanyScopeError(reply, err);
     }
@@ -113,6 +90,8 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
     if (targetCompanyId && device.company_id !== targetCompanyId) {
       return reply.code(403).send({ error: 'Sem permissão para acessar este equipamento' });
     }
+    const { data: profile } = await supabaseAdmin.from('asset_profiles').select('source_id').eq('company_id', device.company_id).eq('source_type', 'network_device').eq('source_id', id).eq('customer_visible', true).maybeSingle();
+    if (!profile) return reply.code(404).send({ error: 'Equipamento não encontrado' });
 
     let historyQuery = supabaseAdmin
       .from('network_status_history')
@@ -122,7 +101,7 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
       .limit(100);
     historyQuery = device.monitoring_source === 'agent_snmp'
       ? historyQuery.eq('network_device_id', id)
-      : historyQuery.eq('device_name', device.device_name);
+      : historyQuery.eq('device_name', device.device_name).is('network_device_id', null);
     const { data, error } = await historyQuery;
     if (error) return reply.code(500).send({ error: error.message });
     return (data || []).reverse();

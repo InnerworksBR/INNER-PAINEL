@@ -21,10 +21,15 @@ export function decryptSnmpCredential(row: any): any {
   return JSON.parse(Buffer.concat([decipher.update(Buffer.from(row.ciphertext, 'base64')), decipher.final()]).toString('utf8'));
 }
 export async function listCredentialMetadata(db: SupabaseClient, companyId: string) {
-  const { data, error } = await db.from('network_snmp_credentials').select('id,name,version,username,security_level,auth_protocol,privacy_protocol,context_name').eq('company_id', companyId).order('name');
-  if (error) throw new NetworkConfigError(error.message, 500);
+  const data: any[] = []; const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data: page, error } = await db.from('network_snmp_credentials').select('id,name,version,username,security_level,auth_protocol,privacy_protocol,context_name').eq('company_id', companyId).order('id').range(offset, offset + pageSize - 1);
+    if (error) throw new NetworkConfigError(error.message, 500);
+    data.push(...(page || []));
+    if (!page || page.length < pageSize) break;
+  }
   const allowed = ['id','name','version','username','security_level','auth_protocol','privacy_protocol','context_name'];
-  return (data || []).map((row: any) => Object.fromEntries(allowed.filter(key => row[key] !== undefined).map(key => [key, row[key]])));
+  return data.map((row: any) => Object.fromEntries(allowed.filter(key => row[key] !== undefined).map(key => [key, row[key]])));
 }
 export async function saveNetworkConfiguration(db: SupabaseClient, agentId: string, companyId: string, input: unknown) {
   const config = validateNetworkConfiguration(input);

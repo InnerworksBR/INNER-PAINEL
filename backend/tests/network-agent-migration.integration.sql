@@ -5,7 +5,7 @@ DO $$
 DECLARE
   company_a uuid; company_b uuid; pairing uuid; pairing2 uuid; pairing3 uuid; pairing4 uuid; pairing5 uuid; credential uuid; machine text := gen_random_uuid()::text; code_hash text := encode(gen_random_bytes(32),'hex'); secret text := repeat('s',64); refresh_hash text := encode(gen_random_bytes(32),'hex'); replacement_hash text := encode(gen_random_bytes(32),'hex');
   agent jsonb; other_agent jsonb; config jsonb; network_id text; batch jsonb; result jsonb; device uuid;
-  shared_scope uuid; shared_device uuid; second_agent jsonb; second_config jsonb; third_agent jsonb; third_config jsonb; fourth_agent jsonb; fourth_config jsonb; before_version bigint; removed jsonb; cleanup_iteration integer;
+  shared_scope uuid; shared_device uuid; second_agent jsonb; second_config jsonb; third_agent jsonb; third_config jsonb; fourth_agent jsonb; fourth_config jsonb; before_version bigint; removed jsonb; cleanup_iteration integer; hidden_event uuid;
 BEGIN
   -- Keep repeated fixture runs deterministic by draining leftovers from earlier successful runs.
   FOR cleanup_iteration IN 1..10 LOOP
@@ -49,7 +49,7 @@ BEGIN
       'networks',jsonb_build_array(jsonb_build_object('id',config->'networks'->0->>'id','cidr','10.44.0.0/24','enabled',true,'snmp_port',161,'excluded_ips','[]'::jsonb,'credential_ids','[]'::jsonb))));
   network_id := config->'networks'->0->>'id';
   batch := jsonb_build_object('sequence',1,'collected_at',now(),'devices',jsonb_build_array(
-    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()-interval '30 seconds','result','success','interfaces',jsonb_build_array(jsonb_build_object('if_index',1,'name','eth0')))));
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()-interval '30 seconds','result','success','manufacturer','Fixture Vendor','firmware_version','1.0','serial_number','fixture-serial','sys_contact','noc@example.invalid','interfaces',jsonb_build_array(jsonb_build_object('if_index',1,'name','eth0','if_type',6)))));
   result := ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
   IF result->>'status' <> 'accepted' THEN RAISE EXCEPTION 'first batch not accepted'; END IF;
   result := ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
@@ -58,10 +58,12 @@ BEGIN
 
   -- A newer timeout changes poll status but preserves last successful interfaces.
   batch := jsonb_build_object('sequence',2,'collected_at',now(),'devices',jsonb_build_array(
-    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now(),'result','timeout','interfaces','[]'::jsonb)));
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','10.44.0.7','device_type','Outro','observed_at',now(),'result','timeout','manufacturer','Wrong Vendor','firmware_version','wrong','sys_contact',null,'interfaces','[]'::jsonb)));
   PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
   SELECT id INTO device FROM network_devices WHERE agent_id=(agent->>'agent_id')::uuid AND device_uid='stable-device';
   IF NOT EXISTS (SELECT 1 FROM network_devices WHERE network_devices.id=device AND network_devices.result='timeout' AND jsonb_array_length(network_devices.interfaces)=1) THEN RAISE EXCEPTION 'failed poll erased interfaces'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE network_devices.id=device AND manufacturer='Fixture Vendor' AND firmware_version='1.0' AND sys_contact='noc@example.invalid' AND interfaces->0->>'if_type'='6') THEN RAISE EXCEPTION 'partial or timeout observation damaged persisted serializer inventory'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM network_device_samples WHERE device_id=device AND sequence=1 AND payload->>'sys_contact'='noc@example.invalid' AND payload->'interfaces'->0->>'if_type'='6') THEN RAISE EXCEPTION 'raw sample did not retain optional serializer fields'; END IF;
   -- Later receipt of an older observation appends history without regressing current state.
   batch := jsonb_build_object('sequence',3,'collected_at',now(),'devices',jsonb_build_array(
     jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.8','device_name','OLD-NAME','device_type','Switch','observed_at',now()-interval '2 minutes','result','success','interfaces','[]'::jsonb)));
@@ -79,18 +81,33 @@ BEGIN
     jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '3 seconds','result','auth_error','interfaces','[]'::jsonb)));
   PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
   IF NOT EXISTS (SELECT 1 FROM network_devices WHERE network_devices.id=device AND network_devices.status='Atencao' AND network_devices.consecutive_failures=0) THEN RAISE EXCEPTION 'authentication error was classified as no response'; END IF;
+  batch := jsonb_build_object('sequence',7,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '4 seconds','result','success','manufacturer','Fixture Vendor','firmware_version','2.0','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM asset_profiles WHERE source_id=device AND firmware_version='2.0') THEN RAISE EXCEPTION 'newer auto firmware did not refresh asset profile'; END IF;
+  UPDATE asset_profiles SET firmware_version='manual-fw',manual_override_fields=ARRAY['firmware_version'] WHERE source_id=device;
+  batch := jsonb_build_object('sequence',8,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '5 seconds','result','success','firmware_version','3.0','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM asset_profiles WHERE source_id=device AND firmware_version='manual-fw') THEN RAISE EXCEPTION 'manual firmware override was overwritten'; END IF;
 
   BEGIN
     PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_b,
-      jsonb_build_object('sequence',7,'collected_at',now(),'devices','[]'::jsonb));
+      jsonb_build_object('sequence',9,'collected_at',now(),'devices','[]'::jsonb));
     RAISE EXCEPTION 'cross-company ingest accepted';
   EXCEPTION WHEN OTHERS THEN IF SQLERRM='cross-company ingest accepted' THEN RAISE; END IF; END;
   BEGIN
     PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,
-      jsonb_build_object('sequence',8,'collected_at',now(),'devices',jsonb_build_array(jsonb_build_object('network_id',network_id,'device_uid','outside','ip_address','192.0.2.1','device_name','outside','device_type','Other','observed_at',now(),'result','success','interfaces','[]'::jsonb))));
+      jsonb_build_object('sequence',10,'collected_at',now(),'devices',jsonb_build_array(jsonb_build_object('network_id',network_id,'device_uid','outside','ip_address','192.0.2.1','device_name','outside','device_type','Other','observed_at',now(),'result','success','interfaces','[]'::jsonb))));
     RAISE EXCEPTION 'out-of-scope address accepted';
   EXCEPTION WHEN OTHERS THEN IF SQLERRM='out-of-scope address accepted' THEN RAISE; END IF; END;
   IF has_function_privilege('anon','ingest_network_metric_batch(uuid,uuid,jsonb)','EXECUTE') THEN RAISE EXCEPTION 'anon can execute ingestion'; END IF;
+  INSERT INTO monitoring_events(company_id,source,entity_name,entity_type,current_status,severity,message,metadata)
+  VALUES(company_a,'network','SW-A','network_device','Online','info','hidden fixture event',jsonb_build_object('network_device_id',device)) RETURNING id INTO hidden_event;
+  UPDATE asset_profiles SET customer_visible=false WHERE company_id=company_a AND source_type='network_device' AND source_id=device;
+  IF EXISTS(SELECT 1 FROM get_visible_network_events(company_a,50) WHERE id=hidden_event) THEN RAISE EXCEPTION 'visible event projection leaked a hidden asset event'; END IF;
+  UPDATE asset_profiles SET customer_visible=true WHERE company_id=company_a AND source_type='network_device' AND source_id=device;
+  IF NOT EXISTS(SELECT 1 FROM get_visible_network_events(company_a,50) WHERE id=hidden_event) THEN RAISE EXCEPTION 'visible event projection omitted a customer-visible event'; END IF;
 
   -- Retention is bounded and affects only raw payloads, not current state or audit history.
   INSERT INTO network_agent_batches(agent_id,company_id,sequence,collected_at,payload) VALUES
@@ -105,7 +122,7 @@ BEGIN
   IF (SELECT count(*) FROM network_agent_batches WHERE agent_id=(agent->>'agent_id')::uuid AND collected_at<now()-interval '30 days') <> 1 OR (SELECT count(*) FROM network_device_samples WHERE agent_id=(agent->>'agent_id')::uuid AND observed_at<now()-interval '30 days') <> 1 THEN RAISE EXCEPTION 'raw retention exceeded the requested batch bound'; END IF;
   removed := purge_network_agent_raw_data(1);
   IF (removed->>'batches_deleted')::integer <> 1 OR (removed->>'samples_deleted')::integer <> 1 OR removed->>'has_more_batches' <> 'false' OR removed->>'has_more_samples' <> 'false' THEN RAISE EXCEPTION 'bounded raw retention did not report an empty backlog'; END IF;
-  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=device AND status='Atencao') THEN RAISE EXCEPTION 'raw retention deleted current state'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=device AND status='Online' AND firmware_version='3.0') THEN RAISE EXCEPTION 'raw retention deleted current state'; END IF;
   IF NOT EXISTS(SELECT 1 FROM network_status_history WHERE network_device_id=device) THEN RAISE EXCEPTION 'raw retention deleted status history'; END IF;
 
   -- Shared physical scopes require an authorized same-company record and trusted identity.
@@ -141,8 +158,14 @@ BEGIN
     jsonb_build_object('network_id',third_config->'networks'->0->>'id','device_uid','third-local-uid','ip_address','10.44.2.9','device_name','renamed-switch-2','device_type','Switch','serial_number','chassis-42','manufacturer','OtherVendor','model','Conflict Model','firmware_version','9.9','location','Other Rack','engine_id','engine-b','observed_at',now()-interval '1 minute','result','timeout','interfaces','[]'::jsonb)));
   PERFORM ingest_network_metric_batch((third_agent->>'agent_id')::uuid,company_a,batch);
   IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'shared physical scope did not reconcile across collectors'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_kind='engine_id' AND trusted_identity_value='engine-b' AND id<>shared_device) THEN RAISE EXCEPTION 'conflicting chassis and engine evidence was merged instead of quarantined as a separate identity'; END IF;
   IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=shared_device AND ip_address::inet='10.44.1.9'::inet AND device_name='renamed-switch' AND status='Online' AND manufacturer='Acme' AND model='Core S1' AND serial_number=' CHASSIS-42 ' AND firmware_version='1.0' AND location='Rack A' AND engine_id='engine-a') THEN RAISE EXCEPTION 'stale shared-scope observation regressed device metadata or state'; END IF;
   IF NOT EXISTS(SELECT 1 FROM asset_profiles WHERE company_id=company_a AND source_type='network_device' AND source_id=shared_device AND manufacturer='Acme' AND model='Core S1' AND firmware_version='1.0' AND location='Rack A') THEN RAISE EXCEPTION 'stale shared-scope observation regressed the derived asset profile'; END IF;
+  batch := jsonb_build_object('sequence',2,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','different-local-uid','ip_address','10.44.1.9','device_name','renamed-switch','device_type','Switch','observed_at',now()+interval '5 seconds','result','timeout','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
+  IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'known collector timeout without fresh chassis identity created a duplicate'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM network_status_history WHERE network_device_id=shared_device AND collected_at>=now()-interval '1 minute' AND status='Atencao') THEN RAISE EXCEPTION 'known collector timeout was not attached to the bound shared device history'; END IF;
   pairing5 := create_network_pairing(gen_random_uuid()::text,'separate-scope-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('p',64),now()+interval '15 minutes');
   PERFORM claim_network_pairing(company_a,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing5));
   fourth_agent := complete_network_pairing(pairing5,repeat('p',64),encode(gen_random_bytes(32),'hex'),encode(gen_random_bytes(32),'hex'));

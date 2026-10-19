@@ -16,6 +16,26 @@ test('network batches strip unknown fields that could contain credentials before
   assert.equal(JSON.stringify(batch).includes('unsafe'), false);
 });
 
+test('accepts the Windows serializer fixture fields and preserves nullable SNMP inventory', async () => {
+  const fs = await import('node:fs/promises');
+  const fixture = JSON.parse(await fs.readFile(new URL('./fixtures/network-metrics-v1.json', import.meta.url), 'utf8'));
+  const batch = validateNetworkBatch(fixture);
+  assert.equal(batch.devices[0].sys_contact, 'noc@example.invalid');
+  assert.equal(batch.devices[0].interfaces[0].if_type, 6);
+  assert.deepEqual(batch.devices[1].interfaces, []);
+  assert.equal(batch.devices[2].result, 'timeout');
+});
+
+test('requires canonical IPv4 and collector-compatible bounded configurations', () => {
+  const make = (cidr: string) => ({ version: 1, enabled: true, collection_interval_seconds: 60, discovery_interval_seconds: 900, networks: [{ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', cidr, enabled: true, credential_ids: [] }] });
+  assert.throws(() => validateNetworkConfiguration(make('010.0.0.0/24')), /canonical/i);
+  assert.throws(() => validateNetworkConfiguration(make('10.0.0.0/024')), /prefix/i);
+  assert.throws(() => validateNetworkConfiguration({ ...make('10.0.0.0/24'), collection_interval_seconds: 29 }), /interval/i);
+  assert.throws(() => validateNetworkConfiguration({ ...make('10.0.0.0/24'), discovery_interval_seconds: 86401 }), /interval/i);
+  assert.throws(() => validateNetworkConfiguration({ ...make('10.0.0.0/24'), networks: Array.from({ length: 257 }, (_, i) => ({ id: `${String(i).padStart(8, '0')}-bbbb-4bbb-8bbb-000000000000`, cidr: `10.${i}.0.0/24`, enabled: false, credential_ids: [] })) }), /256/);
+  assert.throws(() => validateNetworkConfiguration({ ...make('10.0.0.0/24'), networks: [{ ...make('10.0.0.0/24').networks[0], id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }, { ...make('10.1.0.0/24').networks[0], id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }] }), /duplicate/i);
+});
+
 test('network configuration preserves an explicit shared physical scope only when it is a UUID', () => {
   const scope = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const config = validateNetworkConfiguration({
@@ -41,9 +61,22 @@ test('network freshness distinguishes missing telemetry from physical device fai
 });
 
 test('credential metadata never returns encrypted or plaintext secret material', async () => {
-  const db = { from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [{ id: '1', name: 'core', version: '2c', encrypted_secret: 'my-community' }], error: null }) }) }) }) } as any;
+  const db = { from: () => ({ select() { return this; }, eq() { return this; }, order() { return this; }, range: async () => ({ data: [{ id: '1', name: 'core', version: '2c', encrypted_secret: 'my-community' }], error: null }) }) } as any;
   const result = await listCredentialMetadata(db, 'company');
   assert.equal(JSON.stringify(result).includes('my-community'), false);
+});
+
+test('credential metadata paginates beyond PostgREST default cap with an explicit secret-free projection', async () => {
+  const rows = Array.from({ length: 1024 }, (_, i) => ({ id: `credential-${i}`, name: `credential-${i}`, version: '2c', ciphertext: 'secret' }));
+  class Query {
+    from = 0; to = 0;
+    select() { return this; } eq() { return this; } order() { return this; }
+    range(from: number, to: number) { this.from = from; this.to = to; return this; }
+    then(resolve: any, reject: any) { return Promise.resolve({ data: rows.slice(this.from, this.to + 1), error: null }).then(resolve, reject); }
+  }
+  const result = await listCredentialMetadata({ from: () => new Query() } as any, 'company');
+  assert.equal(result.length, 1024);
+  assert.equal(JSON.stringify(result).includes('secret'), false);
 });
 
 test('SNMP credential encryption requires a configured key and round-trips with AES-GCM', () => {

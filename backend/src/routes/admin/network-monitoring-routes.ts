@@ -7,12 +7,19 @@ import { claimPairing, PairingError } from '../../services/network-pairing-servi
 import { encryptSnmpCredential, listCredentialMetadata, NetworkConfigError, saveNetworkConfiguration } from '../../services/network-config-service';
 const claimAttempts = new Map<string, { start: number; count: number }>();
 
+export function resolveNetworkAgentPackagePath(env = process.env, cwd = process.cwd(), exists = existsSync): string | undefined {
+  const fixed = 'Inner.Network.Agent-win-x64.zip';
+  const candidates = env.NETWORK_AGENT_PACKAGE_PATH
+    ? [resolve(env.NETWORK_AGENT_PACKAGE_PATH)]
+    : [resolve(cwd, 'artifacts', fixed), resolve(cwd, '..', 'agent', 'artifacts', fixed)];
+  return candidates.find(path => path.endsWith(fixed) && exists(path));
+}
+
 export default async function adminNetworkMonitoringRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.addHook('preHandler', fastify.authenticate); fastify.addHook('preHandler', verifyAdmin);
   fastify.get('/network-agent/download', async (_request, reply) => {
     const fixed = 'Inner.Network.Agent-win-x64.zip';
-    const candidates = [process.env.NETWORK_AGENT_PACKAGE_PATH, resolve(process.cwd(), 'artifacts', fixed), resolve(process.cwd(), '..', 'agent', 'artifacts', fixed)].filter((v): v is string => !!v);
-    const packagePath = candidates.find(path => path.endsWith(fixed) && existsSync(path));
+    const packagePath = resolveNetworkAgentPackagePath();
     if (!packagePath) return reply.code(503).send({ error: 'Pacote do agente de rede ainda não foi compilado. Gere Inner.Network.Agent-win-x64.zip e publique-o no diretório de artefatos do backend.' });
     reply.header('Content-Type', 'application/zip').header('Content-Disposition', `attachment; filename="${fixed}"`);
     return reply.send(createReadStream(packagePath));
@@ -32,11 +39,15 @@ export default async function adminNetworkMonitoringRoutes(fastify: FastifyInsta
     } catch (e) { const err = e as PairingError; return reply.code(err.statusCode || 404).send({ error: err.message }); }
   });
   fastify.get<{ Params: { companyId: string } }>('/companies/:companyId/network-agents', async (request, reply) => {
-    const { data, error } = await fastify.supabaseAdmin.from('registered_agents').select('id,hostname,agent_version,status,last_heartbeat,metadata').eq('company_id', request.params.companyId).eq('agent_kind', 'network');
-    if (error) return reply.code(500).send({ error: 'Could not list agents.' });
-    return Promise.all((data || []).map(async (a: any) => {
+    const data: any[] = []; const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const { data: page, error } = await fastify.supabaseAdmin.from('registered_agents').select('id,hostname,agent_version,status,last_heartbeat,metadata').eq('company_id', request.params.companyId).eq('agent_kind', 'network').order('id').range(offset, offset + pageSize - 1);
+      if (error) return reply.code(500).send({ error: 'Could not list agents.' });
+      data.push(...(page || [])); if (!page || page.length < pageSize) break;
+    }
+    return Promise.all(data.map(async (a: any) => {
       const count = await fastify.supabaseAdmin.from('network_devices').select('id', { count: 'exact', head: true }).eq('agent_id', a.id).eq('company_id', request.params.companyId);
-      return { id: a.id, hostname: a.hostname, agent_version: a.agent_version, status: a.status, last_heartbeat: a.last_heartbeat, detected_networks: a.metadata?.detected_networks || [], device_count: count.count || 0 };
+      return { id: a.id, hostname: a.hostname, agent_version: a.agent_version, status: a.status, last_heartbeat: a.last_heartbeat, detected_networks: a.metadata?.detected_networks || [], device_count: count.count || 0, ...(a.metadata?.discovery_state !== undefined ? { discovery_state: a.metadata.discovery_state } : {}), ...(a.metadata?.last_discovery_at !== undefined ? { last_discovery_at: a.metadata.last_discovery_at } : {}), ...(a.metadata?.last_collection_result !== undefined ? { last_collection_result: a.metadata.last_collection_result } : {}), ...(a.metadata?.pending_count !== undefined ? { pending_count: a.metadata.pending_count } : {}) };
     }));
   });
   fastify.get<{ Params: { companyId: string } }>('/companies/:companyId/network-scopes', async (request, reply) => {
