@@ -93,6 +93,13 @@ export default async function clientNetworkRoutes(fastify: FastifyInstance): Pro
     const { data: profile } = await supabaseAdmin.from('asset_profiles').select('source_id').eq('company_id', device.company_id).eq('source_type', 'network_device').eq('source_id', id).eq('customer_visible', true).maybeSingle();
     if (!profile) return reply.code(404).send({ error: 'Equipamento não encontrado' });
 
+    if (device.monitoring_source !== 'agent_snmp') {
+      const { data: sameNameDevices, error: sameNameError } = await supabaseAdmin.from('network_devices')
+        .select('id').eq('company_id', device.company_id).eq('device_name', device.device_name);
+      if (sameNameError) return reply.code(500).send({ error: sameNameError.message });
+      if (!Array.isArray(sameNameDevices) || sameNameDevices.length !== 1 || sameNameDevices[0]?.id !== id) return [];
+    }
+
     let historyQuery = supabaseAdmin
       .from('network_status_history')
       .select('*')

@@ -202,6 +202,7 @@ public sealed class NetworkTokenRefreshCoordinator(NetworkApiClient api, INetwor
 
 public sealed class NetworkAgentAuthorizationLifecycle(INetworkSecretStore secrets)
 {
+    private long _authorizationEpoch;
     private static readonly string[] EnrollmentSecrets =
     [
         "agent_id", "company_id", "access_token", "refresh_token",
@@ -211,6 +212,8 @@ public sealed class NetworkAgentAuthorizationLifecycle(INetworkSecretStore secre
     public bool AuthorizationLost => string.Equals(secrets.Read("agent_authorization_lost"), "true", StringComparison.Ordinal);
     public bool AgentRevoked => string.Equals(secrets.Read("agent_revoked"), "true", StringComparison.Ordinal);
     public bool CanUseCachedQueries => !AuthorizationLost && !AgentRevoked;
+    public long AuthorizationEpoch => Interlocked.Read(ref _authorizationEpoch);
+    public bool CanUseCachedQueriesForEpoch(long epoch) => epoch == AuthorizationEpoch && CanUseCachedQueries;
 
     public async Task<NetworkCredentials?> RefreshAfterAccessRejectedAsync(NetworkTokenRefreshCoordinator refresh,
         string? rejectedAccessToken, CancellationToken ct = default)
@@ -226,7 +229,9 @@ public sealed class NetworkAgentAuthorizationLifecycle(INetworkSecretStore secre
 
     public void MarkAuthorizationLost()
     {
+        Interlocked.Increment(ref _authorizationEpoch);
         secrets.Save("agent_authorization_lost", "true");
+        secrets.Delete("configuration_cache");
         foreach (var key in EnrollmentSecrets) secrets.Delete(key);
     }
 
@@ -238,6 +243,8 @@ public sealed class NetworkAgentAuthorizationLifecycle(INetworkSecretStore secre
 
     public void ClearAfterSuccessfulRelink()
     {
+        Interlocked.Increment(ref _authorizationEpoch);
+        secrets.Delete("configuration_cache");
         secrets.Delete("agent_authorization_lost");
         secrets.Delete("agent_revoked");
     }

@@ -91,6 +91,23 @@ BEGIN
   PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
   IF NOT EXISTS (SELECT 1 FROM asset_profiles WHERE source_id=device AND firmware_version='manual-fw') THEN RAISE EXCEPTION 'manual firmware override was overwritten'; END IF;
 
+  -- An unavailable interface walk retains its last known table; a completed empty walk clears it.
+  batch := jsonb_build_object('sequence',20,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '6 seconds','result','partial','interfaces','[]'::jsonb,'interfaces_observed',false)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE id=device AND jsonb_array_length(interfaces)=1 AND interfaces_observed=false) THEN RAISE EXCEPTION 'unavailable interface walk erased list or availability'; END IF;
+  batch := jsonb_build_object('sequence',21,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '7 seconds','result','success','interfaces','[]'::jsonb,'interfaces_observed',true)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE id=device AND jsonb_array_length(interfaces)=0 AND interfaces_observed=true) THEN RAISE EXCEPTION 'observed empty interface walk did not clear list'; END IF;
+  batch := jsonb_build_object('sequence',22,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '8 seconds','result','success','interfaces',jsonb_build_array(jsonb_build_object('if_index',1,'name','newer-uplink')),'interfaces_observed',true)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  batch := jsonb_build_object('sequence',23,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '7 seconds','result','success','interfaces','[]'::jsonb,'interfaces_observed',true)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE id=device AND interfaces->0->>'name'='newer-uplink') THEN RAISE EXCEPTION 'delayed interface observation regressed current table'; END IF;
+
   BEGIN
     PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_b,
       jsonb_build_object('sequence',9,'collected_at',now(),'devices','[]'::jsonb));
@@ -148,6 +165,24 @@ BEGIN
   SELECT id INTO shared_device FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42';
   IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_kind='serial' AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'shared trusted serial identity created duplicate device'; END IF;
   IF NOT EXISTS(SELECT 1 FROM network_devices WHERE id=shared_device AND ip_address::inet='10.44.1.9'::inet AND device_name='renamed-switch') THEN RAISE EXCEPTION 'shared trusted serial identity did not reconcile current device'; END IF;
+  batch := jsonb_build_object('sequence',30,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','placeholder-a','ip_address','10.44.1.10','device_name','placeholder-a','device_type','Switch','serial_number',' UNKNOWN ','observed_at',now(),'result','success','interfaces','[]'::jsonb),
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','placeholder-b','ip_address','10.44.1.11','device_name','placeholder-b','device_type','Switch','serial_number','00000000','observed_at',now(),'result','success','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
+  IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND device_uid IN ('placeholder-a','placeholder-b') AND trusted_identity_value IS NULL) <> 2 THEN RAISE EXCEPTION 'placeholder serials were treated as trusted shared identities'; END IF;
+  batch := jsonb_build_object('sequence',31,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','empty-identity-a','ip_address','10.44.1.12','device_name','empty-identity-a','device_type','Switch','serial_number','   ','engine_id','UNKNOWN','observed_at',now(),'result','success','interfaces','[]'::jsonb),
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','empty-identity-b','ip_address','10.44.1.13','device_name','empty-identity-b','device_type','Switch','serial_number','','engine_id','00000000','observed_at',now(),'result','success','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
+  IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND device_uid IN ('empty-identity-a','empty-identity-b') AND trusted_identity_value IS NULL) <> 2 THEN RAISE EXCEPTION 'empty serial or placeholder engine became a trusted identity'; END IF;
+  batch := jsonb_build_object('sequence',32,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','placeholder-engine-on-known-serial','ip_address','10.44.1.9','device_name','renamed-switch','device_type','Switch','serial_number',' CHASSIS-42 ','engine_id','UNKNOWN','observed_at',now()+interval '1 second','result','success','interfaces','[]'::jsonb)));
+  PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
+  IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42') <> 1 OR
+     (SELECT engine_id FROM network_devices WHERE id=shared_device) <> 'engine-a' OR
+     EXISTS(SELECT 1 FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_kind='engine_id' AND trusted_identity_value='unknown') THEN
+    RAISE EXCEPTION 'placeholder engine contradicted or overwrote a trusted serial identity';
+  END IF;
   pairing3 := create_network_pairing(gen_random_uuid()::text,'third-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('w',64),now()+interval '15 minutes');
   PERFORM claim_network_pairing(company_a,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing3));
   third_agent := complete_network_pairing(pairing3,repeat('w',64),repeat('x',64),repeat('y',64));

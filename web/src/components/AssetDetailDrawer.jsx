@@ -56,6 +56,7 @@ const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) 
   const technicalFields = Object.entries(labels).filter(([key]) => detail?.[key] || networkTelemetry?.[key]);
   const isServer = sourceType === 'server';
   const networkInterfaces = Array.isArray(networkTelemetry.interfaces) ? networkTelemetry.interfaces : [];
+  const interfacesUnavailable = networkTelemetry.interfaces_observed === false;
   const telemetryFreshness = telemetry.telemetry_status || networkTelemetry.telemetry_status || detail?.telemetry_status;
   const lastObserved = networkTelemetry.last_poll_at || detail?.last_poll_at;
   const networkStatus = networkTelemetry.status || detail?.status;
@@ -216,10 +217,11 @@ const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) 
               {!isServer && networkInterfaces.length > 0 && (
                 <section className="rounded-2xl border border-neutral-200/60 p-5">
                   <h3 className="text-sm font-semibold text-neutral-700 flex items-center gap-2 mb-4"><Wifi size={16} className="text-blue-600" />Interfaces</h3>
+                  {interfacesUnavailable && <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Não foi possível consultar interfaces nesta coleta. Exibindo a última lista conhecida.</p>}
                   <div className="space-y-3">
                     {networkInterfaces.map((iface) => <div key={iface.if_index} className="rounded-xl border border-neutral-100 bg-neutral-50/50 p-3">
                       <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-neutral-900">{iface.name || iface.description || `Interface ${iface.if_index}`}</p><p className="mt-1 text-xs text-neutral-500">Índice {iface.if_index} · Tipo {iface.if_type ?? '—'} · MAC {iface.mac_address || '—'}</p></div><div className="text-right text-xs text-neutral-600"><p>Admin: {formatInterfaceStatus(iface.admin_status)}</p><p>Operação: {formatInterfaceStatus(iface.oper_status)}</p></div></div>
-                      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-neutral-600"><div><dt>Entrada (octetos)</dt><dd className="font-medium text-neutral-900">{iface.in_octets ?? '—'}</dd></div><div><dt>Saída (octetos)</dt><dd className="font-medium text-neutral-900">{iface.out_octets ?? '—'}</dd></div><div><dt>Entrada</dt><dd className="font-medium text-neutral-900">{iface.in_bps == null ? '—' : `${iface.in_bps} bps`}</dd></div><div><dt>Saída</dt><dd className="font-medium text-neutral-900">{iface.out_bps == null ? '—' : `${iface.out_bps} bps`}</dd></div></dl>
+                      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-neutral-600"><div><dt>Entrada (octetos)</dt><dd className="font-medium text-neutral-900">{iface.in_octets ?? '—'}</dd></div><div><dt>Saída (octetos)</dt><dd className="font-medium text-neutral-900">{iface.out_octets ?? '—'}</dd></div>{!interfacesUnavailable && <><div><dt>Entrada</dt><dd className="font-medium text-neutral-900">{iface.in_bps == null ? '—' : `${iface.in_bps} bps`}</dd></div><div><dt>Saída</dt><dd className="font-medium text-neutral-900">{iface.out_bps == null ? '—' : `${iface.out_bps} bps`}</dd></div></>}</dl>
                     </div>)}
                   </div>
                 </section>

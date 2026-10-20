@@ -206,6 +206,42 @@ test('hidden network assets cannot be queried by known history ID and nested det
   } finally { await app.close(); }
 });
 
+test('legacy history is returned only for a unique same-company device name', async () => {
+  const company = 'company-a';
+  const devices = [
+    { id: 'requested', company_id: company, device_name: 'duplicate', monitoring_source: 'legacy' },
+    { id: 'hidden-collision', company_id: company, device_name: 'duplicate', monitoring_source: 'legacy' },
+    { id: 'other-company', company_id: 'company-b', device_name: 'duplicate', monitoring_source: 'legacy' },
+  ];
+  const history = [{ id: 'legacy-row', company_id: company, network_device_id: null, device_name: 'duplicate' }];
+  class Query {
+    table: string; filters: Array<[string, unknown]> = []; nullFilters: string[] = [];
+    constructor(table: string) { this.table = table; }
+    select() { return this; } eq(key: string, value: unknown) { this.filters.push([key, value]); return this; }
+    is(key: string, value: unknown) { this.nullFilters.push(key); return this; }
+    order() { return this; } limit() { return this; }
+    rows() { const source = this.table === 'network_devices' ? devices : history; return source.filter(row => this.filters.every(([k,v]) => (row as any)[k] === v) && this.nullFilters.every(key => (row as any)[key] == null)); }
+    async single() { return { data: this.rows()[0] ?? null, error: null }; }
+    async maybeSingle() { return { data: this.table === 'asset_profiles' ? { source_id: 'requested' } : this.rows()[0] ?? null, error: null }; }
+    then(resolve: any, reject: any) { return Promise.resolve({ data: this.rows(), error: null }).then(resolve, reject); }
+  }
+  const app = Fastify({ logger: false });
+  app.decorate('supabaseAdmin', { from: (table: string) => new Query(table) } as any);
+  app.decorate('authenticate', async (request: any) => { request.user = { user: { id: 'user', role: 'client', company_id: company } }; });
+  app.register(clientNetworkRoutes, { prefix: '/api/client/monitoring/network' });
+  try {
+    const ambiguous = await app.inject({ method: 'GET', url: '/api/client/monitoring/network/devices/requested/history' });
+    assert.equal(ambiguous.statusCode, 200);
+    assert.deepEqual(ambiguous.json(), []);
+    devices.splice(1, 1);
+    const unique = await app.inject({ method: 'GET', url: '/api/client/monitoring/network/devices/requested/history' });
+    assert.equal(unique.statusCode, 200);
+    assert.deepEqual(unique.json(), history);
+    const crossCompany = await app.inject({ method: 'GET', url: '/api/client/monitoring/network/devices/other-company/history' });
+    assert.equal(crossCompany.statusCode, 403);
+  } finally { await app.close(); }
+});
+
 test('admin network-agent list retains safe heartbeat diagnostics in its paginated projection', async () => {
   class Query {
     table: string; count = false;

@@ -67,6 +67,7 @@ export function validateNetworkBatch(input: unknown): any {
     if (typeof device.observed_at !== 'string' || !Number.isFinite(Date.parse(device.observed_at)) || Date.parse(device.observed_at) > Date.now() + 5 * 60_000) throw new AgentPayloadError('INVALID_PAYLOAD', 'observed_at invalid or too far in the future');
     for (const key of ['sys_object_id','sys_description','manufacturer','model','serial_number','firmware_version','location','engine_id']) if (device[key] != null && (typeof device[key] !== 'string' || device[key].length > 4096)) throw new AgentPayloadError('INVALID_PAYLOAD', `${key} must be a bounded string or null`);
     if (device.sys_contact != null && (typeof device.sys_contact !== 'string' || device.sys_contact.length > 1024)) throw new AgentPayloadError('INVALID_PAYLOAD', 'sys_contact must be a bounded string or null');
+    if (device.interfaces_observed !== undefined && typeof device.interfaces_observed !== 'boolean') throw new AgentPayloadError('INVALID_PAYLOAD', 'interfaces_observed must be a boolean');
     for (const key of ['uptime_seconds','response_time_ms']) if (device[key] != null && (typeof device[key] !== 'number' || !Number.isFinite(device[key]) || device[key] < 0)) throw new AgentPayloadError('INVALID_PAYLOAD', `${key} must be a non-negative number or null`);
     const interfaces = device.interfaces.map((item: unknown) => {
       if (!record(item) || !Number.isInteger(item.if_index) || item.if_index < 0 || typeof item.name !== 'string' || item.name.length > 255) throw new AgentPayloadError('INVALID_PAYLOAD', 'network interface invalid');
@@ -81,6 +82,7 @@ export function validateNetworkBatch(input: unknown): any {
       device_name: device.device_name, device_type: device.device_type, observed_at: new Date(device.observed_at).toISOString(),
       result: device.result,
       ...Object.fromEntries(['sys_object_id','sys_description','sys_contact','uptime_seconds','response_time_ms','manufacturer','model','serial_number','firmware_version','location','engine_id'].filter(key => device[key] !== undefined).map(key => [key, device[key]])),
+      ...(device.interfaces_observed !== undefined ? { interfaces_observed: device.interfaces_observed } : {}),
       interfaces,
     };
   });

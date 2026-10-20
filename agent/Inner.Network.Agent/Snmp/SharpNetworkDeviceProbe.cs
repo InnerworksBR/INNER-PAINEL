@@ -51,7 +51,7 @@ public sealed class SharpNetworkDeviceProbe(SnmpClient snmp, NetworkAgentStore s
                     partial ? "partial" : "success", Value(system, SysObjectId), description,
                     uptimeTicks / 100 <= long.MaxValue ? (long)(uptimeTicks / 100) : null, Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                     entity.Manufacturer, entity.Model, entity.SerialNumber, entity.FirmwareVersion,
-                    Value(system, SysLocation), engineId, interfaces.Interfaces, Value(system, SysContact));
+                    Value(system, SysLocation), engineId, interfaces.Interfaces, Value(system, SysContact), !interfaces.Failed);
                 return new(result, engineId, entity.SerialNumber, deviceUid);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }

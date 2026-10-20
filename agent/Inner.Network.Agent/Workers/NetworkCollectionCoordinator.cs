@@ -24,6 +24,8 @@ public sealed record NetworkCollectionCycleResult(
     DateTimeOffset? LastDiscoveryAt,
     string DiscoveryState);
 
+public sealed class NetworkAuthorizationChangedException : OperationCanceledException { }
+
 public sealed class NetworkCollectionCoordinator
 {
     private const int MaxConcurrentRequests = 16;
@@ -42,17 +44,19 @@ public sealed class NetworkCollectionCoordinator
         _probe = probe;
     }
 
-    public async Task<NetworkCollectionCycleResult> RunCycleAsync(NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct = default)
+    public async Task<NetworkCollectionCycleResult> RunCycleAsync(NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct = default, Func<bool>? isStillAuthorized = null)
     {
-        var discovery = await DiscoverAsync(config, now, ct);
-        var polled = await PollKnownAsync(config, now, ct);
+        var discovery = await DiscoverAsync(config, now, ct, isStillAuthorized);
+        var polled = await PollKnownAsync(config, now, ct, isStillAuthorized);
         return new(discovery.Devices.Concat(polled.Devices).ToArray(), discovery.DiscoveredDevices, polled.CollectedDevices,
             polled.LastDiscoveryAt, discovery.DiscoveryState);
     }
 
-    public async Task<NetworkCollectionCycleResult> DiscoverAsync(NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct = default)
+    public async Task<NetworkCollectionCycleResult> DiscoverAsync(NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct = default, Func<bool>? isStillAuthorized = null)
     {
+        if (isStillAuthorized is not null && !isStillAuthorized()) return new([], 0, 0, null, await _store.GetDiscoveryStateAsync(ct));
         await ReconcileAuthorizedTargetsAsync(config, ct);
+        if (isStillAuthorized is not null && !isStillAuthorized()) return new([], 0, 0, null, await _store.GetDiscoveryStateAsync(ct));
         var lastDiscovery = await _store.GetLastDiscoveryAtAsync(ct);
         var lastVersion = await _store.GetLastDiscoveryConfigVersionAsync(ct);
         var discoveryInterval = TimeSpan.FromSeconds(Math.Clamp(config.DiscoveryIntervalSeconds, 60, 86_400));
@@ -70,10 +74,14 @@ public sealed class NetworkCollectionCoordinator
                 .ToArray();
             for (var offset = 0; offset < work.Length; offset += MaxConcurrentDiscoveryRequests)
             {
+                if (isStillAuthorized is not null && !isStillAuthorized())
+                    return new([], 0, 0, await _store.GetLastDiscoveryAtAsync(ct), await _store.GetDiscoveryStateAsync(ct));
                 var chunk = work.Skip(offset).Take(MaxConcurrentDiscoveryRequests).ToArray();
-                var results = await Task.WhenAll(chunk.Select(item => DiscoverOneAsync(item.Ip, item.Network, config, now, ct)));
+                var results = await Task.WhenAll(chunk.Select(item => DiscoverOneAsync(item.Ip, item.Network, config, now, ct, isStillAuthorized)));
                 discovered.AddRange(results.Where(result => result is not null).Select(result => result!));
             }
+            if (isStillAuthorized is not null && !isStillAuthorized())
+                return new([], 0, 0, await _store.GetLastDiscoveryAtAsync(ct), await _store.GetDiscoveryStateAsync(ct));
             await _store.MarkDiscoveryCompleteAsync(now, discovered.Select(d => d.DeviceUid).Distinct(StringComparer.OrdinalIgnoreCase).Count(), config.Version, ct);
             await EnqueueAsync(discovered, ct);
             return new(discovered, discovered.Select(d => d.DeviceUid).Distinct(StringComparer.OrdinalIgnoreCase).Count(), discovered.Count,
@@ -86,9 +94,11 @@ public sealed class NetworkCollectionCoordinator
         }
     }
 
-    public async Task<NetworkCollectionCycleResult> PollKnownAsync(NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct = default)
+    public async Task<NetworkCollectionCycleResult> PollKnownAsync(NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct = default, Func<bool>? isStillAuthorized = null)
     {
+        if (isStillAuthorized is not null && !isStillAuthorized()) return new([], 0, 0, null, await _store.GetDiscoveryStateAsync(ct));
         await ReconcileAuthorizedTargetsAsync(config, ct);
+        if (isStillAuthorized is not null && !isStillAuthorized()) return new([], 0, 0, null, await _store.GetDiscoveryStateAsync(ct));
         var networks = config.Networks.Where(n => n.Enabled).ToDictionary(n => n.Id, StringComparer.OrdinalIgnoreCase);
         var targets = (await _store.GetKnownTargetsAsync(ct))
             .Where(t => networks.ContainsKey(t.NetworkId) && t.LastSuccessAt < now.AddSeconds(-1))
@@ -97,57 +107,67 @@ public sealed class NetworkCollectionCoordinator
         for (var offset = 0; offset < targets.Length; offset += MaxConcurrentRequests)
         {
             var chunk = targets.Skip(offset).Take(MaxConcurrentRequests).ToArray();
-            var polled = await Task.WhenAll(chunk.Select(target => PollOneAsync(target, networks[target.NetworkId], config, now, ct)));
-            devices.AddRange(polled);
+            var polled = await Task.WhenAll(chunk.Select(target => PollOneAsync(target, networks[target.NetworkId], config, now, ct, isStillAuthorized)));
+            devices.AddRange(polled.Where(device => device is not null).Select(device => device!));
         }
+        if (isStillAuthorized is not null && !isStillAuthorized()) return new([], 0, 0, await _store.GetLastDiscoveryAtAsync(ct), await _store.GetDiscoveryStateAsync(ct));
         await EnqueueAsync(devices, ct);
         return new(devices, 0, devices.Count, await _store.GetLastDiscoveryAtAsync(ct), await _store.GetDiscoveryStateAsync(ct));
     }
 
     private async Task<NetworkDeviceMetric?> DiscoverOneAsync(IPAddress ip, NetworkDefinition network,
-        NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct)
+        NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct, Func<bool>? isStillAuthorized)
     {
         try
         {
-            var result = await ProbeBoundedAsync(ip, network, GetCredentials(network, config), ct);
+            var result = await ProbeBoundedAsync(ip, network, GetCredentials(network, config), ct, isStillAuthorized);
             if (result is null) return null;
+            if (isStillAuthorized is not null && !isStillAuthorized()) return null;
             var uid = result.DeviceUid ?? await _store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
                 ip.ToString(), result.EngineId, result.SerialNumber, now,
                 TimeSpan.FromSeconds(Math.Clamp(config.DiscoveryIntervalSeconds, 60, 86_400)), ct);
             return result.Metric with { DeviceUid = uid.ToString("D") };
         }
+        catch (NetworkAuthorizationChangedException) { return null; }
         catch (Exception ex) when (IsTargetFailure(ex, ct)) { return null; }
     }
 
-    private async Task<NetworkDeviceMetric> PollOneAsync(NetworkTarget target, NetworkDefinition network,
-        NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct)
+    private async Task<NetworkDeviceMetric?> PollOneAsync(NetworkTarget target, NetworkDefinition network,
+        NetworkAgentConfiguration config, DateTimeOffset now, CancellationToken ct, Func<bool>? isStillAuthorized)
     {
         var ip = IPAddress.Parse(target.IpAddress);
         var failureResult = "timeout";
         try
         {
-            var result = await ProbeBoundedAsync(ip, network, GetCredentials(network, config), ct);
+            var result = await ProbeBoundedAsync(ip, network, GetCredentials(network, config), ct, isStillAuthorized);
             if (result is not null)
             {
+                if (isStillAuthorized is not null && !isStillAuthorized()) return null;
                 var uid = result.DeviceUid ?? await _store.ResolveAndUpsertTargetAsync(network.Id, network.NetworkScopeId ?? network.Id,
                     target.IpAddress, result.EngineId, result.SerialNumber, now,
                     TimeSpan.FromSeconds(Math.Clamp(config.DiscoveryIntervalSeconds, 60, 86_400)), ct);
                 return result.Metric with { DeviceUid = uid.ToString("D") };
             }
         }
+        catch (NetworkAuthorizationChangedException) { return null; }
         catch (Exception ex) when (IsTargetFailure(ex, ct))
         {
             failureResult = ex is SnmpAuthenticationException ? "auth_error" : ex is SnmpProtocolException ? "protocol_error" : "timeout";
         }
         return new NetworkDeviceMetric(network.Id, target.DeviceUid.ToString("D"), target.IpAddress,
-            target.IpAddress, "Outro", now, failureResult, Interfaces: []);
+            target.IpAddress, "Outro", now, failureResult, Interfaces: [], InterfacesObserved: false);
     }
 
     private async Task<NetworkProbeResult?> ProbeBoundedAsync(IPAddress ip, NetworkDefinition network,
-        IReadOnlyList<SnmpCredential> credentials, CancellationToken ct)
+        IReadOnlyList<SnmpCredential> credentials, CancellationToken ct, Func<bool>? isStillAuthorized)
     {
+        if (isStillAuthorized is not null && !isStillAuthorized()) throw new NetworkAuthorizationChangedException();
         await _requestBudget.WaitAsync(ct);
-        try { return await _probe.ProbeAsync(ip, network, credentials, ct); }
+        try
+        {
+            if (isStillAuthorized is not null && !isStillAuthorized()) throw new NetworkAuthorizationChangedException();
+            return await _probe.ProbeAsync(ip, network, credentials, ct);
+        }
         finally { _requestBudget.Release(); }
     }
 

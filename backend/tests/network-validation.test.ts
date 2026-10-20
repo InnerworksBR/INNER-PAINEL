@@ -24,6 +24,9 @@ test('accepts the Windows serializer fixture fields and preserves nullable SNMP 
   assert.equal(batch.devices[0].interfaces[0].if_type, 6);
   assert.deepEqual(batch.devices[1].interfaces, []);
   assert.equal(batch.devices[2].result, 'timeout');
+  const partial = validateNetworkBatch({ ...fixture, devices: [{ ...fixture.devices[1], interfaces: [], interfaces_observed: false }] });
+  assert.equal(partial.devices[0].interfaces_observed, false);
+  assert.throws(() => validateNetworkBatch({ ...fixture, devices: [{ ...fixture.devices[1], interfaces_observed: 'false' }] }), /interfaces_observed/i);
 });
 
 test('requires canonical IPv4 and collector-compatible bounded configurations', () => {

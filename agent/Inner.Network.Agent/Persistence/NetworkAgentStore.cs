@@ -48,13 +48,14 @@ public sealed class NetworkAgentStore : IAsyncDisposable
         CancellationToken ct = default)
     {
         var trusted = new List<(string Kind, string Value)>();
-        if (Normalize(engineId) is { Length: > 0 } engine) trusted.Add(("engine", engine));
-        if (Normalize(serialNumber) is { Length: > 0 } serial) trusted.Add(("serial", serial));
+        if (NormalizeTrusted(engineId) is { Length: > 0 } engine) trusted.Add(("engine", engine));
+        if (NormalizeTrusted(serialNumber) is { Length: > 0 } serial) trusted.Add(("serial", serial));
         var ipKey = $"{scopeId}|ip|{ipAddress}";
         await using var connection = await OpenAsync(ct);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct);
 
         var existingTarget = await ReadTargetUidAsync(connection, transaction, networkId, ipAddress, ct);
+        var targetIdentityConflict = false;
         var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var alias in trusted)
         {
@@ -66,6 +67,17 @@ public sealed class NetworkAgentStore : IAsyncDisposable
             lookup.Parameters.AddWithValue("$value", alias.Value);
             await using var reader = await lookup.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct)) candidates.Add(reader.GetString(0));
+        }
+
+        if (existingTarget is not null && trusted.Count > 0)
+        {
+            var stored = await ReadTrustedAliasesAsync(connection, transaction, scopeId, existingTarget, ct);
+            var comparable = trusted.Where(alias => stored.ContainsKey(alias.Kind)).ToArray();
+            if (comparable.Length > 0 && !comparable.Any(alias => string.Equals(stored[alias.Kind], alias.Value, StringComparison.OrdinalIgnoreCase)))
+            {
+                existingTarget = null;
+                targetIdentityConflict = true;
+            }
         }
 
         string? uid = existingTarget;
@@ -87,7 +99,7 @@ public sealed class NetworkAgentStore : IAsyncDisposable
             if (await active.ExecuteScalarAsync(ct) is null) uid = candidate;
             else trustedIdentityIsCurrentlyAmbiguous = true;
         }
-        if (uid is null && !trustedIdentityIsCurrentlyAmbiguous && candidates.Count <= 1)
+        if (uid is null && !targetIdentityConflict && !trustedIdentityIsCurrentlyAmbiguous && candidates.Count <= 1)
         {
             await using var ipAlias = connection.CreateCommand();
             ipAlias.Transaction = transaction;
@@ -99,7 +111,7 @@ public sealed class NetworkAgentStore : IAsyncDisposable
             while (await reader.ReadAsync(ct)) matches.Add(reader.GetString(0));
             if (matches.Count == 1) uid = matches[0];
         }
-        if (uid is null && !trustedIdentityIsCurrentlyAmbiguous && candidates.Count == 0)
+        if (uid is null && !targetIdentityConflict && !trustedIdentityIsCurrentlyAmbiguous && candidates.Count == 0)
         {
             var legacyKey = ipKey;
             await using var legacy = connection.CreateCommand();
@@ -434,7 +446,27 @@ public sealed class NetworkAgentStore : IAsyncDisposable
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+    private static string? NormalizeTrusted(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var normalized = value.Trim().ToLowerInvariant();
+        var compact = normalized.Replace("-", string.Empty).Replace(":", string.Empty).Replace(".", string.Empty).Replace(" ", string.Empty);
+        return normalized is "unknown" or "n/a" or "na" or "not available" or "not applicable" or "not set" or "unassigned" or "default" or "none" or "null" or "undefined" or "0" or "-" ||
+            compact.Length > 0 && compact.All(character => character == '0') ? null : normalized;
+    }
+
+    private static async Task<Dictionary<string, string>> ReadTrustedAliasesAsync(SqliteConnection connection, SqliteTransaction transaction, string scopeId, string deviceUid, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT kind,alias_value FROM device_aliases WHERE scope_id=$scope AND device_uid=$uid AND kind IN ('engine','serial')";
+        command.Parameters.AddWithValue("$scope", scopeId);
+        command.Parameters.AddWithValue("$uid", deviceUid);
+        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct)) aliases[reader.GetString(0)] = reader.GetString(1);
+        return aliases;
+    }
 
     private static async Task EnsureColumnAsync(SqliteConnection connection, string table, string column, string definition, CancellationToken ct)
     {

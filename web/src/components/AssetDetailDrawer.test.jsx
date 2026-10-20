@@ -15,6 +15,7 @@ describe('AssetDetailDrawer network telemetry', () => {
       telemetry: {
         status: 'Sem resposta SNMP', telemetry_status: 'fresh', result: 'timeout', ip_address: '192.168.10.2',
         last_poll_at: '2026-10-19T12:00:00.000Z', manufacturer: 'Inner Networks', model: 'SW-48', sys_contact: 'noc@example.invalid',
+        interfaces_observed: true,
         interfaces: [{ if_index: 1, name: 'Uplink', if_type: 6, admin_status: 1, oper_status: 2, in_octets: '9007199254741001', out_octets: '4294967298', in_bps: 0, out_bps: null }],
       },
     } });
@@ -30,6 +31,7 @@ describe('AssetDetailDrawer network telemetry', () => {
     expect(screen.getByText('0 bps')).toBeInTheDocument();
     expect(screen.getByText('Admin: Ativa')).toBeInTheDocument();
     expect(screen.getByText('Operação: Inativa')).toBeInTheDocument();
+    expect(screen.getByText('0 bps')).toBeInTheDocument();
     expect(screen.getByText('Contato SNMP')).toBeInTheDocument();
   });
 
@@ -47,5 +49,18 @@ describe('AssetDetailDrawer network telemetry', () => {
     expect(badge).toHaveClass('bg-red-50', 'text-red-700');
     expect(screen.getByText('Sem dados recentes')).toBeInTheDocument();
     expect(screen.getByText('Sem resposta SNMP')).toBeInTheDocument();
+  });
+
+  it('labels preserved interfaces as last known and hides stale rates when the walk failed', async () => {
+    api.get.mockResolvedValueOnce({ data: {
+      display_name: 'SW-03',
+      telemetry: { status: 'Online', result: 'partial', interfaces_observed: false,
+        interfaces: [{ if_index: 1, name: 'Uplink', in_bps: 2048, out_bps: 0 }] },
+    } });
+    render(<AssetDetailDrawer asset={{ id: 'network-3', device_name: 'SW-03' }} sourceType="network_device" onClose={() => {}} />);
+
+    expect(await screen.findByText(/última lista conhecida/i)).toBeInTheDocument();
+    expect(screen.queryByText('2048 bps')).not.toBeInTheDocument();
+    expect(screen.queryByText('0 bps')).not.toBeInTheDocument();
   });
 });

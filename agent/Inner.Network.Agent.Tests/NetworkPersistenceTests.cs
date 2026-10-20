@@ -86,6 +86,35 @@ public sealed class NetworkPersistenceTests
     }
 
     [Fact]
+    public async Task Replaced_device_at_same_ip_gets_new_uid_and_placeholder_identity_never_merges()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"network-agent-replacement-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var store = new NetworkAgentStore(path);
+            await store.InitializeAsync();
+            var now = DateTimeOffset.UtcNow;
+            var original = await store.ResolveAndUpsertTargetAsync("network", "scope", "192.0.2.10", "engine-old", "serial-old", now, TimeSpan.FromMinutes(15));
+            await store.RecordCounterAsync(original.ToString("D"), 1, "in", 9000, 9000, now);
+            var replacement = await store.ResolveAndUpsertTargetAsync("network", "scope", "192.0.2.10", "engine-new", "serial-new", now.AddMinutes(1), TimeSpan.FromMinutes(15));
+            Assert.NotEqual(original, replacement);
+            Assert.Null(await store.RecordCounterAsync(replacement.ToString("D"), 1, "in", 5, 100, now.AddMinutes(1)));
+            Assert.Equal(replacement, await store.ResolveAndUpsertTargetAsync("network", "scope", "192.0.2.10", null, null, now.AddMinutes(2), TimeSpan.FromMinutes(15)));
+
+            var placeholderA = await store.ResolveAndUpsertTargetAsync("network", "scope", "192.0.2.11", null, "unknown", now, TimeSpan.FromMinutes(15));
+            var placeholderB = await store.ResolveAndUpsertTargetAsync("network", "scope", "192.0.2.12", null, "unknown", now.AddMinutes(1), TimeSpan.FromMinutes(15));
+            Assert.NotEqual(placeholderA, placeholderB);
+
+            var moved = await store.ResolveAndUpsertTargetAsync("network", "scope", "192.0.2.13", "engine-old", "serial-old", now.AddMinutes(2), TimeSpan.FromMinutes(15));
+            Assert.Equal(original, moved);
+        }
+        finally
+        {
+            foreach (var file in new[] { path, path + "-shm", path + "-wal" }) if (File.Exists(file)) File.Delete(file);
+        }
+    }
+
+    [Fact]
     public async Task Outbox_status_reports_created_acknowledged_and_pending_counters()
     {
         var path = Path.Combine(Path.GetTempPath(), $"network-agent-status-{Guid.NewGuid():N}.db");

@@ -18,7 +18,7 @@ public sealed record NetworkDeviceMetric(
     long? UptimeSeconds = null, double? ResponseTimeMs = null, string? Manufacturer = null,
     string? Model = null, string? SerialNumber = null, string? FirmwareVersion = null,
     string? Location = null, string? EngineId = null, IReadOnlyList<NetworkInterfaceMetric>? Interfaces = null,
-    string? SysContact = null);
+    string? SysContact = null, bool? InterfacesObserved = null);
 public sealed record NetworkInterfaceMetric(
     int IfIndex, string Name, string? Description = null, string? MacAddress = null,
     int? AdminStatus = null, int? OperStatus = null, long? SpeedBps = null,
@@ -38,7 +38,7 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
     private readonly string _dataDirectory = configuration["Agent:DataDirectory"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "InnerWorks", "NetworkAgent");
     private readonly Stopwatch _uptime = Stopwatch.StartNew();
     private NetworkAgentStore _store = null!;
-    private NetworkSecretStore _secrets = null!;
+    private INetworkSecretStore _secrets = null!;
     private NetworkApiClient _api = null!;
     private NetworkOutboxSender _sender = null!;
     private NetworkTokenRefreshCoordinator _refresh = null!;
@@ -85,12 +85,17 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
                     await RefreshAccessAsync(null, ct);
 
                 var access = _secrets.Read("access_token");
-                if (_secrets.Read("agent_id") is not null && access is not null)
+                var requestedAgentId = _secrets.Read("agent_id");
+                var requestedCompanyId = _secrets.Read("company_id");
+                if (requestedAgentId is not null && requestedCompanyId is not null && access is not null)
                 {
+                    var authorizationEpoch = _authorization.AuthorizationEpoch;
                     try
                     {
                         var current = await _api.GetConfigurationAsync(access, ct);
-                        await PersistConfigurationAsync(current, ct);
+                        if (_authorization.CanUseCachedQueriesForEpoch(authorizationEpoch) &&
+                            _secrets.Read("agent_id") == requestedAgentId && _secrets.Read("company_id") == requestedCompanyId)
+                            await PersistConfigurationAsync(current, ct);
                     }
                     catch (NetworkApiException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
                     {
@@ -183,11 +188,13 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
             var delaySeconds = 60;
             try
             {
+                var authorizationEpoch = _authorization.AuthorizationEpoch;
                 var config = ReadCachedConfiguration();
-                if (_authorization.CanUseCachedQueries && config is { Enabled: true })
+                if (_authorization.CanUseCachedQueriesForEpoch(authorizationEpoch) && config is { Enabled: true })
                 {
                     delaySeconds = Math.Clamp(config.CollectionIntervalSeconds, 30, 3600);
-                    var result = await _collector.PollKnownAsync(config, DateTimeOffset.UtcNow, ct);
+                    var result = await _collector.PollKnownAsync(config, DateTimeOffset.UtcNow, ct,
+                        () => _authorization.CanUseCachedQueriesForEpoch(authorizationEpoch));
                     _lastCollectionResult = result.Devices.Any(device => device.Result is "timeout" or "auth_error" or "protocol_error") ? "partial" : "success";
                 }
             }
@@ -203,8 +210,11 @@ public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConf
         {
             try
             {
+                var authorizationEpoch = _authorization.AuthorizationEpoch;
                 var config = ReadCachedConfiguration();
-                if (_authorization.CanUseCachedQueries && config is { Enabled: true }) await _collector.DiscoverAsync(config, DateTimeOffset.UtcNow, ct);
+                if (_authorization.CanUseCachedQueriesForEpoch(authorizationEpoch) && config is { Enabled: true })
+                    await _collector.DiscoverAsync(config, DateTimeOffset.UtcNow, ct,
+                        () => _authorization.CanUseCachedQueriesForEpoch(authorizationEpoch));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex) { logger.LogWarning("Network discovery cycle failed; known-device polling continues: {ErrorType}", ex.GetType().Name); }

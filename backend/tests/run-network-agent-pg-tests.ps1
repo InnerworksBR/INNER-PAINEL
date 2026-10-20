@@ -13,6 +13,7 @@ $files = @(
   '..\migration_022_network_agent.sql',
   '..\migration_023_network_agent_retention_scopes.sql',
   '..\migration_024_network_agent_interop.sql',
+  '..\migration_025_network_observation_identity.sql',
   'network-agent-migration.integration.sql'
 )
 foreach ($file in $files) {
@@ -54,4 +55,4 @@ do {
 if ($active -ne '0') { throw 'Concurrent PostgreSQL ingest sessions did not finish within the test deadline.' }
 $devices = docker exec $Container psql -X -U postgres -d $dbName -Atc "SELECT count(*) FROM network_devices WHERE company_id='$company' AND network_scope_id='$scope' AND (serial_number='race-chassis' OR engine_id IN ('engine-a','engine-b'))"
 if ($LASTEXITCODE -ne 0 -or $devices.Trim() -ne '2') { throw "Conflicting first observations were merged; expected 2 identities, found $devices." }
-Write-Output "PASS: migrations 022-024, integration fixture, and concurrent shared-identity regression in $dbName (container $Container)."
+Write-Output "PASS: migrations 022-025, integration fixture, and concurrent shared-identity regression in $dbName (container $Container)."

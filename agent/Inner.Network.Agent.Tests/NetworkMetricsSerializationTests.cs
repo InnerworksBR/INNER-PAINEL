@@ -15,10 +15,10 @@ public sealed class NetworkMetricsSerializationTests
             new("00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000001", "192.0.2.1", "switch-a", "Switch", observed, "success",
                 SysObjectId: "1.3.6.1.4.1.9", SysDescription: "Lab switch", SysContact: "noc@example.invalid",
                 Manufacturer: "Example Networks", Model: "EX-24", SerialNumber: "LAB-1001", FirmwareVersion: "1.2.3", EngineId: "80004fb805060102",
-                Interfaces: [new(1, "ge-0/0/1", "Uplink", "00:11:22:33:44:55", 1, 1, 1000000000, "4294967298", "9007199254741001", "2", "3", "4", "5", 2048, 512, IfType: 6)]),
+                Interfaces: [new(1, "ge-0/0/1", "Uplink", "00:11:22:33:44:55", 1, 1, 1000000000, "4294967298", "9007199254741001", "2", "3", "4", "5", 2048, 512, IfType: 6)], InterfacesObserved: true),
             new("00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000002", "192.0.2.2", "ap-b", "Access point", observed, "partial",
-                SysDescription: "Wireless device", Interfaces: []),
-            new("00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000003", "192.0.2.3", "192.0.2.3", "Outro", observed, "timeout", Interfaces: [])
+                SysDescription: "Wireless device", Interfaces: [], InterfacesObserved: false),
+            new("00000000-0000-4000-8000-000000000010", "00000000-0000-4000-8000-000000000003", "192.0.2.3", "192.0.2.3", "Outro", observed, "timeout", Interfaces: [], InterfacesObserved: false)
         ]);
 
         var expected = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "network-metrics-v1.json")).Trim();

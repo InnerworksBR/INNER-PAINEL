@@ -13,6 +13,26 @@ public sealed class NetworkCollectionCoordinatorTests
     private const string NetworkId = "00000000-0000-4000-8000-000000000010";
     private const string CredentialId = "00000000-0000-4000-8000-000000000020";
     private const string ScopeId = "00000000-0000-4000-8000-000000000030";
+
+    [Fact]
+    public async Task Authorization_epoch_change_while_request_waits_for_budget_skips_probe_and_emits_no_timeout()
+    {
+        await WithStore(async store =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            await store.ResolveAndUpsertTargetAsync(NetworkId, ScopeId, "192.0.2.1", "engine-a", null, now.AddMinutes(-1), TimeSpan.FromMinutes(15));
+            var probe = new FakeProbe((_, _, _) => Task.FromResult<NetworkProbeResult?>(null));
+            var coordinator = new NetworkCollectionCoordinator(store, probe);
+            var checks = 0;
+            var result = await coordinator.PollKnownAsync(Config("192.0.2.0/30"), now,
+                isStillAuthorized: () => Interlocked.Increment(ref checks) < 3);
+
+            Assert.Equal(0, probe.Calls);
+            Assert.Empty(result.Devices);
+            Assert.Empty(await store.ReadPendingAsync(10));
+        });
+    }
+
     [Fact]
     public async Task Discovery_does_not_create_inventory_or_enqueue_a_timeout_for_unknown_addresses()
     {
