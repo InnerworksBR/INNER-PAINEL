@@ -1,6 +1,6 @@
 # Inner Network Agent — validação Windows
 
-Registro técnico das rodadas de implementação. Os resultados finais estão em **Round 2 review fixes**: 58 testes do coletor de rede e 22 do Hyper-V passaram. Os tamanhos e hashes dessa última rodada substituem os pacotes anteriores. O piloto com instalação do serviço e equipamentos físicos permanece pendente.
+Registro histórico das rodadas de implementação Windows até a Task 2. A rodada posterior de integração substitui os tamanhos e hashes deste registro e amplia a suíte para 62 testes do coletor de rede; os 22 testes Hyper-V continuam aprovados. Consultar os artefatos e evidências atuais em [NETWORK-AGENT-INTEGRATION-VALIDATION.md](NETWORK-AGENT-INTEGRATION-VALIDATION.md). O piloto com instalação do serviço e equipamentos físicos permanece pendente.
 
 Date: 2026-10-19
 Branch: `codex/network-agent-snmp`

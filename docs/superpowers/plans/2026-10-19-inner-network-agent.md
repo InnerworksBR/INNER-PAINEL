@@ -62,6 +62,7 @@ type NetworkMetricBatch = {
     uptime_seconds?: number | null; response_time_ms?: number | null;
     manufacturer?: string | null; model?: string | null; serial_number?: string | null;
     firmware_version?: string | null; location?: string | null; engine_id?: string | null;
+    interfaces_observed?: boolean;
     interfaces: Array<{
       if_index: number; name: string; description?: string | null; mac_address?: string | null; if_type?: number | null;
       admin_status?: number | null; oper_status?: number | null; speed_bps?: number | null;
@@ -74,7 +75,7 @@ type NetworkMetricBatch = {
 };
 ```
 
-Contadores inteiros de 64 bits trafegam como strings decimais para não perder precisão em JavaScript. As credenciais só acompanham a resposta de configuração ao coletor autenticado; nunca a leitura administrativa de configuração.
+Contadores inteiros de 64 bits trafegam como strings decimais para não perder precisão em JavaScript. `interfaces_observed: false` preserva o último inventário de interfaces; `true` permite substituir inclusive por uma lista observada vazia. Pacotes antigos sem o campo continuam aceitos. As credenciais só acompanham a resposta de configuração ao coletor autenticado; nunca a leitura administrativa de configuração.
 
 ```text
 POST /api/agent/v1/pairings
@@ -215,16 +216,16 @@ expect(await screen.findByText(/agente vinculado/i)).toBeInTheDocument();
 
 ### Task 4: Integração final, revisão e evidências
 
-**Ownership:** controlador coordena revisão independente GPT-6 Luna; correções voltam ao implementador responsável. Documentação de entrega em `docs/10-Agentes/` e evidências neste plano.
+**Ownership:** controlador coordena revisão independente GPT-6 Luna. As correções das tarefas voltam ao implementador responsável; os achados cruzados da revisão final são agrupados em um único worker de integração com responsabilidade explícita pelos arquivos de rede em agente, backend e drawer. Documentação de entrega em `docs/10-Agentes/` e evidências neste plano.
 
 **Interfaces:** valida o contrato completo das Tasks 1–3.
 
-- [ ] Revisão independente de compliance e qualidade após cada tarefa, com foco em segurança e interoperabilidade. Corrigir achados importantes antes de considerar tarefa concluída.
-- [ ] Executar testes relevantes completos, TypeScript, build React, testes .NET de ambos os agentes e build final do pacote. Não tratar testes SQL textuais como execução real de PostgreSQL.
+- [x] Revisão independente de compliance e qualidade após cada tarefa, com foco em segurança e interoperabilidade. Corrigir achados importantes antes de considerar tarefa concluída.
+- [x] Executar testes relevantes completos, TypeScript, build React, testes .NET de ambos os agentes e build final do pacote. Não tratar testes SQL textuais como execução real de PostgreSQL.
 - [x] Se houver PostgreSQL local disponível, executar migration em banco isolado e testar vinculação/ingestão concorrentes. Caso indisponível, documentar explicitamente essa limitação e fornecer comando/runbook reproduzível para o piloto.
-- [ ] Verificar que secrets nunca trafegam em rotas de cliente, estado antigo não vira Online, token do portal não vale para agente e revogação funciona.
+- [x] Verificar que secrets nunca trafegam em rotas de cliente, estado antigo não vira Online, token do portal não vale para agente e revogação funciona.
 - [x] Criar guia de implantação com sequência de migration, configuração da chave, build com URL real, instalação, vinculação, diagnóstico, piloto e rollback. Não fazer deploy ou varredura real.
-- [ ] Revisão final ampla por GPT-6 Luna, checagem do diff e commits. Entrega com artefato e limitações reais; nenhuma afirmação de validação em equipamentos físicos sem evidência.
+- [x] Revisão final ampla por GPT-6 Luna, checagem do diff e commits. Entrega com artefato e limitações reais; nenhuma afirmação de validação em equipamentos físicos sem evidência.
 
 ## Evidências de execução
 
@@ -245,7 +246,7 @@ expect(await screen.findByText(/agente vinculado/i)).toBeInTheDocument();
 - SNMP UDP em loopback: v2c e v3, SHA-1/SHA-256, authNoPriv e authPriv com AES-128. Regressão do probe real e coordenador confirma preservação do UID e histórico de contadores na mudança de IP.
 - Recuperação: conclusão de vínculo repetível, refresh concorrente, autorização perdida após JWT expirado e refresh com HTTP 401, configuração válida em cache durante HTTP 503, heartbeat independente, descoberta separada de polling e nenhum inventário fabricado para IP sem resposta.
 - Lotes abaixo de 3.800.000 bytes; ACK exige estado e sequência corretos. Rejeições 400/413 registram apenas diagnóstico limitado e não bloqueiam os próximos lotes nem são tratadas como ACK.
-- PowerShell: três scripts aceitos pelo parser, zero erros. Build self-contained win-x64 concluído com a URL HTTPS pública. O controlador confirmou os hashes finais dos artefatos gerados.
+- PowerShell: três scripts aceitos pelo parser, zero erros. Build self-contained win-x64 concluído com a URL HTTPS pública. O controlador confirmou os hashes dos artefatos dessa etapa; a integração final abaixo os substitui.
 - Instalador: `agent/artifacts/InnerNetworkAgent-Setup.exe`, 99.674.457 bytes, SHA-256 `593D772865E00C76C2F5B44EF8461C1B0C5C2F9BABB1CD03264C101104BD5B1A`.
 - ZIP: `agent/artifacts/Inner.Network.Agent-win-x64.zip`, 94.081.220 bytes, SHA-256 `A1DCB20426621405973E762804DFE1E4F060236EC55DE247AA121A76345E2609`. Contém instalador, guia, auxiliares e licença; payload embutido inclui executável do serviço, configuração e SQLite nativo.
 - Nota menor da revisão: o fluxo completo do worker após refresh com HTTP 401 até um novo código é confirmado pela ordem do código; os testes cobrem lifecycle e coordenador separadamente.
@@ -268,6 +269,16 @@ expect(await screen.findByText(/agente vinculado/i)).toBeInTheDocument();
 - Uma execução do detector Impeccable encontrou apenas uma classe roxa preexistente na seção de servidores do drawer compartilhado; nenhuma alteração de estilo fora do escopo foi feita. O detector JSX não substituiu a inspeção no navegador.
 - Prévia isolada com adapter em memória, sem login ou chamadas à API de produção. O controlador confirmou o texto histórico da descoberta após a correção final e restaurou o viewport.
 
-### Integração final pendente
+### Integração final — concluída
 
-A revisão ampla da integração ainda está pendente, incluindo o fallback de histórico legado com nomes ambíguos e a confiabilidade de seriais usados para reconciliar equipamentos. Nenhuma migration remota, instalação de serviço, varredura da LAN ou implantação em produção foi executada neste trabalho. O piloto físico permanece necessário.
+A revisão ampla identificou cinco correções: cache de autorização após novo vínculo, histórico legado com nomes ambíguos, serial genérico como identidade, substituição física no mesmo IP e preservação de interfaces em coletas parciais. A correção `0f766c5` fechou os três primeiros itens. A correção `07575b0` fechou as duas lacunas restantes: identidade parcialmente contraditória/aliases legados e disponibilidade de interfaces após timeout. O revisor GPT-6 Luna confirmou ambos os residuais endereçados, sem novos achados Critical/High/Important no diff. Todos os cinco achados funcionais estão concluídos.
+
+- Verificação independente final do controlador: 62/62 testes .NET de rede; 21/21 testes focados de API/validação; PostgreSQL 17 real com migrations 022–025, fixture e duas sessões concorrentes em banco novo `network_agent_fresh_20261020192105`. Saída 0. O implementador confirmou 22/22 testes Hyper-V após a última mudança.
+- Web completa: 25/29 aprovados, quatro falhas preexistentes de Conta/Sidebar. A última suíte completa backend teve 68/70 aprovados, duas falhas preexistentes de conta. TypeScript mantém os erros externos já registrados; nenhum novo erro de rede. A correção residual alterou somente store C#, SQL e seus testes; frontend/rotas TypeScript permaneceram iguais.
+- Novo instalador: 99.869.529 bytes, SHA-256 `269FDC05DA6D4F17EF3F8D533A84AF7AB4A22D7110DD156AE371583E70C6D8D9`. Novo ZIP: 94.463.641 bytes, SHA-256 `86E11E2C0F5BA77894830A3227CA9FFD912E2261581C2D6C45AAFAEC51D59931`. O controlador conferiu o EXE independente, EXE dentro do ZIP e cópia do ZIP em `backend/artifacts/`; hashes correspondem. Smoke local autenticado: HTTP 200, `application/zip` e hash/tamanho exatos.
+- Inventário de interfaces preservado também em timeout; taxas antigas ocultas e aviso de última lista conhecida confirmados em prévia isolada com dados simulados. As evidências e hashes atuais estão em `docs/10-Agentes/NETWORK-AGENT-INTEGRATION-VALIDATION.md`; o guia operacional cobre a implantação e o piloto.
+- Limites de cobertura menores permanecem explícitos: matriz completa de deadline/abort/backlog da retenção e fluxo completo de provisioning/pairing com resposta de configuração atrasada e waiter real no semáforo. Os guards de epoch foram confirmados em revisão de fonte; não se afirma cobertura completa desses cenários.
+
+Decisão registrada pelo controlador: concluir as duas correções funcionais mínimas apesar do limite de rodadas da skill, para cumprir a implementação aprovada antes de entregar. Se essa decisão fosse desnecessária, seu custo seria tempo adicional de implementação/revisão e um diff maior; ela não autoriza produção ou ampliação de escopo.
+
+Nenhuma migration remota, instalação de serviço, varredura da LAN ou implantação em produção foi executada neste trabalho. O piloto físico permanece necessário.
