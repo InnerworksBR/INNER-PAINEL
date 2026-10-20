@@ -107,6 +107,18 @@ BEGIN
     jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '7 seconds','result','success','interfaces','[]'::jsonb,'interfaces_observed',true)));
   PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
   IF NOT EXISTS (SELECT 1 FROM network_devices WHERE id=device AND interfaces->0->>'name'='newer-uplink') THEN RAISE EXCEPTION 'delayed interface observation regressed current table'; END IF;
+  batch := jsonb_build_object('sequence',24,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '9 seconds','result','timeout','interfaces','[]'::jsonb,'interfaces_observed',false)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE network_devices.id=device AND network_devices.result='timeout' AND network_devices.interfaces->0->>'name'='newer-uplink' AND network_devices.interfaces_observed=false) THEN RAISE EXCEPTION 'local timeout did not preserve interfaces and mark them unavailable'; END IF;
+  batch := jsonb_build_object('sequence',25,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '10 seconds','result','partial','interfaces',jsonb_build_array(jsonb_build_object('if_index',99,'name','must-not-replace')),'interfaces_observed',false)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE network_devices.id=device AND network_devices.interfaces->0->>'name'='newer-uplink' AND network_devices.interfaces_observed=false) THEN RAISE EXCEPTION 'explicit false with a non-empty interface array replaced last valid interfaces'; END IF;
+  batch := jsonb_build_object('sequence',26,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',network_id,'device_uid','stable-device','ip_address','10.44.0.7','device_name','SW-A','device_type','Switch','observed_at',now()+interval '9 seconds','result','timeout','interfaces',jsonb_build_array(jsonb_build_object('if_index',88,'name','delayed-must-not-replace')),'interfaces_observed',false)));
+  PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE network_devices.id=device AND network_devices.result='partial' AND network_devices.interfaces->0->>'name'='newer-uplink' AND network_devices.interfaces_observed=false) THEN RAISE EXCEPTION 'delayed timeout regressed the newer interface availability observation'; END IF;
 
   BEGIN
     PERFORM ingest_network_metric_batch((agent->>'agent_id')::uuid,company_b,
@@ -201,6 +213,13 @@ BEGIN
   PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
   IF (SELECT count(*) FROM network_devices WHERE company_id=company_a AND network_scope_id=shared_scope AND trusted_identity_value='chassis-42') <> 1 THEN RAISE EXCEPTION 'known collector timeout without fresh chassis identity created a duplicate'; END IF;
   IF NOT EXISTS(SELECT 1 FROM network_status_history WHERE network_device_id=shared_device AND collected_at>=now()-interval '1 minute' AND status='Atencao') THEN RAISE EXCEPTION 'known collector timeout was not attached to the bound shared device history'; END IF;
+  batch := jsonb_build_object('sequence',33,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','different-local-uid','ip_address','10.44.1.9','device_name','renamed-switch','device_type','Switch','serial_number',' CHASSIS-42 ','engine_id','engine-a','observed_at',now()+interval '6 seconds','result','success','interfaces',jsonb_build_array(jsonb_build_object('if_index',1,'name','shared-uplink')),'interfaces_observed',true)));
+  PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
+  batch := jsonb_build_object('sequence',34,'collected_at',now(),'devices',jsonb_build_array(
+    jsonb_build_object('network_id',second_config->'networks'->0->>'id','device_uid','different-local-uid','ip_address','10.44.1.9','device_name','renamed-switch','device_type','Switch','serial_number',' CHASSIS-42 ','engine_id','engine-a','observed_at',now()+interval '7 seconds','result','timeout','interfaces',jsonb_build_array(jsonb_build_object('if_index',99,'name','must-not-replace')),'interfaces_observed',false)));
+  PERFORM ingest_network_metric_batch((second_agent->>'agent_id')::uuid,company_a,batch);
+  IF NOT EXISTS (SELECT 1 FROM network_devices WHERE network_devices.id=shared_device AND network_devices.result='timeout' AND network_devices.interfaces->0->>'name'='shared-uplink' AND network_devices.interfaces_observed=false) THEN RAISE EXCEPTION 'shared-scope timeout did not preserve interfaces and mark them unavailable'; END IF;
   pairing5 := create_network_pairing(gen_random_uuid()::text,'separate-scope-host','1.0','Windows','[]',encode(gen_random_bytes(32),'hex'),repeat('p',64),now()+interval '15 minutes');
   PERFORM claim_network_pairing(company_a,gen_random_uuid(),(SELECT p.code_hash FROM network_agent_pairings p WHERE p.id=pairing5));
   fourth_agent := complete_network_pairing(pairing5,repeat('p',64),encode(gen_random_bytes(32),'hex'),encode(gen_random_bytes(32),'hex'));

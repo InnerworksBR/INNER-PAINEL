@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Inner.Network.Agent.Persistence;
 using Xunit;
 
@@ -112,6 +113,59 @@ public sealed class NetworkPersistenceTests
         {
             foreach (var file in new[] { path, path + "-shm", path + "-wal" }) if (File.Exists(file)) File.Delete(file);
         }
+    }
+
+    [Fact]
+    public async Task Any_conflicting_trusted_identifier_or_ambiguous_legacy_alias_forces_new_uid()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"network-agent-partial-identity-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var store = new NetworkAgentStore(path);
+            await store.InitializeAsync();
+            var now = DateTimeOffset.UtcNow;
+
+            var oldByEngine = await store.ResolveAndUpsertTargetAsync("network", "engine-conflict", "192.0.2.20", "engine-old", "serial-same", now, TimeSpan.FromMinutes(15));
+            await store.RecordCounterAsync(oldByEngine.ToString("D"), 1, "in", 9000, 9000, now);
+            var changedEngine = await store.ResolveAndUpsertTargetAsync("network", "engine-conflict", "192.0.2.20", "engine-new", "serial-same", now.AddMinutes(1), TimeSpan.FromMinutes(15));
+            Assert.NotEqual(oldByEngine, changedEngine);
+            Assert.Null(await store.RecordCounterAsync(changedEngine.ToString("D"), 1, "in", 5, 100, now.AddMinutes(1)));
+
+            var oldBySerial = await store.ResolveAndUpsertTargetAsync("network", "serial-conflict", "192.0.2.21", "engine-same", "serial-old", now, TimeSpan.FromMinutes(15));
+            await store.RecordCounterAsync(oldBySerial.ToString("D"), 1, "in", 8000, 8000, now);
+            var changedSerial = await store.ResolveAndUpsertTargetAsync("network", "serial-conflict", "192.0.2.21", "engine-same", "serial-new", now.AddMinutes(1), TimeSpan.FromMinutes(15));
+            Assert.NotEqual(oldBySerial, changedSerial);
+            Assert.Null(await store.RecordCounterAsync(changedSerial.ToString("D"), 1, "in", 7, 100, now.AddMinutes(1)));
+
+            var legacy = await store.ResolveAndUpsertTargetAsync("network", "legacy-conflict", "192.0.2.22", "engine-legacy", "serial-legacy", now, TimeSpan.FromMinutes(15));
+            await SeedTrustedAliasAsync(path, "legacy-conflict", "serial", "serial-contradictory-legacy", legacy.ToString("D"));
+            var ambiguousLegacy = await store.ResolveAndUpsertTargetAsync("network", "legacy-conflict", "192.0.2.22", "engine-legacy", "serial-legacy", now.AddMinutes(1), TimeSpan.FromMinutes(15));
+            Assert.NotEqual(legacy, ambiguousLegacy);
+        }
+        finally
+        {
+            foreach (var file in new[] { path, path + "-shm", path + "-wal" }) if (File.Exists(file)) File.Delete(file);
+        }
+    }
+
+    private static async Task SeedTrustedAliasAsync(string path, string scopeId, string kind, string value, string deviceUid)
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadWrite,
+            Cache = SqliteCacheMode.Shared,
+            Pooling = false,
+        }.ToString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO device_aliases(scope_id,kind,alias_value,device_uid) VALUES ($scope,$kind,$value,$uid)";
+        command.Parameters.AddWithValue("$scope", scopeId);
+        command.Parameters.AddWithValue("$kind", kind);
+        command.Parameters.AddWithValue("$value", value);
+        command.Parameters.AddWithValue("$uid", deviceUid);
+        await command.ExecuteNonQueryAsync();
     }
 
     [Fact]

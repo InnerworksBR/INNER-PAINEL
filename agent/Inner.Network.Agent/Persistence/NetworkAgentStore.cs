@@ -72,8 +72,10 @@ public sealed class NetworkAgentStore : IAsyncDisposable
         if (existingTarget is not null && trusted.Count > 0)
         {
             var stored = await ReadTrustedAliasesAsync(connection, transaction, scopeId, existingTarget, ct);
-            var comparable = trusted.Where(alias => stored.ContainsKey(alias.Kind)).ToArray();
-            if (comparable.Length > 0 && !comparable.Any(alias => string.Equals(stored[alias.Kind], alias.Value, StringComparison.OrdinalIgnoreCase)))
+            var hasContradictoryIdentity = trusted.Any(alias =>
+                stored.TryGetValue(alias.Kind, out var values) &&
+                (values.Count != 1 || !values.Contains(alias.Value)));
+            if (hasContradictoryIdentity)
             {
                 existingTarget = null;
                 targetIdentityConflict = true;
@@ -85,7 +87,7 @@ public sealed class NetworkAgentStore : IAsyncDisposable
         // ambiguous even when none currently has a fresh target. Never fall
         // back to an IP alias in that case, which could silently merge it.
         var trustedIdentityIsCurrentlyAmbiguous = candidates.Count > 1;
-        if (uid is null && candidates.Count == 1)
+        if (uid is null && !targetIdentityConflict && candidates.Count == 1)
         {
             var candidate = candidates.Single();
             var cutoff = (observedAt - trustedIdentityFreshWindow).ToString("O");
@@ -455,16 +457,21 @@ public sealed class NetworkAgentStore : IAsyncDisposable
             compact.Length > 0 && compact.All(character => character == '0') ? null : normalized;
     }
 
-    private static async Task<Dictionary<string, string>> ReadTrustedAliasesAsync(SqliteConnection connection, SqliteTransaction transaction, string scopeId, string deviceUid, CancellationToken ct)
+    private static async Task<Dictionary<string, HashSet<string>>> ReadTrustedAliasesAsync(SqliteConnection connection, SqliteTransaction transaction, string scopeId, string deviceUid, CancellationToken ct)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "SELECT kind,alias_value FROM device_aliases WHERE scope_id=$scope AND device_uid=$uid AND kind IN ('engine','serial')";
         command.Parameters.AddWithValue("$scope", scopeId);
         command.Parameters.AddWithValue("$uid", deviceUid);
-        var aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var aliases = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
         await using var reader = await command.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct)) aliases[reader.GetString(0)] = reader.GetString(1);
+        while (await reader.ReadAsync(ct))
+        {
+            var kind = reader.GetString(0);
+            if (!aliases.TryGetValue(kind, out var values)) aliases[kind] = values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            values.Add(reader.GetString(1));
+        }
         return aliases;
     }
 
