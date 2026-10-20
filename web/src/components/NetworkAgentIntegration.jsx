@@ -13,6 +13,11 @@ const discoveryLabels = { discovering: 'Descobrindo', awaiting_config: 'Aguardan
 const collectionLabels = { success: 'Sucesso', partial: 'Parcial', failed: 'Falhou' };
 const formatDiscovery = (value) => value == null || value === '' ? 'Ainda não informada' : discoveryLabels[value] || value;
 const formatCollection = (value) => value == null || value === '' ? '—' : collectionLabels[value] || value;
+const formatAgentDiscovery = (agent, now) => {
+  const heartbeat = agent.last_heartbeat ? new Date(agent.last_heartbeat).getTime() : NaN;
+  if (agent.discovery_state === 'discovering' && (!Number.isFinite(heartbeat) || now - heartbeat >= 3 * 60 * 1000)) return 'Último estado: Descobrindo (sem atualização recente)';
+  return formatDiscovery(agent.discovery_state);
+};
 const collectorState = (agent, now = Date.now()) => {
   if (agent.status === 'Revoked') return 'Revogado';
   if (agent.status === 'Paused') return 'Pausado';
@@ -40,6 +45,7 @@ const NetworkAgentIntegration = ({ companyId }) => {
   const [editingNetworkId, setEditingNetworkId] = useState('');
   const [scopeName, setScopeName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -49,6 +55,13 @@ const NetworkAgentIntegration = ({ companyId }) => {
   const activeRef = useRef(true);
   const companyPrefix = useMemo(() => adminPrefix(companyId || ''), [companyId]);
   const selectedAgent = agents.find((agent) => agent.id === agentId) || null;
+
+  useEffect(() => {
+    if (!companyId) return undefined;
+    setClockNow(Date.now());
+    const timer = setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [companyId]);
 
   const loadCompanyData = useCallback(async (isActive = () => true) => {
     if (!companyId) return;
@@ -277,10 +290,10 @@ const NetworkAgentIntegration = ({ companyId }) => {
             {loading ? <p className="text-sm text-slate-500">Carregando coletores…</p> : agents.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">Nenhum coletor vinculado. A lista de equipamentos visíveis na tela Rede não informa se um agente foi instalado.</p> : (
               <div className="space-y-2">
                 {agents.map((agent) => {
-                  const state = collectorState(agent);
+                  const state = collectorState(agent, clockNow);
                   return <button type="button" key={agent.id} onClick={() => setAgentId(agent.id)} className={`w-full rounded-lg border p-3 text-left transition-colors ${agentId === agent.id ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'}`}>
                     <span className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-slate-800">{agent.hostname}</strong><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{state}</span></span>
-                    <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500"><span>Versão: {agent.agent_version || '—'}</span><span>Equipamentos: {agent.device_count ?? 0}</span><span>Último contato: {formatDate(agent.last_heartbeat)}</span><span>Última descoberta: {formatDate(agent.last_discovery_at)}</span><span>Descoberta: {formatDiscovery(agent.discovery_state)}</span><span>Última coleta: {formatCollection(agent.last_collection_result)}</span></span>
+                    <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500"><span>Versão: {agent.agent_version || '—'}</span><span>Equipamentos: {agent.device_count ?? 0}</span><span>Último contato: {formatDate(agent.last_heartbeat)}</span><span>Última descoberta: {formatDate(agent.last_discovery_at)}</span><span>Descoberta: {formatAgentDiscovery(agent, clockNow)}</span><span>Última coleta: {formatCollection(agent.last_collection_result)}</span></span>
                   </button>;
                 })}
               </div>

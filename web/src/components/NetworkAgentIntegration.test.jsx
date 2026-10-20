@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../services/api';
 import NetworkAgentIntegration from './NetworkAgentIntegration';
@@ -129,7 +129,7 @@ describe('NetworkAgentIntegration', () => {
     render(<NetworkAgentIntegration companyId="company-a" />);
 
     expect(await screen.findByText('Sem contato')).toBeInTheDocument();
-    expect(screen.getByText('Descoberta: Descobrindo')).toBeInTheDocument();
+    expect(screen.getByText('Descoberta: Último estado: Descobrindo (sem atualização recente)')).toBeInTheDocument();
     expect(screen.getByText('Última coleta: Sucesso')).toBeInTheDocument();
   });
 
@@ -142,6 +142,41 @@ describe('NetworkAgentIntegration', () => {
     render(<NetworkAgentIntegration companyId="company-a" />);
 
     expect(await screen.findByText('Contato atrasado')).toBeInTheDocument();
+  });
+
+  it('ages collector and discovery state on the local clock without fetching again', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2026-10-20T12:00:00.000Z'));
+    const heartbeat = new Date(Date.now() - 60_000).toISOString();
+    api.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/network-agents')
+      ? [{ id: 'agent-a', hostname: 'COLETOR-A', status: 'Online', last_heartbeat: heartbeat, discovery_state: 'discovering', device_count: 0 }]
+      : url.endsWith('/snmp-credentials') || url.endsWith('/network-scopes') ? []
+        : { version: 1, enabled: true, networks: [{ id: 'network-a', cidr: '192.168.10.0/24', enabled: true, snmp_port: 161, excluded_ips: [], credential_ids: [] }] } }));
+    const view = render(<NetworkAgentIntegration companyId="company-a" />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(screen.getByText('Descobrindo')).toBeInTheDocument();
+    expect(screen.getByText('Descoberta: Descobrindo')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /editar rede 192\.168\.10\.0\/24/i }));
+    fireEvent.change(screen.getByLabelText(/rede ipv4.*cidr/i), { target: { value: '192.168.10.0/25' } });
+    const initialRequestCount = api.get.mock.calls.length;
+
+    await act(async () => { vi.advanceTimersByTime(2 * 60 * 1000); });
+    expect(screen.getByText('Contato atrasado')).toBeInTheDocument();
+    expect(screen.getByText('Descoberta: Último estado: Descobrindo (sem atualização recente)')).toBeInTheDocument();
+    expect(screen.queryByText('Descoberta: Descobrindo')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/rede ipv4.*cidr/i)).toHaveValue('192.168.10.0/25');
+
+    await act(async () => { vi.advanceTimersByTime(7 * 60 * 1000); });
+    expect(screen.getByText('Sem contato')).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(initialRequestCount);
+
+    view.rerender(<NetworkAgentIntegration companyId="company-b" />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(vi.getTimerCount()).toBe(1);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 
   it('shows the package-build recovery message when authenticated download returns 503', async () => {
