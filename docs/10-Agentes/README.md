@@ -1,5 +1,7 @@
 # 🤖 Agentes de Monitoramento
 
+O novo coletor Windows SNMP com vinculação por código está documentado no [guia de implantação do Inner Network Agent](NETWORK-AGENT-DEPLOYMENT.md). As seções abaixo registram integrações anteriores; para instalar o novo serviço `InnerNetworkAgent`, seguir o guia específico e `agent/NETWORK-AGENT.md`.
+
 ## Visão Geral
 
 O Portal Inner utiliza agentes para coleta de métricas detalhadas dos servidores clientes.
