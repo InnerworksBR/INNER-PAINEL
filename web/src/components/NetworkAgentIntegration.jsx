@@ -9,6 +9,23 @@ const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bo
 
 const messageFrom = (error, fallback) => error?.response?.data?.error || error?.message || fallback;
 const formatDate = (value) => value ? new Date(value).toLocaleString('pt-BR') : 'Ainda não registrado';
+const discoveryLabels = { discovering: 'Descobrindo', awaiting_config: 'Aguardando configuração', complete: 'Concluída', failed: 'Falhou', idle: 'Aguardando início', pending: 'Pendente' };
+const collectionLabels = { success: 'Sucesso', partial: 'Parcial', failed: 'Falhou' };
+const formatDiscovery = (value) => value == null || value === '' ? 'Ainda não informada' : discoveryLabels[value] || value;
+const formatCollection = (value) => value == null || value === '' ? '—' : collectionLabels[value] || value;
+const collectorState = (agent, now = Date.now()) => {
+  if (agent.status === 'Revoked') return 'Revogado';
+  if (agent.status === 'Paused') return 'Pausado';
+  const heartbeat = agent.last_heartbeat ? new Date(agent.last_heartbeat).getTime() : NaN;
+  const age = now - heartbeat;
+  if (!Number.isFinite(heartbeat) || age >= 10 * 60 * 1000) return 'Sem contato';
+  if (age >= 3 * 60 * 1000) return 'Contato atrasado';
+  if (agent.last_collection_result === 'failed') return 'Erro na coleta';
+  if (agent.discovery_state === 'discovering') return 'Descobrindo';
+  if (agent.discovery_state === 'awaiting_config') return 'Aguardando configuração';
+  return agent.status || 'Sem contato';
+};
+const defaultNetworkDraft = () => ({ cidr: '', snmp_port: '161', excluded_ips: '', credential_ids: [], network_scope_id: '', enabled: true });
 
 const NetworkAgentIntegration = ({ companyId }) => {
   const [agents, setAgents] = useState([]);
@@ -19,7 +36,8 @@ const NetworkAgentIntegration = ({ companyId }) => {
   const [pairingCode, setPairingCode] = useState('');
   const [credential, setCredential] = useState({ name: '', version: '2c', community: '', username: '', security_level: 'authNoPriv', auth_protocol: 'SHA256', auth_password: '', privacy_protocol: 'AES128', privacy_password: '', context_name: '' });
   const [credentialIdBeingReplaced, setCredentialIdBeingReplaced] = useState('');
-  const [networkDraft, setNetworkDraft] = useState({ cidr: '', snmp_port: '161', excluded_ips: '', credential_ids: [], network_scope_id: '' });
+  const [networkDraft, setNetworkDraft] = useState(defaultNetworkDraft);
+  const [editingNetworkId, setEditingNetworkId] = useState('');
   const [scopeName, setScopeName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -62,6 +80,8 @@ const NetworkAgentIntegration = ({ companyId }) => {
     setScopes([]);
     setAgentId('');
     setConfiguration(emptyConfiguration);
+    setEditingNetworkId('');
+    setNetworkDraft(defaultNetworkDraft());
     setPairingCode('');
     setCredentialIdBeingReplaced('');
     setError('');
@@ -72,6 +92,8 @@ const NetworkAgentIntegration = ({ companyId }) => {
   }, [loadCompanyData, companyId]);
 
   useEffect(() => {
+    setEditingNetworkId('');
+    setNetworkDraft(defaultNetworkDraft());
     if (!agentId || !companyId) {
       setConfiguration(emptyConfiguration);
       return undefined;
@@ -172,11 +194,13 @@ const NetworkAgentIntegration = ({ companyId }) => {
       });
       setConfiguration({ ...emptyConfiguration, ...response.data, networks: response.data?.networks || [] });
       setNotice('Configuração salva. O agente a aplicará no próximo contato.');
+      return true;
     } catch (saveError) { setError(messageFrom(saveError, 'Não foi possível salvar a configuração.')); }
     finally { setSaving(false); }
+    return false;
   };
 
-  const addNetwork = (event) => {
+  const saveNetwork = async (event) => {
     event.preventDefault();
     const cidr = networkDraft.cidr.trim();
     const match = cidr.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
@@ -187,12 +211,25 @@ const NetworkAgentIntegration = ({ companyId }) => {
     const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
     if ((value & mask) >>> 0 !== value) { setError('O endereço de rede deve ter os bits de host zerados; use, por exemplo, 192.168.10.0/24.'); return; }
     if (Number(networkDraft.snmp_port) < 1 || Number(networkDraft.snmp_port) > 65535) { setError('A porta SNMP deve estar entre 1 e 65535.'); return; }
-    if (configuration.networks.length >= 256) { setError('O limite de 256 redes por coletor foi atingido.'); return; }
-    if (configuration.networks.some((network) => network.cidr === cidr)) { setError('Esta rede já está na configuração.'); return; }
-    const network = { cidr, enabled: true, snmp_port: Number(networkDraft.snmp_port || 161), excluded_ips: networkDraft.excluded_ips.split(',').map((item) => item.trim()).filter(Boolean), credential_ids: networkDraft.credential_ids, ...(networkDraft.network_scope_id ? { network_scope_id: networkDraft.network_scope_id } : {}) };
-    saveConfiguration([...configuration.networks, network], true);
-    setNetworkDraft({ cidr: '', snmp_port: '161', excluded_ips: '', credential_ids: [], network_scope_id: '' });
+    const original = configuration.networks.find((network) => (network.id || network.cidr) === editingNetworkId);
+    if (!original && configuration.networks.length >= 256) { setError('O limite de 256 redes por coletor foi atingido.'); return; }
+    if (configuration.networks.some((network) => network.cidr === cidr && (network.id || network.cidr) !== editingNetworkId)) { setError('Esta rede já está na configuração.'); return; }
+    const network = { ...(original?.id ? { id: original.id } : {}), cidr, enabled: networkDraft.enabled, snmp_port: Number(networkDraft.snmp_port || 161), excluded_ips: networkDraft.excluded_ips.split(',').map((item) => item.trim()).filter(Boolean), credential_ids: networkDraft.credential_ids, ...(networkDraft.network_scope_id ? { network_scope_id: networkDraft.network_scope_id } : {}) };
+    const networks = original
+      ? configuration.networks.map((item) => (item.id || item.cidr) === editingNetworkId ? network : item)
+      : [...configuration.networks, network];
+    const saved = await saveConfiguration(networks, original ? configuration.enabled : true);
+    if (saved) {
+      setEditingNetworkId('');
+      setNetworkDraft(defaultNetworkDraft());
+    }
   };
+
+  const beginEditNetwork = (network) => {
+    setEditingNetworkId(network.id || network.cidr);
+    setNetworkDraft({ cidr: network.cidr, snmp_port: String(network.snmp_port || 161), excluded_ips: (network.excluded_ips || []).join(', '), credential_ids: [...(network.credential_ids || [])], network_scope_id: network.network_scope_id || '', enabled: network.enabled !== false });
+  };
+  const cancelNetworkEdit = () => { setEditingNetworkId(''); setNetworkDraft(defaultNetworkDraft()); };
 
   const createScope = async () => {
     const name = scopeName.trim();
@@ -240,10 +277,10 @@ const NetworkAgentIntegration = ({ companyId }) => {
             {loading ? <p className="text-sm text-slate-500">Carregando coletores…</p> : agents.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">Nenhum coletor vinculado. A lista de equipamentos visíveis na tela Rede não informa se um agente foi instalado.</p> : (
               <div className="space-y-2">
                 {agents.map((agent) => {
-                  const state = agent.status === 'Revoked' ? 'Revogado' : agent.status === 'Paused' ? 'Pausado' : agent.last_collection_result === 'failed' ? 'Erro na coleta' : agent.discovery_state === 'discovering' ? 'Descobrindo' : agent.discovery_state === 'awaiting_config' ? 'Aguardando configuração' : agent.status === 'Online' ? 'Online' : agent.status || 'Sem contato';
+                  const state = collectorState(agent);
                   return <button type="button" key={agent.id} onClick={() => setAgentId(agent.id)} className={`w-full rounded-lg border p-3 text-left transition-colors ${agentId === agent.id ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'}`}>
                     <span className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-slate-800">{agent.hostname}</strong><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{state}</span></span>
-                    <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500"><span>Versão: {agent.agent_version || '—'}</span><span>Equipamentos: {agent.device_count ?? 0}</span><span>Último contato: {formatDate(agent.last_heartbeat)}</span><span>Última descoberta: {formatDate(agent.last_discovery_at)}</span><span>Descoberta: {agent.discovery_state || 'Ainda não informada'}</span><span>Última coleta: {agent.last_collection_result || '—'}</span></span>
+                    <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-500"><span>Versão: {agent.agent_version || '—'}</span><span>Equipamentos: {agent.device_count ?? 0}</span><span>Último contato: {formatDate(agent.last_heartbeat)}</span><span>Última descoberta: {formatDate(agent.last_discovery_at)}</span><span>Descoberta: {formatDiscovery(agent.discovery_state)}</span><span>Última coleta: {formatCollection(agent.last_collection_result)}</span></span>
                   </button>;
                 })}
               </div>
@@ -283,13 +320,13 @@ const NetworkAgentIntegration = ({ companyId }) => {
           <label className="text-sm font-medium text-slate-700">IPs excluídos<input className={`${inputClass} mt-1`} placeholder="Separe por vírgula" value={networkDraft.excluded_ips} onChange={(event) => setNetworkDraft({ ...networkDraft, excluded_ips: event.target.value })} /></label>
           <label className="text-sm font-medium text-slate-700">Escopo físico compartilhado<select className={`${inputClass} mt-1`} value={networkDraft.network_scope_id} onChange={(event) => setNetworkDraft({ ...networkDraft, network_scope_id: event.target.value })}><option value="">Somente este coletor e esta rede</option>{scopes.map((scope) => <option key={scope.id} value={scope.id}>{scope.name}</option>)}</select></label>
           <div className="space-y-2 text-sm text-slate-700"><span className="font-medium">Credenciais permitidas</span>{credentials.map((item) => <label key={item.id} className="flex items-center gap-2 text-sm font-normal"><input type="checkbox" checked={networkDraft.credential_ids.includes(item.id)} onChange={() => toggleCredential(item.id)} />{item.name} · v{item.version}</label>)}{!credentials.length && <p className="text-xs text-slate-500">Cadastre uma credencial para habilitar consultas.</p>}</div>
-          <div className="flex flex-wrap items-end gap-2"><button type="button" onClick={addNetwork} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"><Plus size={15} />Adicionar rede</button>{configuration.enabled ? <button type="button" disabled={saving} onClick={() => saveConfiguration(configuration.networks, false)} className={buttonClass}>Pausar configuração</button> : <button type="button" disabled={saving || !configuration.networks.length} onClick={() => saveConfiguration(configuration.networks, true)} className={buttonClass}>Retomar configuração</button>}<button type="button" disabled={saving || selectedAgent.status === 'Revoked'} onClick={revokeAgent} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Revogar coletor</button></div>
+          <div className="flex flex-wrap items-end gap-2">{editingNetworkId && <label className="flex items-center gap-2 pb-2 text-sm text-slate-700"><input aria-label="Rede ativa" type="checkbox" checked={networkDraft.enabled} onChange={(event) => setNetworkDraft((current) => ({ ...current, enabled: event.target.checked }))} />Rede ativa</label>}<button type="button" onClick={saveNetwork} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"><Plus size={15} />{editingNetworkId ? 'Salvar rede' : 'Adicionar rede'}</button>{editingNetworkId && <button type="button" onClick={cancelNetworkEdit} disabled={saving} className={buttonClass}>Cancelar edição</button>}{configuration.enabled ? <button type="button" disabled={saving} onClick={() => saveConfiguration(configuration.networks, false)} className={buttonClass}>Pausar configuração</button> : <button type="button" disabled={saving || !configuration.networks.length} onClick={() => saveConfiguration(configuration.networks, true)} className={buttonClass}>Retomar configuração</button>}<button type="button" disabled={saving || selectedAgent.status === 'Revoked'} onClick={revokeAgent} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">Revogar coletor</button></div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-sm text-slate-700">Escopo compartilhado novo<input className={`${inputClass} mt-1 min-w-60`} value={scopeName} onChange={(event) => setScopeName(event.target.value)} placeholder="Filial ou local físico" /></label>
           <button type="button" onClick={createScope} disabled={!scopeName.trim()} className={`${buttonClass} mt-5`}>Criar escopo</button>
         </div>
-        {configuration.networks.length > 0 ? <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">{configuration.networks.map((network, index) => <li key={network.id || `${network.cidr}-${index}`} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm"><span className="font-medium text-slate-800">{network.cidr} <span className="font-normal text-slate-500">· UDP {network.snmp_port} · {network.credential_ids?.length || 0} credencial(is) · {network.enabled ? 'Ativa' : 'Pausada'}</span></span><button type="button" aria-label={`Remover rede ${network.cidr}`} onClick={() => saveConfiguration(configuration.networks.filter((_, itemIndex) => itemIndex !== index), configuration.enabled)} className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-700"><Trash2 size={15} /></button></li>)}</ul> : <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">Nenhuma rede configurada para este coletor.</p>}
+        {configuration.networks.length > 0 ? <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">{configuration.networks.map((network, index) => <li key={network.id || `${network.cidr}-${index}`} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm"><span className="font-medium text-slate-800">{network.cidr} <span className="font-normal text-slate-500">· UDP {network.snmp_port} · {network.credential_ids?.length || 0} credencial(is) · {network.enabled ? 'Ativa' : 'Pausada'}</span></span><span className="flex items-center gap-1"><button type="button" aria-label={`Editar rede ${network.cidr}`} onClick={() => beginEditNetwork(network)} className="rounded-md px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50">Editar</button><button type="button" aria-label={`Remover rede ${network.cidr}`} onClick={() => saveConfiguration(configuration.networks.filter((_, itemIndex) => itemIndex !== index), configuration.enabled)} className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-700"><Trash2 size={15} /></button></span></li>)}</ul> : <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">Nenhuma rede configurada para este coletor.</p>}
       </div>}
     </section>
   );

@@ -14,6 +14,10 @@ const labels = {
   location: 'Localização',
   sys_contact: 'Contato SNMP',
 };
+const resultLabels = { success: 'Sucesso', partial: 'Parcial', timeout: 'Tempo esgotado', auth_error: 'Falha de autenticação', protocol_error: 'Erro de protocolo' };
+const formatResult = (value) => value == null || value === '' ? '—' : resultLabels[value] || value;
+const interfaceStatusLabels = { 1: 'Ativa', 2: 'Inativa', 3: 'Em teste' };
+const formatInterfaceStatus = (value) => value == null || value === '' ? '—' : interfaceStatusLabels[value] || String(value);
 
 const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) => {
   const requestConfig = useClientRequestConfig();
@@ -54,6 +58,8 @@ const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) 
   const networkInterfaces = Array.isArray(networkTelemetry.interfaces) ? networkTelemetry.interfaces : [];
   const telemetryFreshness = telemetry.telemetry_status || networkTelemetry.telemetry_status || detail?.telemetry_status;
   const lastObserved = networkTelemetry.last_poll_at || detail?.last_poll_at;
+  const networkStatus = networkTelemetry.status || detail?.status;
+  const badgeStatus = isServer ? telemetry.status : networkStatus;
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
@@ -63,7 +69,7 @@ const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) 
     }
   };
 
-  const statusConfig = telemetry.status ? getStatusColor(telemetry.status) : getStatusColor('online');
+  const statusConfig = badgeStatus ? getStatusColor(badgeStatus) : getStatusColor('online');
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -91,10 +97,10 @@ const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) 
                 {detail?.display_name || asset?.hostname || asset?.device_name}
               </h2>
               <div className="flex flex-wrap gap-2 mt-3">
-                {telemetry.status && (
+                {badgeStatus && (
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${statusConfig.bg} ${statusConfig.text} border ${statusConfig.border}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.text.replace('text-', 'bg-')}`} />
-                    {telemetry.status}
+                    {badgeStatus}
                   </span>
                 )}
                 {detail?.environment && (
@@ -197,7 +203,7 @@ const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) 
                     </div>
                     <div className="rounded-xl bg-neutral-50/50 border border-neutral-100 p-4">
                       <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">Resultado da consulta</p>
-                      <p className="text-sm font-semibold text-neutral-900">{networkTelemetry.result === 'timeout' || networkTelemetry.status === 'Sem resposta SNMP' ? 'Sem resposta SNMP' : networkTelemetry.result || '—'}</p>
+                      <p className="text-sm font-semibold text-neutral-900">{networkTelemetry.result === 'timeout' || networkTelemetry.status === 'Sem resposta SNMP' ? 'Sem resposta SNMP' : formatResult(networkTelemetry.result)}</p>
                     </div>
                     <div className="col-span-2 rounded-xl bg-neutral-50/50 border border-neutral-100 p-4">
                       <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-wide mb-1">Última observação</p>
@@ -212,7 +218,7 @@ const AssetDetailDrawer = ({ asset, onClose, sourceType: requestedSourceType }) 
                   <h3 className="text-sm font-semibold text-neutral-700 flex items-center gap-2 mb-4"><Wifi size={16} className="text-blue-600" />Interfaces</h3>
                   <div className="space-y-3">
                     {networkInterfaces.map((iface) => <div key={iface.if_index} className="rounded-xl border border-neutral-100 bg-neutral-50/50 p-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-neutral-900">{iface.name || iface.description || `Interface ${iface.if_index}`}</p><p className="mt-1 text-xs text-neutral-500">Índice {iface.if_index} · Tipo {iface.if_type ?? '—'} · MAC {iface.mac_address || '—'}</p></div><div className="text-right text-xs text-neutral-600"><p>Admin: {iface.admin_status ?? '—'}</p><p>Operação: {iface.oper_status ?? '—'}</p></div></div>
+                      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-semibold text-neutral-900">{iface.name || iface.description || `Interface ${iface.if_index}`}</p><p className="mt-1 text-xs text-neutral-500">Índice {iface.if_index} · Tipo {iface.if_type ?? '—'} · MAC {iface.mac_address || '—'}</p></div><div className="text-right text-xs text-neutral-600"><p>Admin: {formatInterfaceStatus(iface.admin_status)}</p><p>Operação: {formatInterfaceStatus(iface.oper_status)}</p></div></div>
                       <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-neutral-600"><div><dt>Entrada (octetos)</dt><dd className="font-medium text-neutral-900">{iface.in_octets ?? '—'}</dd></div><div><dt>Saída (octetos)</dt><dd className="font-medium text-neutral-900">{iface.out_octets ?? '—'}</dd></div><div><dt>Entrada</dt><dd className="font-medium text-neutral-900">{iface.in_bps == null ? '—' : `${iface.in_bps} bps`}</dd></div><div><dt>Saída</dt><dd className="font-medium text-neutral-900">{iface.out_bps == null ? '—' : `${iface.out_bps} bps`}</dd></div></dl>
                     </div>)}
                   </div>

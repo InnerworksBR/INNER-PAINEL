@@ -85,6 +85,65 @@ describe('NetworkAgentIntegration', () => {
     expect(api.put).not.toHaveBeenCalled();
   });
 
+  it('loads a selected collector with no configuration as an empty version-zero setup', async () => {
+    api.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/network-agents')
+      ? [{ id: 'agent-empty', hostname: 'COLETOR-NOVO', status: 'Online', device_count: 0 }]
+      : url.endsWith('/snmp-credentials') || url.endsWith('/network-scopes') ? []
+        : { version: 0, enabled: false, collection_interval_seconds: 60, discovery_interval_seconds: 900, networks: [] } }));
+    render(<NetworkAgentIntegration companyId="company-a" />);
+
+    expect(await screen.findByText('Configuração v0 · Pendente')).toBeInTheDocument();
+    expect(screen.getByText('Nenhuma rede configurada para este coletor.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retomar configuração/i })).toBeDisabled();
+  });
+
+  it('edits an existing network without losing its ID, selected scope, or network settings', async () => {
+    api.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/network-agents')
+      ? [{ id: 'agent-a', hostname: 'COLETOR-A', status: 'Online', device_count: 2 }]
+      : url.endsWith('/snmp-credentials') ? [{ id: 'credential-b', name: 'Filial', version: '3' }]
+        : url.endsWith('/network-scopes') ? [{ id: 'scope-a', name: 'Matriz' }, { id: 'scope-b', name: 'Filial' }]
+          : { version: 4, enabled: true, collection_interval_seconds: 60, discovery_interval_seconds: 900, networks: [{ id: 'network-uuid-1', cidr: '192.168.10.0/24', enabled: true, snmp_port: 161, excluded_ips: ['192.168.10.1'], credential_ids: ['credential-b'], network_scope_id: 'scope-a' }] } }));
+    api.put.mockImplementationOnce((_url, body) => Promise.resolve({ data: body }));
+    render(<NetworkAgentIntegration companyId="company-a" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /editar rede 192\.168\.10\.0\/24/i }));
+    fireEvent.change(screen.getByLabelText(/rede ipv4.*cidr/i), { target: { value: '192.168.10.0/25' } });
+    fireEvent.change(screen.getByLabelText(/porta snmp/i), { target: { value: '162' } });
+    fireEvent.change(screen.getByLabelText(/ips excluídos/i), { target: { value: '192.168.10.7' } });
+    fireEvent.change(screen.getByLabelText(/escopo físico compartilhado/i), { target: { value: 'scope-b' } });
+    fireEvent.click(screen.getByLabelText(/rede ativa/i));
+    fireEvent.click(screen.getByRole('button', { name: /salvar rede/i }));
+
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    expect(api.put).toHaveBeenCalledWith('/admin/monitoring/companies/company-a/network-agents/agent-a/config', expect.objectContaining({
+      networks: [{ id: 'network-uuid-1', cidr: '192.168.10.0/25', enabled: false, snmp_port: 162, excluded_ips: ['192.168.10.7'], credential_ids: ['credential-b'], network_scope_id: 'scope-b' }],
+    }));
+  });
+
+  it('shows stale collector contact ahead of an active discovery state and translates diagnostics', async () => {
+    const oldHeartbeat = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    api.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/network-agents')
+      ? [{ id: 'agent-a', hostname: 'COLETOR-A', status: 'Online', last_heartbeat: oldHeartbeat, discovery_state: 'discovering', last_collection_result: 'success', device_count: 0 }]
+      : url.endsWith('/snmp-credentials') || url.endsWith('/network-scopes') ? []
+        : { version: 0, enabled: false, networks: [] } }));
+    render(<NetworkAgentIntegration companyId="company-a" />);
+
+    expect(await screen.findByText('Sem contato')).toBeInTheDocument();
+    expect(screen.getByText('Descoberta: Descobrindo')).toBeInTheDocument();
+    expect(screen.getByText('Última coleta: Sucesso')).toBeInTheDocument();
+  });
+
+  it('marks collector contact as delayed after three minutes', async () => {
+    const delayedHeartbeat = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    api.get.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/network-agents')
+      ? [{ id: 'agent-a', hostname: 'COLETOR-A', status: 'Online', last_heartbeat: delayedHeartbeat, discovery_state: 'idle', device_count: 0 }]
+      : url.endsWith('/snmp-credentials') || url.endsWith('/network-scopes') ? []
+        : { version: 0, enabled: false, networks: [] } }));
+    render(<NetworkAgentIntegration companyId="company-a" />);
+
+    expect(await screen.findByText('Contato atrasado')).toBeInTheDocument();
+  });
+
   it('shows the package-build recovery message when authenticated download returns 503', async () => {
     api.get.mockImplementation((url) => url === '/admin/monitoring/network-agent/download'
       ? Promise.reject({ response: { status: 503, data: { error: 'Pacote indisponível' } } })

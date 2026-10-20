@@ -4,7 +4,8 @@ import api from '../services/api';
 import AssetDetailDrawer from './AssetDetailDrawer';
 
 vi.mock('../services/api', () => ({ default: { get: vi.fn() } }));
-vi.mock('../context/ClientPreviewContext', () => ({ useClientRequestConfig: () => ({}) }));
+const { requestConfig } = vi.hoisted(() => ({ requestConfig: {} }));
+vi.mock('../context/ClientPreviewContext', () => ({ useClientRequestConfig: () => requestConfig }));
 
 describe('AssetDetailDrawer network telemetry', () => {
   beforeEach(() => {
@@ -27,6 +28,24 @@ describe('AssetDetailDrawer network telemetry', () => {
     expect(screen.getByText('9007199254741001')).toBeInTheDocument();
     expect(screen.getByText('4294967298')).toBeInTheDocument();
     expect(screen.getByText('0 bps')).toBeInTheDocument();
+    expect(screen.getByText('Admin: Ativa')).toBeInTheDocument();
+    expect(screen.getByText('Operação: Inativa')).toBeInTheDocument();
     expect(screen.getByText('Contato SNMP')).toBeInTheDocument();
+  });
+
+  it('uses nested network-device status for the badge color and timeout result', async () => {
+    api.get.mockResolvedValueOnce({ data: {
+      display_name: 'SW-02', asset_type: 'switch',
+      telemetry: {
+        telemetry_status: 'no_data',
+        network_device: { status: 'Offline', result: 'timeout', ip_address: '192.168.10.3', interfaces: [] },
+      },
+    } });
+    render(<AssetDetailDrawer asset={{ id: 'network-2', device_name: 'SW-02' }} sourceType="network_device" onClose={() => {}} />);
+
+    const badge = (await screen.findAllByText('Offline'))[0].closest('span');
+    expect(badge).toHaveClass('bg-red-50', 'text-red-700');
+    expect(screen.getByText('Sem dados recentes')).toBeInTheDocument();
+    expect(screen.getByText('Sem resposta SNMP')).toBeInTheDocument();
   });
 });
