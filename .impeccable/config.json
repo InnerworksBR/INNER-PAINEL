@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "ai-color-palette",
+        "value": "*",
+        "files": [
+          "web/src/components/AssetDetailDrawer.jsx"
+        ],
+        "createdAt": "2026-10-20T19:30:28.711Z",
+        "reason": "Agent triage: b97e5df already uses purple only for the server memory metric on a light background; this is semantic metric coloring, not a gradient or cyan-on-dark palette. Preserve the incumbent UI."
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "files": [
+          "web/src/index.css"
+        ],
+        "createdAt": "2026-10-20T19:30:30.552Z",
+        "reason": "Agent triage: lowercase detector spelling of the existing Plus Jakarta Sans import in b97e5df; preserve the same global typography and limit this exception to index.css."
+      }
+    ]
+  }
+}
