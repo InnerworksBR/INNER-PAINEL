@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Inner.Network.Agent</AssemblyName>
     <RootNamespace>Inner.Network.Agent</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.1.1</Version>
     <Authors>InnerWorks</Authors>
     <Company>InnerWorks</Company>
     <Product>Inner Network Agent</Product>

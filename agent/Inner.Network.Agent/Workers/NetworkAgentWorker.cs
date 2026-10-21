@@ -28,7 +28,7 @@ public sealed record NetworkInterfaceMetric(
 
 public sealed class NetworkAgentWorker(ILogger<NetworkAgentWorker> logger, IConfiguration configuration) : BackgroundService
 {
-    private const string Version = "1.1.0";
+    private const string Version = "1.1.1";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,

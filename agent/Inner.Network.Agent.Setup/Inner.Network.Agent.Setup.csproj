@@ -8,7 +8,7 @@
     <AssemblyName>InnerNetworkAgent-Setup</AssemblyName>
     <RootNamespace>Inner.Network.Agent.Setup</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.0.1</Version>
+    <Version>1.1.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="$(AgentPackagePath)" LogicalName="Inner.Network.Agent.Setup.AgentPackage.zip" Condition="'$(AgentPackagePath)' != ''" />

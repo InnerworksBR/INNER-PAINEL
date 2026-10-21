@@ -11,6 +11,34 @@ namespace Inner.Network.Agent.Tests;
 public sealed class NetworkApiClientTests
 {
     [Fact]
+    public async Task Heartbeat_accepts_204_without_content_length_instead_of_parsing_empty_json()
+    {
+        using var http = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent)
+        {
+            Content = new EmptyUnspecifiedLengthContent()
+        }));
+        var client = new NetworkApiClient(http, "https://api.example.test");
+
+        await client.SendHeartbeatAsync("access", new { source_time = DateTimeOffset.UtcNow });
+    }
+
+    [Fact]
+    public async Task Metrics_204_without_body_does_not_acknowledge_a_batch()
+    {
+        using var http = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent)
+        {
+            Content = new EmptyUnspecifiedLengthContent()
+        }));
+        var client = new NetworkApiClient(http, "https://api.example.test");
+        using var payload = JsonDocument.Parse("{\"sequence\":1,\"devices\":[]}");
+
+        var error = await Assert.ThrowsAsync<NetworkApiException>(() =>
+            client.SendMetricsAsync("agent", "access", 1, payload.RootElement));
+
+        Assert.Equal(HttpStatusCode.BadGateway, error.StatusCode);
+    }
+
+    [Fact]
     public async Task Pairing_uses_snake_case_api_route_even_when_base_url_includes_api()
     {
         string? capturedUri = null;
@@ -212,6 +240,12 @@ public sealed class NetworkApiClientTests
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(respond(request));
+    }
+
+    private sealed class EmptyUnspecifiedLengthContent : HttpContent
+    {
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => Task.CompletedTask;
     }
 
     private sealed class AsyncStubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler

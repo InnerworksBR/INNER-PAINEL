@@ -36,7 +36,7 @@ public sealed class SnmpClient
             if (pdu.ErrorStatus.ToInt32() != 0) throw new SnmpProtocolException($"SNMP error status {pdu.ErrorStatus}.");
             return pdu.Variables
                 .Where(v => v.Data.TypeCode is not (SnmpType.NoSuchObject or SnmpType.NoSuchInstance or SnmpType.EndOfMibView))
-                .Select(v => new SnmpValue(v.Id.ToString(), v.Data.ToString(), v.Data.TypeCode)).ToArray();
+                .Select(v => new SnmpValue(v.Id.ToString(), FormatValue(v), v.Data.TypeCode)).ToArray();
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -94,7 +94,7 @@ public sealed class SnmpClient
                 var next = pdu.Variables.FirstOrDefault();
                 if (next is null || !next.Id.ToString().StartsWith(rootOid + ".", StringComparison.Ordinal) || next.Data.TypeCode == SnmpType.EndOfMibView ||
                     next.Data.TypeCode is SnmpType.NoSuchObject or SnmpType.NoSuchInstance) break;
-                rows.Add(new(next.Id.ToString(), next.Data.ToString(), next.Data.TypeCode));
+                rows.Add(new(next.Id.ToString(), FormatValue(next), next.Data.TypeCode));
                 current = next.Id;
             }
             return rows;
@@ -102,6 +102,20 @@ public sealed class SnmpClient
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new SnmpTimeoutException(endpoint, timeout); }
         catch (Lextm.SharpSnmpLib.Messaging.TimeoutException) { throw new SnmpTimeoutException(endpoint, timeout); }
         catch (System.Net.Sockets.SocketException) when (!ct.IsCancellationRequested) { throw new SnmpTimeoutException(endpoint, timeout); }
+    }
+
+    private static string FormatValue(Variable variable)
+    {
+        var oid = variable.Id.ToString();
+        if (variable.Data is OctetString octets)
+        {
+            // These MIB values are binary identifiers, not UTF-8 display strings.
+            // Decoding them as text loses bytes and can put NULs into JSONB payloads.
+            if (oid == "1.3.6.1.6.3.10.2.1.1.0") return Convert.ToHexString(octets.GetRaw());
+            if (oid.StartsWith("1.3.6.1.2.1.2.2.1.6.", StringComparison.Ordinal))
+                return BitConverter.ToString(octets.GetRaw()).Replace('-', ':');
+        }
+        return variable.Data.ToString();
     }
 
     private static async Task<ISnmpMessage> GetV3Async(IPEndPoint endpoint, Transport.SnmpCredential credential, List<Variable> variables, CancellationToken ct)

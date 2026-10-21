@@ -106,7 +106,8 @@ public sealed class NetworkApiClient(HttpClient httpClient, string apiBaseUrl)
             var error = await response.Content.ReadAsStringAsync(ct);
             throw new NetworkApiException(response.StatusCode, error, response.Headers.RetryAfter?.Delta);
         }
-        if (typeof(TResponse) == typeof(JsonElement) && response.Content.Headers.ContentLength == 0)
+        if (typeof(TResponse) == typeof(JsonElement) &&
+            (response.StatusCode == HttpStatusCode.NoContent || response.Content.Headers.ContentLength == 0))
             return (TResponse)(object)JsonDocument.Parse("{}").RootElement.Clone();
         var result = await response.Content.ReadFromJsonAsync<TResponse>(JsonOptions, ct);
         return result is null ? throw new NetworkApiException(response.StatusCode, "API returned an empty response.") : result;

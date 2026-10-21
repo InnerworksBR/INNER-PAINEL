@@ -19,6 +19,33 @@ public sealed class SnmpClientLoopbackTests
     private const string ScopeId = "00000000-0000-4000-8000-000000000030";
 
     [Fact]
+    public async Task Real_probe_formats_binary_mac_and_engine_id_without_null_characters_in_metric_json()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"network-probe-binary-{Guid.NewGuid():N}.db");
+        try
+        {
+            await using var store = new NetworkAgentStore(path);
+            await store.InitializeAsync();
+            using var simulator = new LoopbackSnmpSimulator(version3: false, engineIdentity: true);
+            simulator.Start();
+            var probe = new SharpNetworkDeviceProbe(new SnmpClient(), store, (_, _) => simulator.Endpoint);
+
+            var result = await probe.ProbeAsync(IPAddress.Parse("192.0.2.1"), Config("192.0.2.1/32", 1).Networks[0],
+                [new SnmpCredential(CredentialId, "readonly", "2c", Community: "community")]);
+
+            Assert.NotNull(result);
+            Assert.Equal("00:11:22:33:44:55", Assert.Single(result.Metric.Interfaces!).MacAddress);
+            Assert.Equal("80004FB805060102", result.Metric.EngineId);
+            var json = NetworkMetricsJson.Serialize(new NetworkMetricBatch(1, DateTimeOffset.UtcNow, [result.Metric]));
+            Assert.DoesNotContain("\\u0000", json, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            foreach (var suffix in new[] { "", "-shm", "-wal" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
     public async Task V2c_get_reads_a_real_response_from_loopback_udp_simulator()
     {
         using var simulator = new LoopbackSnmpSimulator(version3: false);
@@ -135,7 +162,8 @@ public sealed class SnmpClientLoopbackTests
             if (engineIdentity)
             {
                 store.Add(new StringObject("1.3.6.1.2.1.2.2.1.2.1", "eth0"));
-                store.Add(new StringObject("1.3.6.1.6.3.10.2.1.1.0", "80004fb805060102"));
+                store.Add(new OctetObject("1.3.6.1.6.3.10.2.1.1.0", _engineId));
+                store.Add(new OctetObject("1.3.6.1.2.1.2.2.1.6.1", [0x00, 0x11, 0x22, 0x33, 0x44, 0x55]));
                 store.Add(new IntegerObject("1.3.6.1.2.1.31.1.1.1.6.1", 1000));
                 store.Add(new IntegerObject("1.3.6.1.2.1.31.1.1.1.10.1", 2000));
             }
@@ -161,6 +189,11 @@ public sealed class SnmpClientLoopbackTests
         }
 
         private sealed class StringObject(string oid, string value) : ScalarObject(oid)
+        {
+            public override ISnmpData Data { get; set; } = new OctetString(value);
+        }
+
+        private sealed class OctetObject(string oid, byte[] value) : ScalarObject(oid)
         {
             public override ISnmpData Data { get; set; } = new OctetString(value);
         }
