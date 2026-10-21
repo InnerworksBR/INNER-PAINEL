@@ -1,6 +1,8 @@
 # Inner Network Agent — validação da integração final
 
-Registro da integração `0f766c5` e da correção residual `07575b0`. A primeira revisão direcionada confirmou os itens 1–3; a conferência de `07575b0` confirmou os itens 4 e 5, sem novos achados importantes. As cinco correções funcionais estão concluídas. Os hashes abaixo correspondem ao pacote reconstruído dessa última versão.
+Registro da integração `0f766c5` e da correção residual `07575b0`. A primeira revisão direcionada confirmou os itens 1–3; a conferência de `07575b0` confirmou os itens 4 e 5, sem novos achados importantes. As cinco correções funcionais estão concluídas. Os hashes abaixo correspondem ao pacote reconstruído daquela versão.
+
+Atualização de 21/10/2026: o reparo de permissões do instalador **1.0.1** e os hashes do novo pacote estão em [NETWORK-AGENT-ACL-VALIDATION.md](NETWORK-AGENT-ACL-VALIDATION.md). O registro de pacote abaixo permanece como evidência histórica da versão anterior do instalador.
 
 Base reviewed: `33417cbc6e42ef6da20d4d1bc810b25837666e38`
 

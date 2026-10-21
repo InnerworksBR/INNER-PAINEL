@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.ServiceProcess;
 using System.Text.Json;
+using System.Security.Principal;
 using Microsoft.Win32;
 
 namespace Inner.Network.Agent.Setup;
@@ -21,7 +22,6 @@ internal static class AgentInstaller
             throw new InvalidOperationException("Este instalador requer Windows x64.");
 
         Directory.CreateDirectory(DataDirectory);
-        SetDirectoryAcl(DataDirectory);
         var stage = Path.Combine(Path.GetTempPath(), $"inner-network-agent-setup-{Guid.NewGuid():N}");
         Directory.CreateDirectory(stage);
         ServiceController? existing = null;
@@ -49,10 +49,10 @@ internal static class AgentInstaller
                 }
             }
 
+            SetDirectoryAcl(DataDirectory);
             reportProgress("Instalando os arquivos do agente...");
             Directory.CreateDirectory(InstallRoot);
             CopyDirectory(stage, InstallRoot);
-            SetDirectoryAcl(DataDirectory);
             reportProgress("Configurando o serviço do Windows...");
             ConfigureService(Path.Combine(InstallRoot, "Inner.Network.Agent.exe"), existing is not null);
             reportProgress("Iniciando o serviço e solicitando o código de vínculo...");
@@ -156,7 +156,26 @@ internal static class AgentInstaller
         }
     }
 
-    private static void SetDirectoryAcl(string path) => RunTool(SystemTool("icacls.exe"), path, "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "/T", "/C");
+    private static void SetDirectoryAcl(string path) => InstallerAclPolicy.Apply(
+        path,
+        [
+            new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null)
+        ],
+        RecoverDataPathOwnership);
+
+    private static void RecoverDataPathOwnership(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var dataRoot = Path.GetFullPath(DataDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var dataPrefix = dataRoot + Path.DirectorySeparatorChar;
+        if (!fullPath.Equals(dataRoot, StringComparison.OrdinalIgnoreCase) &&
+            !fullPath.StartsWith(dataPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Recusa de alterar ownership fora da pasta de dados do agente.");
+
+        InstallerAclPolicy.EnsurePathHasNoReparsePoints(fullPath);
+        RunTool(SystemTool("takeown.exe"), "/F", fullPath, "/A");
+    }
     private static string SystemTool(string name) => Path.Combine(Environment.SystemDirectory, name);
     private static void RunTool(string file, params string[] arguments)
     {

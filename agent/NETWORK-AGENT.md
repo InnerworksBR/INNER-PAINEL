@@ -17,6 +17,8 @@ Execute `network-agent-status.ps1` em um PowerShell elevado para ver o estado do
 
 Arquivos locais ficam em `C:\Program Files\InnerWorks\NetworkAgent` e dados duráveis em `C:\ProgramData\InnerWorks\NetworkAgent`, protegidos por ACL de SYSTEM e Administradores. O serviço continua coletando com configuração em cache enquanto a API ou o token estão indisponíveis. O instalador configura início automático e conta LocalSystem.
 
+Se uma instalação anterior falhou com acesso negado a `pairing-status.json`, use o instalador **1.0.1 ou posterior** como administrador. A versão 1.0.0 aplicava flags de herança de diretórios aos arquivos existentes e podia deixar suas permissões vazias. O instalador corrigido repara as permissões da pasta de dados, do banco e dos segredos, preservando os conteúdos e a vinculação. Não é necessário apagar o diretório de dados. Reexecutar o instalador 1.0.0 pode recriar o problema mesmo depois de um ajuste manual.
+
 ## Operação SNMP
 
 Suporte a SNMP v2c e v3 (`authNoPriv`/`authPriv`), autenticação SHA-1/SHA-256 e privacidade AES-128. São consultadas somente redes autorizadas na configuração do backend, no máximo 4.096 IPs por atualização e 16 destinos simultâneos; UDP limitado a dois segundos por tentativa e uma repetição. A coleta envia lotes pela API HTTPS. Nenhuma porta de entrada da Internet é necessária.
