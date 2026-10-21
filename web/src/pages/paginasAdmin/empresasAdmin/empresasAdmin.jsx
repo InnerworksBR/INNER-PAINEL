@@ -5,6 +5,7 @@ import api from '../../../services/api';
 import { useNavigate } from 'react-router-dom';
 import OnboardingWizard from '../Onboarding/onboarding';
 import NetworkAgentIntegration from '../../../components/NetworkAgentIntegration';
+import MS365PermissionsGuide from '../../../components/Ms365PermissionsGuide';
 
 const EmpresasAdmin = () => {
     const { companies, addCompany, updateCompany, deleteCompany, updateIntegrations, refreshCompanies } = useCompanies();
@@ -531,6 +532,7 @@ const EmpresasAdmin = () => {
                                         <input type="password" value={integrationValues.ms_graph_client_secret} onChange={(e) => setIntegrationValues({ ...integrationValues, ms_graph_client_secret: e.target.value })} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                                     </div>
                                 </div>
+                                <MS365PermissionsGuide />
                             </div>
 
                             {/* Resultado do teste */}

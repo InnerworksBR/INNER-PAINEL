@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Globe, Mail, Server, ToggleLeft, ToggleRight, RefreshCw, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import MS365PermissionsGuide from '../../../../components/Ms365PermissionsGuide';
 
 const Integrations = ({ formData, updateFormData, errors }) => {
   const [testingConnection, setTestingConnection] = useState({});
@@ -190,6 +191,7 @@ const Integrations = ({ formData, updateFormData, errors }) => {
                 className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all text-sm mt-1"
               />
             </div>
+            <MS365PermissionsGuide />
             <button
               type="button"
               onClick={() => handleTestConnection('ms365')}
