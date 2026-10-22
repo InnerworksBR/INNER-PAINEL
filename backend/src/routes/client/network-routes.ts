@@ -16,9 +16,31 @@ function safeNetworkDevice(row: any) {
 
 async function visibleNetworkRows(db: any, companyId: string | null) {
   const profiles = await loadCompanyRows(db, 'asset_profiles', companyId, { source_type: 'network_device', customer_visible: 'true' });
-  const visible = new Set(profiles.map((p: any) => `${p.company_id}:${p.source_id}`));
+  const profilesBySource = new Map(profiles.map((profile: any) => [`${profile.company_id}:${profile.source_id}`, profile]));
   const devices = await loadCompanyRows(db, 'network_devices', companyId);
-  return devices.filter((d: any) => visible.has(`${d.company_id}:${d.id}`)).map(safeNetworkDevice);
+  return devices
+    .filter((device: any) => profilesBySource.has(`${device.company_id}:${device.id}`))
+    .map((device: any) => {
+      const profile = profilesBySource.get(`${device.company_id}:${device.id}`);
+      const manualOverrides = new Set(profile?.manual_override_fields || []);
+      const getProfileValue = (field: string, fallback: unknown) => {
+        if (manualOverrides.has(field) && Object.prototype.hasOwnProperty.call(profile?.manual_data || {}, field)) {
+          return profile.manual_data[field];
+        }
+        return profile?.[field] ?? fallback;
+      };
+      const displayName = getProfileValue('display_name', device.device_name) || device.device_name;
+      const assetType = getProfileValue('asset_type', device.device_type) || device.device_type;
+
+      return safeNetworkDevice({
+        ...device,
+        display_name: displayName,
+        asset_type: assetType,
+        device_name: displayName,
+        device_type: assetType,
+        location: getProfileValue('location', device.location),
+      });
+    });
 }
 
 export default async function clientNetworkRoutes(fastify: FastifyInstance): Promise<void> {
