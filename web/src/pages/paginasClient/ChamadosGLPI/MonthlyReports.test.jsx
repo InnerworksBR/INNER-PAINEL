@@ -15,6 +15,8 @@ describe('relatórios mensais', () => {
     ] });
     render(<MonthlyReports requestConfig={{}} />);
     expect(await screen.findByText('Análise de outubro')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /panorama do atendimento/i })).toBeInTheDocument();
+    expect(screen.getByText(/dados dos chamados no período/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Mês do relatório'), { target: { value: '2' } });
     expect(screen.getByText('Análise de setembro')).toBeInTheDocument();
   });
@@ -23,6 +25,12 @@ describe('relatórios mensais', () => {
     api.get.mockRejectedValue(new Error('offline'));
     render(<MonthlyReports requestConfig={{}} />);
     expect(await screen.findByText(/não foi possível carregar os relatórios/i)).toBeInTheDocument();
+  });
+
+  it('keeps categories beyond the five most frequent visible', async () => {
+    api.get.mockResolvedValue({ data: [{ id: 'one', period_start: '2026-10-01', analysis: 'Atendimento registrado', metrics: { opened: 6, solved: 2, unresolved: 1, observedAt: '2026-11-01T11:00:00Z', categories: { A: 1, B: 1, C: 1, D: 1, E: 1, 'Categoria F': 1 }, priorities: {} } }] });
+    render(<MonthlyReports requestConfig={{}} />);
+    expect(await screen.findByText('Categoria F')).toBeInTheDocument();
   });
 
   it('keeps a generated preview in the history after reopening without generating again', async () => {

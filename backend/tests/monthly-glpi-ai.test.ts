@@ -13,6 +13,8 @@ test('generates analysis from aggregates and accepts text beyond the first outpu
   assert.equal(input.store, false);
   assert.equal(input.model, 'test-model');
   assert.match(input.input, /"opened":2/);
+  assert.match(input.instructions, /não inclua recomendações/i);
+  assert.match(input.instructions, /não.*saúde.*infraestrutura/i);
 });
 
 test('does not publish an empty or rejected model response', async () => {
@@ -29,4 +31,11 @@ test('marks an in-progress month as partial in the OpenAI request', async () => 
     return new Response(JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'Prévia' }] }] }), { status: 200 });
   }});
   assert.equal(JSON.parse(input.input).partial, true);
+});
+
+test('keeps the original generated analysis for storage even when presentation filters actions', async () => {
+  const metrics: any = { opened: 1, solved: 0, unresolved: 1, categories: {}, priorities: {}, observedAt: '2026-11-05T14:00:00Z' };
+  const original = 'A equipe solucionou 8 chamados.\n\nAções realizadas\nO atendimento foi concluído.';
+  const result = await generateMonthlyAnalysis(metrics, '2026-11', { apiKey: 'test', model: 'test', fetcher: async () => new Response(JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: original }] }] }), { status: 200 }) });
+  assert.equal(result, original);
 });

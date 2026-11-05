@@ -26,7 +26,7 @@ O acesso aos dados é isolado por empresa. O relatório salvo contém um retrato
 
 ## Geração com IA
 
-O backend calcula os indicadores; a IA recebe somente agregados necessários, período e informações contextuais mínimas. Não são enviados nomes de requerentes, textos de chamados, credenciais ou históricos individuais. A Responses API da OpenAI recebe instruções para produzir, em português, resumo executivo, tendências observáveis e recomendações proporcionais aos dados, sem inventar fatos, causas ou números. Não alegar tendência temporal sem base comparativa disponível. O modelo e a chave são configurados no servidor.
+O backend calcula os indicadores; a IA recebe somente agregados necessários, período e informações contextuais mínimas. Não são enviados nomes de requerentes, textos de chamados, credenciais ou históricos individuais. A Responses API da OpenAI recebe instruções para produzir, em português, um panorama executivo do atendimento baseado nos chamados, sem recomendações, instruções ou próximos passos. Não inferir a saúde geral da infraestrutura nem inventar fatos, causas ou números. Não alegar tendência temporal sem base comparativa disponível. O modelo e a chave são configurados no servidor.
 
 Se a OpenAI falhar ou retornar conteúdo inválido, registrar a falha e tentar novamente; não marcar um texto local como se fosse análise de IA. A geração e o envio permanecem pendentes até haver um relatório válido.
 

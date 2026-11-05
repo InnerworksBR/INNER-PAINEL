@@ -3,6 +3,7 @@ import type { JWTPayload } from '../../types';
 import { CompanyScopeError, resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { loadCompanyRows } from '../../services/portal-data-service';
 import { getOrCreateManualGlpiPreview, PreviewBusyError } from '../../services/manual-glpi-storage';
+import { clientReportText } from '../../services/client-report-text';
 
 export default async function monthlyGlpiReportRoutes(fastify: FastifyInstance, options: { generatePreview?: typeof getOrCreateManualGlpiPreview } = {}) {
   const inProgress = new Set<string>();
@@ -20,7 +21,7 @@ export default async function monthlyGlpiReportRoutes(fastify: FastifyInstance, 
         ...monthly.map(report => ({ ...report, is_preview: false })),
         ...previews.map(report => ({ ...report, is_preview: true })),
       ].filter(report => report.metrics && report.analysis && report.generated_at);
-      return reports.sort((a, b) => String(b.period_start).localeCompare(String(a.period_start)) || Number(a.is_preview) - Number(b.is_preview)).map(({ id, period_start, metrics, analysis, generated_at, is_preview }) => ({ id, period_start, metrics, analysis, generated_at, is_preview }));
+      return reports.sort((a, b) => String(b.period_start).localeCompare(String(a.period_start)) || Number(a.is_preview) - Number(b.is_preview)).map(({ id, period_start, metrics, analysis, generated_at, is_preview }) => ({ id, period_start, metrics, analysis: clientReportText(analysis) || 'Nenhuma análise de atendimento está disponível neste relatório.', generated_at, is_preview }));
     } catch (error) { return sendCompanyScopeError(reply, error); }
   });
   fastify.post('/reports/preview', async (request, reply) => {
@@ -39,7 +40,8 @@ export default async function monthlyGlpiReportRoutes(fastify: FastifyInstance, 
     }
     inProgress.add(companyId);
     try {
-      return await (options.generatePreview || getOrCreateManualGlpiPreview)(fastify.supabaseAdmin, companyId);
+      const report = await (options.generatePreview || getOrCreateManualGlpiPreview)(fastify.supabaseAdmin, companyId);
+      return { ...report, analysis: clientReportText(report.analysis) || 'Nenhuma análise de atendimento está disponível neste relatório.' };
     } catch (error) {
       if (error instanceof PreviewBusyError) return reply.code(429).send({ error: error.message });
       request.log.error({ companyId }, 'Falha ao gerar prévia GLPI');
