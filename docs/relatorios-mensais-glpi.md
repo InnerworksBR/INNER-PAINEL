@@ -6,7 +6,7 @@ Para testar antes do próximo fechamento, use **Gerar relatório agora** na tela
 
 ## Configuração
 
-1. Aplique `backend/migration_026_monthly_glpi_reports.sql` e depois `backend/migration_027_glpi_preview_reports.sql` no banco Supabase do ambiente desejado, usando o processo de migração do ambiente.
+1. Aplique, nesta ordem, `backend/migration_026_monthly_glpi_reports.sql`, `backend/migration_027_glpi_preview_reports.sql` e `backend/migration_028_glpi_preview_retry.sql` no banco Supabase do ambiente desejado, usando o processo de migração do ambiente. A 028 também atualiza instalações que receberam a versão inicial da tabela de prévias, preservando os registros existentes.
 2. Configure no backend `GLPI_API_URL`, `GLPI_API_TOKEN`, `GLPI_USER_TOKEN`, `OPENAI_API_KEY`, `OPENAI_REPORT_MODEL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` e `PORTAL_URL`. O endereço do portal é a origem pública, sem `/app`. A porta 465 usa TLS direto; nas demais, o servidor SMTP deve oferecer STARTTLS.
 3. Reinicie o backend para carregar as variáveis. Na administração, abra **Empresas → Integrações** da empresa, configure a entidade GLPI e habilite **Relatório mensal de chamados** com os e-mails específicos separados por vírgula ou ponto e vírgula.
 4. Confira o histórico de processamento na mesma configuração e o relatório na visualização da empresa. A ativação não gera relatórios de meses anteriores ao mês de ativação.
