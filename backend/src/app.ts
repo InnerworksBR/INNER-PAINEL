@@ -21,6 +21,8 @@ import authRoutes from './routes/auth';
 import clientDashboardRoutes from './routes/client/dashboard-routes';
 import clientDocsRoutes from './routes/client/docs-routes';
 import clientGlpiRoutes from './routes/client/glpi-routes';
+import monthlyGlpiReportRoutes from './routes/client/monthly-glpi-report-routes';
+import monthlyGlpiSettingsRoutes from './routes/admin/monthly-glpi-settings-routes';
 import clientMetricsRoutes from './routes/client/metrics-routes';
 import clientNetworkRoutes from './routes/client/network-routes';
 import corsPlugin from './plugins/cors';
@@ -41,6 +43,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(authRoutes, { prefix: '/api/auth' });
 
   fastify.register(clientGlpiRoutes, { prefix: '/api/client/glpi' });
+  fastify.register(monthlyGlpiReportRoutes, { prefix: '/api/client/glpi' });
   fastify.register(clientMetricsRoutes, { prefix: '/api/client/metrics' });
   fastify.register(clientDocsRoutes, { prefix: '/api/client/docs' });
   fastify.register(clientDashboardRoutes, { prefix: '/api/client/dashboard' });
@@ -51,6 +54,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
 
   fastify.register(adminUserRoutes, { prefix: '/api/admin/users' });
   fastify.register(adminCompaniesRoutes, { prefix: '/api/admin/companies' });
+  fastify.register(monthlyGlpiSettingsRoutes, { prefix: '/api/admin/companies' });
   fastify.register(adminDocsRoutes, { prefix: '/api/admin/docs' });
   fastify.register(adminDashboardRoutes, { prefix: '/api/admin/dashboard' });
   fastify.register(adminSettingsRoutes, { prefix: '/api/admin/settings' });

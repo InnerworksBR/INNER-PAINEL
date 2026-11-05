@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import OnboardingWizard from '../Onboarding/onboarding';
 import NetworkAgentIntegration from '../../../components/NetworkAgentIntegration';
 import MS365PermissionsGuide from '../../../components/Ms365PermissionsGuide';
+import MonthlyReportSettings from './MonthlyReportSettings';
 
 const EmpresasAdmin = () => {
     const { companies, addCompany, updateCompany, deleteCompany, updateIntegrations, refreshCompanies } = useCompanies();
@@ -479,6 +480,8 @@ const EmpresasAdmin = () => {
                             </div>
 
                             {/* Agente Inner - Informacoes */}
+                            <MonthlyReportSettings key={integrationsCompany.id} companyId={integrationsCompany.id} />
+
                             <div className="p-4 border border-slate-200 rounded-2xl bg-blue-50 shadow-sm">
                                 <h3 className="font-semibold text-slate-800 mb-2 flex items-center gap-2">
                                     <Monitor size={16} className="text-blue-600" />

@@ -26,6 +26,7 @@ import api from '../../../services/api';
 import { useClientRequestConfig } from '../../../context/ClientPreviewContext';
 import { isResolvedTicket } from '../../../utils/ticket-status';
 import TicketDetailDrawer from '../../../components/TicketDetailDrawer';
+import MonthlyReports from './MonthlyReports';
 
 const DEFAULT_FILTROS = {
   status: 'Todos os status',
@@ -267,6 +268,8 @@ const ChamadosGLPI = () => {
           </button>
         </div>
       </div>
+
+      <MonthlyReports key={requestConfig?.params?.company_id || 'cliente'} requestConfig={requestConfig} />
 
       {/* KPIs - cards premium com gradient accent */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
