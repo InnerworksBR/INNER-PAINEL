@@ -50,3 +50,53 @@ test('rejects activation without valid explicit recipients', async t => {
   const response = await app.inject({ method: 'PUT', url: '/one/monthly-glpi-settings', payload: { enabled: true, recipients: '' } });
   assert.equal(response.statusCode, 400);
 });
+
+test('manual preview ignores a client-provided company id and is never stored or emailed', async t => {
+  const app = Fastify(); t.after(() => app.close());
+  app.decorate('authenticate', async (request: any) => { request.user = { user: { role: 'client', company_id: 'one' } }; });
+  app.decorate('supabaseAdmin', {} as any);
+  let companyUsed = '';
+  await app.register(clientRoutes, { generatePreview: async (_db: any, company: string) => {
+    companyUsed = company;
+    return { period_start: '2026-11-01', metrics: {}, analysis: 'Prévia', generated_at: '2026-11-05T14:00:00Z', is_preview: true };
+  }} as any);
+  const response = await app.inject({ method: 'POST', url: '/reports/preview?company_id=two' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(companyUsed, 'one');
+  assert.equal(response.json().is_preview, true);
+  const duplicate = await app.inject({ method: 'POST', url: '/reports/preview' });
+  assert.equal(duplicate.statusCode, 429);
+});
+
+test('manual preview requires a company for an admin and does not call generation', async t => {
+  const app = Fastify(); t.after(() => app.close());
+  app.decorate('authenticate', async (request: any) => { request.user = { user: { role: 'admin', company_id: null } }; });
+  app.decorate('supabaseAdmin', {} as any);
+  let called = false;
+  await app.register(clientRoutes, { generatePreview: async () => { called = true; throw new Error('unexpected'); } } as any);
+  const response = await app.inject({ method: 'POST', url: '/reports/preview' });
+  assert.equal(response.statusCode, 400);
+  assert.equal(called, false);
+});
+
+test('rejects overlapping previews and allows a retry after a failed generation', async t => {
+  const app = Fastify(); t.after(() => app.close());
+  app.decorate('authenticate', async (request: any) => { request.user = { user: { role: 'client', company_id: 'one' } }; });
+  app.decorate('supabaseAdmin', {} as any);
+  let rejectFirst: (reason?: unknown) => void = () => {};
+  let started: () => void = () => {};
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  let calls = 0;
+  await app.register(clientRoutes, { generatePreview: async () => {
+    calls++;
+    if (calls === 1) { started(); return new Promise((_resolve, reject) => { rejectFirst = reject; }); }
+    return { is_preview: true };
+  }} as any);
+  const first = app.inject({ method: 'POST', url: '/reports/preview' });
+  await ready;
+  const concurrent = await app.inject({ method: 'POST', url: '/reports/preview' });
+  assert.equal(concurrent.statusCode, 429);
+  rejectFirst(new Error('GLPI unavailable'));
+  assert.equal((await first).statusCode, 502);
+  assert.equal((await app.inject({ method: 'POST', url: '/reports/preview' })).statusCode, 200);
+});

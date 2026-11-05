@@ -2,6 +2,8 @@
 
 O backend processa o mês anterior a partir das 8h do primeiro dia, no fuso de São Paulo. Executa novamente a cada hora e ao iniciar; meses desde a ativação são recuperados se o servidor ficou indisponível. Para cada empresa habilitada, consulta a entidade GLPI, calcula indicadores e solicita à OpenAI uma análise de agregados. O cliente encontra os relatórios em **Chamados GLPI → Relatórios mensais**.
 
+Para testar antes do próximo fechamento, use **Gerar relatório agora** na tela de chamados. A prévia considera o mês atual até o momento da coleta, não é salva no histórico e não envia e-mail. Ela precisa das integrações GLPI e OpenAI configuradas, mas não depende do SMTP nem dos destinatários. Após uma geração bem-sucedida, aguarde um minuto antes de gerar outra prévia; a proteção contra solicitações repetidas funciona por instância do backend.
+
 ## Configuração
 
 1. Aplique `backend/migration_026_monthly_glpi_reports.sql` no banco Supabase do ambiente desejado, usando o processo de migração do ambiente.

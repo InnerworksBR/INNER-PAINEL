@@ -20,3 +20,13 @@ test('does not publish an empty or rejected model response', async () => {
   await assert.rejects(() => generateMonthlyAnalysis(metrics, '2026-10', { apiKey: 'test', model: 'test', fetcher: async () => new Response('{}', { status: 200 }) }), /vazia/i);
   await assert.rejects(() => generateMonthlyAnalysis(metrics, '2026-10', { apiKey: 'test', model: 'test', fetcher: async () => new Response('{}', { status: 429 }) }), /429/);
 });
+
+test('marks an in-progress month as partial in the OpenAI request', async () => {
+  let input: any;
+  const metrics: any = { opened: 1, solved: 0, unresolved: 1, categories: {}, priorities: {}, observedAt: '2026-11-05T14:00:00Z' };
+  await generateMonthlyAnalysis(metrics, '2026-11', { apiKey: 'test', model: 'test', partial: true, fetcher: async (_url, options) => {
+    input = JSON.parse(String(options?.body));
+    return new Response(JSON.stringify({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'Prévia' }] }] }), { status: 200 });
+  }});
+  assert.equal(JSON.parse(input.input).partial, true);
+});
