@@ -11,6 +11,9 @@ async function appFor(t: any, role: string, company: string | null) {
     let rows = table === 'monthly_glpi_reports' ? [
       { id: 'a', company_id: 'one', state: 'ready', period_start: '2026-10-01', analysis: 'Empresa um', metrics: {}, generated_at: '2026-11-01' },
       { id: 'b', company_id: 'two', state: 'ready', period_start: '2026-10-01', analysis: 'Empresa dois', metrics: {}, generated_at: '2026-11-01' },
+    ] : table === 'glpi_report_previews' ? [
+      { id: 'p1', company_id: 'one', state: 'ready', period_start: '2026-11-01', analysis: 'Prévia um', metrics: {}, generated_at: '2026-11-05' },
+      { id: 'p2', company_id: 'two', state: 'ready', period_start: '2026-11-01', analysis: 'Prévia dois', metrics: {}, generated_at: '2026-11-05' },
     ] : [];
     const query: any = { select: () => query, eq: (k: string, v: any) => { rows = rows.filter(row => (row as any)[k] === v); return query; }, order: () => query, range: () => query,
       then: (resolve: any) => resolve({ data: rows, error: null }) };
@@ -24,7 +27,8 @@ test('client cannot select reports of a different company', async t => {
   const app = await appFor(t, 'client', 'one');
   const response = await app.inject('/reports?company_id=two');
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.json().map((report: any) => report.id), ['a']);
+  assert.deepEqual(response.json().map((report: any) => report.id), ['p1', 'a']);
+  assert.equal(response.json()[0].is_preview, true);
 });
 
 test('admin must explicitly select one company', async t => {
@@ -51,21 +55,22 @@ test('rejects activation without valid explicit recipients', async t => {
   assert.equal(response.statusCode, 400);
 });
 
-test('manual preview ignores a client-provided company id and is never stored or emailed', async t => {
+test('manual preview ignores a client-provided company id and can be retrieved again without delay', async t => {
   const app = Fastify(); t.after(() => app.close());
   app.decorate('authenticate', async (request: any) => { request.user = { user: { role: 'client', company_id: 'one' } }; });
   app.decorate('supabaseAdmin', {} as any);
   let companyUsed = '';
   await app.register(clientRoutes, { generatePreview: async (_db: any, company: string) => {
     companyUsed = company;
-    return { period_start: '2026-11-01', metrics: {}, analysis: 'Prévia', generated_at: '2026-11-05T14:00:00Z', is_preview: true };
+    return { id: 'saved-id', period_start: '2026-11-01', metrics: {}, analysis: 'Prévia', generated_at: '2026-11-05T14:00:00Z', is_preview: true };
   }} as any);
   const response = await app.inject({ method: 'POST', url: '/reports/preview?company_id=two' });
   assert.equal(response.statusCode, 200);
   assert.equal(companyUsed, 'one');
   assert.equal(response.json().is_preview, true);
   const duplicate = await app.inject({ method: 'POST', url: '/reports/preview' });
-  assert.equal(duplicate.statusCode, 429);
+  assert.equal(duplicate.statusCode, 200);
+  assert.equal(duplicate.json().id, 'saved-id');
 });
 
 test('manual preview requires a company for an admin and does not call generation', async t => {

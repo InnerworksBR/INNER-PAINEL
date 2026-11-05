@@ -2,11 +2,11 @@
 
 O backend processa o mês anterior a partir das 8h do primeiro dia, no fuso de São Paulo. Executa novamente a cada hora e ao iniciar; meses desde a ativação são recuperados se o servidor ficou indisponível. Para cada empresa habilitada, consulta a entidade GLPI, calcula indicadores e solicita à OpenAI uma análise de agregados. O cliente encontra os relatórios em **Chamados GLPI → Relatórios mensais**.
 
-Para testar antes do próximo fechamento, use **Gerar relatório agora** na tela de chamados. A prévia considera o mês atual até o momento da coleta, não é salva no histórico e não envia e-mail. Ela precisa das integrações GLPI e OpenAI configuradas, mas não depende do SMTP nem dos destinatários. Após uma geração bem-sucedida, aguarde um minuto antes de gerar outra prévia; a proteção contra solicitações repetidas funciona por instância do backend.
+Para testar antes do próximo fechamento, use **Gerar relatório agora** na tela de chamados. A prévia considera o mês atual até o momento da coleta, fica salva no histórico e não envia e-mail. A primeira prévia de cada mês é reutilizada nas consultas seguintes, sem nova chamada à OpenAI; o relatório definitivo é armazenado separadamente. Ela precisa das integrações GLPI e OpenAI configuradas, mas não depende do SMTP nem dos destinatários. Se a geração ou gravação falhar, novas tentativas aguardam pelo menos um minuto, com espera crescente após falhas repetidas.
 
 ## Configuração
 
-1. Aplique `backend/migration_026_monthly_glpi_reports.sql` no banco Supabase do ambiente desejado, usando o processo de migração do ambiente.
+1. Aplique `backend/migration_026_monthly_glpi_reports.sql` e depois `backend/migration_027_glpi_preview_reports.sql` no banco Supabase do ambiente desejado, usando o processo de migração do ambiente.
 2. Configure no backend `GLPI_API_URL`, `GLPI_API_TOKEN`, `GLPI_USER_TOKEN`, `OPENAI_API_KEY`, `OPENAI_REPORT_MODEL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` e `PORTAL_URL`. O endereço do portal é a origem pública, sem `/app`. A porta 465 usa TLS direto; nas demais, o servidor SMTP deve oferecer STARTTLS.
 3. Reinicie o backend para carregar as variáveis. Na administração, abra **Empresas → Integrações** da empresa, configure a entidade GLPI e habilite **Relatório mensal de chamados** com os e-mails específicos separados por vírgula ou ponto e vírgula.
 4. Confira o histórico de processamento na mesma configuração e o relatório na visualização da empresa. A ativação não gera relatórios de meses anteriores ao mês de ativação.

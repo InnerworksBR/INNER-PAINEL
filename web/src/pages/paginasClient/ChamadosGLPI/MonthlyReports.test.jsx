@@ -25,19 +25,25 @@ describe('relatórios mensais', () => {
     expect(await screen.findByText(/não foi possível carregar os relatórios/i)).toBeInTheDocument();
   });
 
-  it('generates and displays a partial preview without adding it to the monthly history', async () => {
-    api.get.mockResolvedValue({ data: [] });
+  it('keeps a generated preview in the history after reopening without generating again', async () => {
+    const saved = { id: 'saved', period_start: '2026-11-01', analysis: 'Análise parcial', is_preview: true, generated_at: '2026-11-05T14:00:00Z', metrics: { opened: 2, solved: 1, unresolved: 1, observedAt: '2026-11-05T14:00:00Z', categories: {}, priorities: {} } };
+    api.get.mockResolvedValueOnce({ data: [] }).mockResolvedValueOnce({ data: [saved] });
     let resolvePreview;
     api.post.mockReturnValue(new Promise(resolve => { resolvePreview = resolve; }));
-    render(<MonthlyReports requestConfig={{ params: { company_id: 'abc' } }} />);
+    const { unmount } = render(<MonthlyReports requestConfig={{ params: { company_id: 'abc' } }} />);
     await screen.findByText(/ainda não há relatórios mensais/i);
     fireEvent.click(screen.getByRole('button', { name: /gerar relatório agora/i }));
     expect(screen.getByRole('button', { name: /gerando relatório/i })).toBeDisabled();
-    resolvePreview({ data: { period_start: '2026-11-01', analysis: 'Análise parcial', is_preview: true, generated_at: '2026-11-05T14:00:00Z', metrics: { opened: 2, solved: 1, unresolved: 1, observedAt: '2026-11-05T14:00:00Z', categories: {}, priorities: {} } } });
+    resolvePreview({ data: saved });
     expect(await screen.findByText('Análise parcial')).toBeInTheDocument();
-    expect(screen.getByText(/prévia do mês em andamento/i)).toBeInTheDocument();
-    expect(screen.getByText(/não é salva nem enviada por e-mail/i)).toBeInTheDocument();
+    expect(screen.getByText(/prévia parcial do mês/i)).toBeInTheDocument();
+    expect(screen.getByText(/salva no histórico e não é enviada por e-mail/i)).toBeInTheDocument();
     expect(api.post).toHaveBeenCalledWith('/client/glpi/reports/preview', {}, { params: { company_id: 'abc' } });
+    unmount();
+    render(<MonthlyReports requestConfig={{ params: { company_id: 'abc' } }} />);
+    expect(await screen.findByText('Análise parcial')).toBeInTheDocument();
+    expect(screen.getByText(/salva no histórico e não é enviada por e-mail/i)).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the page usable and shows a useful error if generation fails', async () => {

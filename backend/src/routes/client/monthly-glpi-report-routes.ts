@@ -2,19 +2,25 @@ import type { FastifyInstance } from 'fastify';
 import type { JWTPayload } from '../../types';
 import { CompanyScopeError, resolveCompanyScope, sendCompanyScopeError } from '../../services/company-scope-service';
 import { loadCompanyRows } from '../../services/portal-data-service';
-import { generateManualGlpiPreview } from '../../services/manual-glpi-preview';
+import { getOrCreateManualGlpiPreview, PreviewBusyError } from '../../services/manual-glpi-storage';
 
-export default async function monthlyGlpiReportRoutes(fastify: FastifyInstance, options: { generatePreview?: typeof generateManualGlpiPreview } = {}) {
+export default async function monthlyGlpiReportRoutes(fastify: FastifyInstance, options: { generatePreview?: typeof getOrCreateManualGlpiPreview } = {}) {
   const inProgress = new Set<string>();
-  const lastGenerated = new Map<string, number>();
   fastify.addHook('preHandler', fastify.authenticate);
   fastify.get('/reports', async (request, reply) => {
     try {
       const { user } = request.user as JWTPayload;
       const { targetCompanyId } = await resolveCompanyScope(fastify.supabaseAdmin, user, (request.query as any)?.company_id);
       if (!targetCompanyId) return reply.code(400).send({ error: 'Selecione uma empresa' });
-      const reports = (await loadCompanyRows(fastify.supabaseAdmin, 'monthly_glpi_reports', targetCompanyId)).filter(report => report.metrics && report.analysis && report.generated_at);
-      return reports.sort((a, b) => String(b.period_start).localeCompare(String(a.period_start))).map(({ id, period_start, metrics, analysis, generated_at }) => ({ id, period_start, metrics, analysis, generated_at }));
+      const [monthly, previews] = await Promise.all([
+        loadCompanyRows(fastify.supabaseAdmin, 'monthly_glpi_reports', targetCompanyId),
+        loadCompanyRows(fastify.supabaseAdmin, 'glpi_report_previews', targetCompanyId, { state: 'ready' }),
+      ]);
+      const reports = [
+        ...monthly.map(report => ({ ...report, is_preview: false })),
+        ...previews.map(report => ({ ...report, is_preview: true })),
+      ].filter(report => report.metrics && report.analysis && report.generated_at);
+      return reports.sort((a, b) => String(b.period_start).localeCompare(String(a.period_start)) || Number(a.is_preview) - Number(b.is_preview)).map(({ id, period_start, metrics, analysis, generated_at, is_preview }) => ({ id, period_start, metrics, analysis, generated_at, is_preview }));
     } catch (error) { return sendCompanyScopeError(reply, error); }
   });
   fastify.post('/reports/preview', async (request, reply) => {
@@ -28,20 +34,16 @@ export default async function monthlyGlpiReportRoutes(fastify: FastifyInstance, 
       return reply.code(500).send({ error: 'Não foi possível identificar a empresa.' });
     }
     if (!companyId) return reply.code(400).send({ error: 'Selecione uma empresa.' });
-    if (inProgress.has(companyId) || Date.now() - (lastGenerated.get(companyId) || 0) < 60_000) {
-      return reply.code(429).send({ error: 'Aguarde um minuto antes de gerar outra prévia.' });
+    if (inProgress.has(companyId)) {
+      return reply.code(429).send({ error: 'Uma prévia já está sendo gerada. Aguarde e tente novamente.' });
     }
     inProgress.add(companyId);
     try {
-      const result = await (options.generatePreview || generateManualGlpiPreview)(fastify.supabaseAdmin, companyId);
-      const completedAt = Date.now();
-      lastGenerated.set(companyId, completedAt);
-      const timer = setTimeout(() => { if (lastGenerated.get(companyId!) === completedAt) lastGenerated.delete(companyId!); }, 60_000);
-      timer.unref();
-      return result;
+      return await (options.generatePreview || getOrCreateManualGlpiPreview)(fastify.supabaseAdmin, companyId);
     } catch (error) {
+      if (error instanceof PreviewBusyError) return reply.code(429).send({ error: error.message });
       request.log.error({ companyId }, 'Falha ao gerar prévia GLPI');
-      return reply.code(502).send({ error: 'Não foi possível gerar a prévia. Verifique as integrações GLPI e OpenAI e tente novamente.' });
+      return reply.code(502).send({ error: 'Não foi possível gerar ou salvar a prévia. Verifique as integrações GLPI e OpenAI e tente novamente.' });
     } finally {
       inProgress.delete(companyId);
     }
