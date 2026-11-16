@@ -39,16 +39,8 @@ export function articleError(error, fallback) {
   }
 }
 
-export function editableArticle(article, priorBlocks = []) {
-  return {
-    title: article.title,
-    summary: article.summary,
-    cover: article.cover,
-    blocks: article.blocks.map((block, index) => ({
-      ...block,
-      editorId: priorBlocks[index]?.editorId ?? crypto.randomUUID(),
-    })),
-  };
+export function editableArticle({ title, summary, cover, blocks }) {
+  return { title, summary, cover, blocks };
 }
 
 export function draftPayload({ title, summary, cover, blocks }) {
@@ -62,6 +54,23 @@ export function draftPayload({ title, summary, cover, blocks }) {
       return { type, text };
     }),
   };
+}
+
+function exceedsTextLimit(text, limit) {
+  return text.length > limit && [...text].length > limit;
+}
+
+export function draftBodyIssue(blocks) {
+  if (blocks.length > ARTICLE_LIMITS.blockCount) return 'O artigo pode ter até 100 parágrafos, subtítulos, citações, listas ou imagens no total.';
+  for (const block of blocks) {
+    if (block.type === 'list') {
+      if (block.items.length > ARTICLE_LIMITS.listCount) return 'Cada lista pode ter até 30 itens.';
+      if (block.items.some(item => exceedsTextLimit(item, ARTICLE_LIMITS.listItem))) return 'Cada item da lista pode ter até 500 caracteres.';
+    } else if (block.type !== 'image' && exceedsTextLimit(block.text, ARTICLE_LIMITS.blockText)) {
+      return 'Separe os trechos com mais de 4.000 caracteres em parágrafos menores.';
+    }
+  }
+  return '';
 }
 
 export function publicationIssues({ title, summary, cover, blocks }) {

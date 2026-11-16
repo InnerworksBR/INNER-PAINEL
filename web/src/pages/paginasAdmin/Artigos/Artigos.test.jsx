@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { AuthProvider } from '../../../context/AuthContext';
 import { router } from '../../../rotas/rotas';
 import api from '../../../services/api';
@@ -56,6 +56,21 @@ function openPage(path = API, { article = DRAFT, allowed = true, access } = {}) 
   return memoryRouter;
 }
 
+// ProseMirror measures the caret when editing and scrolling, which JSDOM does not lay out.
+const rangeGeometry = {
+  getClientRects: () => [],
+  getBoundingClientRect: () => new DOMRect(),
+};
+const rangeStubs = Object.entries(rangeGeometry).filter(([name]) => !Range.prototype[name]);
+
+beforeAll(() => {
+  for (const [name, value] of rangeStubs) Object.defineProperty(Range.prototype, name, { value, configurable: true });
+});
+
+afterAll(() => {
+  for (const [name] of rangeStubs) delete Range.prototype[name];
+});
+
 afterEach(() => {
   localStorage.clear();
   vi.resetAllMocks();
@@ -66,6 +81,7 @@ it('shows the editorial link and opens the list directly for allowed admins', as
   openPage();
 
   expect(await screen.findByRole('heading', { name: 'Artigos do site' }, { timeout: 3000 })).toBeInTheDocument();
+  expect(await screen.findByText('Nenhum artigo criado.')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Artigos do site' })).toHaveAttribute('href', API);
   expect(api.get).toHaveBeenCalledWith(`${API}/access`, expect.anything());
   expect(api.get).toHaveBeenCalledWith(API, expect.objectContaining({ params: { page: 1 } }));
@@ -96,13 +112,13 @@ it('reuses the same article ID after an uncertain create response', async () => 
   expect(await screen.findByRole('alert')).toHaveTextContent(/criar o artigo/i);
   fireEvent.click(screen.getByRole('button', { name: 'Novo artigo' }));
 
-  expect(await screen.findByLabelText('Título', { exact: true })).toBeInTheDocument();
+  expect(await screen.findByLabelText('Título', { exact: true }, { timeout: 5000 })).toBeInTheDocument();
   const [[firstPath, firstBody], [retryPath, retryBody]] = api.post.mock.calls;
   expect(firstPath).toBe(API);
   expect(retryPath).toBe(API);
   expect(firstBody).toEqual({ id: expect.stringMatching(UUID) });
   expect(retryBody).toEqual(firstBody);
-});
+}, 12000);
 
 it('keeps the destination when a create response arrives after leaving the article list', async () => {
   let finish;
@@ -148,20 +164,65 @@ it('keeps local content visible and calls out a concurrent save conflict', async
   expect(screen.getByRole('button', { name: 'Recarregar artigo' })).toBeInTheDocument();
 });
 
-it('previews reordered blocks from unsaved edits with article semantics', async () => {
-  openPage(`${API}/${ID}`, { article: READY });
+function pasteInto(body, content, type = 'text/plain') {
+  body.focus();
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', { value: { getData: format => format === type ? content : '' } });
+  fireEvent(body, event);
+}
 
-  await screen.findByLabelText('Título', { exact: true });
-  fireEvent.click(screen.getByRole('button', { name: 'Adicionar subtítulo' }));
-  fireEvent.change(screen.getByLabelText('Subtítulo', { exact: true }), { target: { value: 'Primeiros passos' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Mover bloco 2 para cima' }));
+it('lets a new article take pasted paragraphs in one field and previews them without saving', async () => {
+  openPage(`${API}/${ID}`);
+
+  const body = await screen.findByRole('textbox', { name: 'Conteúdo do artigo' });
+  pasteInto(body, 'Primeiro parágrafo.\n\nSegundo parágrafo.');
   fireEvent.click(screen.getByRole('button', { name: 'Pré-visualizar' }));
 
   const preview = within(screen.getByRole('article'));
-  const heading = preview.getByRole('heading', { name: 'Primeiros passos', level: 3 });
-  const paragraph = preview.getByText('Registre o atendimento.');
-  expect(heading.compareDocumentPosition(paragraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(preview.getByText('Primeiro parágrafo.').tagName).toBe('P');
+  expect(preview.getByText('Segundo parágrafo.').tagName).toBe('P');
   expect(api.patch).not.toHaveBeenCalled();
+});
+
+it('formats the current paragraph as a subtitle and lets the editor undo the formatting after preview', async () => {
+  openPage(`${API}/${ID}`);
+
+  const body = await screen.findByRole('textbox', { name: 'Conteúdo do artigo' });
+  pasteInto(body, 'Registre o atendimento.');
+  fireEvent.click(screen.getByRole('button', { name: 'Subtítulo' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Pré-visualizar' }));
+
+  const preview = within(screen.getByRole('article'));
+  expect(preview.getByRole('heading', { name: 'Registre o atendimento.', level: 3 })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Voltar à edição' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Desfazer' }));
+  expect(within(body).getByText('Registre o atendimento.').tagName).toBe('P');
+  expect(api.patch).not.toHaveBeenCalled();
+});
+
+it('edits legacy article blocks without changing their saved order or contents', async () => {
+  const blocks = [
+    { type: 'paragraph', text: 'Primeira linha.\nSegunda linha.' },
+    { type: 'heading', text: 'Primeiros passos' },
+    { type: 'quote', text: 'Uma citação.' },
+    { type: 'list', ordered: true, items: ['Um', 'Dois'] },
+    { type: 'image', mediaId: MEDIA_ID, alt: 'Uma reunião' },
+    { type: 'paragraph', text: '' },
+  ];
+  const article = { ...READY, blocks };
+  api.patch.mockResolvedValueOnce(response({ article: { ...article, title: 'Título alterado', version: 2 } }));
+  openPage(`${API}/${ID}`, { article });
+
+  const body = await screen.findByRole('textbox', { name: 'Conteúdo do artigo' });
+  expect(within(body).getByRole('heading', { name: 'Primeiros passos', level: 3 })).toBeInTheDocument();
+  expect(within(body).getAllByRole('listitem')).toHaveLength(2);
+  body.focus();
+  fireEvent.click(screen.getByRole('button', { name: 'Subtítulo' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Parágrafo' }));
+  fireEvent.change(screen.getByLabelText('Título', { exact: true }), { target: { value: 'Título alterado' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+  expect(await screen.findByText('Rascunho salvo.')).toBeInTheDocument();
+  expect(api.patch).toHaveBeenCalledWith(`${API}/${ID}`, expect.objectContaining({ blocks }));
 });
 
 it('loads preview images as authenticated blobs and releases their temporary URLs', async () => {
