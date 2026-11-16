@@ -18,7 +18,8 @@
     "fastify": "^5.8.5",
     "fastify-plugin": "^5.0.1",
     "node-cron": "^4.2.1",
-    "nodemailer": "^10.3.1"
+    "nodemailer": "^10.3.1",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@types/node": "^22.16.0",
