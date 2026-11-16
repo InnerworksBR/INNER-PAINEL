@@ -26,6 +26,7 @@ import ConfigAdmin from "../pages/paginasAdmin/configAdmin/configAdmin";
 import AuditAdmin from "../pages/paginasAdmin/auditAdmin/auditAdmin";
 import InventarioAdmin from "../pages/paginasAdmin/inventarioAdmin/inventarioAdmin";
 import DocumentCreator from "../pages/paginasAdmin/DocumentCreator/documentCreator";
+import { ArtigoRoute, ArtigosAccessRoute, ArtigosList } from "../pages/paginasAdmin/Artigos/ArtigosRoutes";
 
 // Route Protection
 import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
@@ -88,6 +89,14 @@ export const router = createBrowserRouter([
       { path: "configAdmin", element: <ConfigAdmin /> },
       { path: "segurancaAdmin", element: <SegurancaAdmin /> },
       { path: "document-creator", element: <DocumentCreator /> },
+      {
+        path: "artigos",
+        element: <ArtigosAccessRoute />,
+        children: [
+          { index: true, element: <ArtigosList /> },
+          { path: ":articleId", element: <ArtigoRoute /> },
+        ],
+      },
       { path: "conta", element: <Conta /> },
     ],
   },

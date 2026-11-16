@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import type { FastifyInstance, FastifyServerOptions } from 'fastify';
 
 import adminAuditRoutes from './routes/admin/audit-routes';
+import siteArticleRoutes from './routes/admin/site-article-routes';
 import adminSecurityRoutes from './routes/admin/security-routes';
 import adminDocumentCreatorRoutes from './routes/admin/document-creator-routes';
 import clientSecurityRoutes from './routes/client/security-routes';
@@ -53,6 +54,7 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
   fastify.register(networkAgentRoutes, { prefix: '/api/agent/v1' });
 
   fastify.register(adminUserRoutes, { prefix: '/api/admin/users' });
+  fastify.register(siteArticleRoutes, { prefix: '/api/admin/artigos' });
   fastify.register(adminCompaniesRoutes, { prefix: '/api/admin/companies' });
   fastify.register(monthlyGlpiSettingsRoutes, { prefix: '/api/admin/companies' });
   fastify.register(adminDocsRoutes, { prefix: '/api/admin/docs' });
