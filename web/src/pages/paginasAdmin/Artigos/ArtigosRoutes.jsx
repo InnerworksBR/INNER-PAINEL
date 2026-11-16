@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, Plus } from 'lucide-react';
 import { Link, Outlet, useNavigate, useParams } from 'react-router-dom';
 import { useArtigosAccess } from '../../../context/ArtigosAccessContext';
 import api from '../../../services/api';
-import ArtigoEditor from './ArtigoEditor';
 import { ArticleAlert, ArticleStatus, articleCard, primaryButton, secondaryButton } from './ArticleUi';
 import { ARTICLES_PATH, articleError, formatArticleDate } from './articleEditorial';
+
+const ArtigoEditor = lazy(() => import('./ArtigoEditor'));
 
 export function ArtigosAccessRoute() {
   const { access, checkAgain } = useArtigosAccess();
@@ -155,7 +156,13 @@ function LoadArticle({ id }) {
     return () => controller.abort();
   }, [id, attempt]);
 
-  if (result?.article) return <ArtigoEditor initialArticle={result.article} />;
+  if (result?.article) {
+    return (
+      <Suspense fallback={<p role="status" className="text-sm text-slate-600">Carregando editor…</p>}>
+        <ArtigoEditor initialArticle={result.article} />
+      </Suspense>
+    );
+  }
 
   return (
     <section className={`${articleCard} mx-auto max-w-4xl space-y-4 p-5 sm:p-6`}>

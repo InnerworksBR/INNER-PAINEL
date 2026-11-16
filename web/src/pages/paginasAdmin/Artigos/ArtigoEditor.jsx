@@ -5,7 +5,7 @@ import api from '../../../services/api';
 import { ArticleContentEditor, ArticlePreview } from './ArticleContent';
 import { ArticleAlert, ArticleConfirmation, ArticleStatus, articleCard, primaryButton, secondaryButton } from './ArticleUi';
 import {
-  ARTICLES_PATH, ARTICLE_IMAGE_TYPES, ARTICLE_LIMITS, articleError, draftPayload, editableArticle,
+  ARTICLES_PATH, ARTICLE_IMAGE_TYPES, ARTICLE_LIMITS, articleError, draftBodyIssue, draftPayload, editableArticle,
   formatArticleDate, publicationIssues,
 } from './articleEditorial';
 
@@ -135,6 +135,7 @@ export default function ArtigoEditor({ initialArticle }) {
   const [conflict, setConflict] = useState(false);
   const [preview, setPreview] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [editorRevision, setEditorRevision] = useState(0);
   const requestIds = useRef(new Map());
   const articlePath = `${ARTICLES_PATH}/${article.id}`;
   const payload = draftPayload(draft);
@@ -186,6 +187,11 @@ export default function ArtigoEditor({ initialArticle }) {
 
   async function saveDraft() {
     if (busy || conflict || !dirty) return;
+    const bodyIssue = draftBodyIssue(payload.blocks);
+    if (bodyIssue) {
+      setError(bodyIssue);
+      return;
+    }
     const request = { ...payload, version: article.version };
     if (new Blob([JSON.stringify(request)]).size > ARTICLE_LIMITS.draftBytes) {
       setError('O rascunho excede 256 KiB de texto. Reduza o conteúdo e tente novamente.');
@@ -197,13 +203,20 @@ export default function ArtigoEditor({ initialArticle }) {
       const { data } = await api.patch(articlePath, request);
       const next = data.article;
       setArticle(next);
-      setDraft(editableArticle(next, draft.blocks));
+      setDraft(editableArticle(next));
       requestIds.current.clear();
       setMessage('Rascunho salvo.');
     } catch (cause) {
       handleError(cause, 'Não foi possível salvar o rascunho. Suas alterações continuam no editor.');
     } finally {
       setBusy('');
+    }
+  }
+
+  function handleSaveShortcut(event) {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      if (!confirmation && blocker.state !== 'blocked') saveDraft();
     }
   }
 
@@ -239,6 +252,7 @@ export default function ArtigoEditor({ initialArticle }) {
       const { data } = await api.get(articlePath);
       setArticle(data.article);
       setDraft(editableArticle(data.article));
+      setEditorRevision(current => current + 1);
       setConflict(false);
       setConfirmation(null);
       setPreview(false);
@@ -280,7 +294,7 @@ export default function ArtigoEditor({ initialArticle }) {
   const publicationAction = publicationActions[confirmation?.type];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="mx-auto max-w-6xl space-y-5" onKeyDown={handleSaveShortcut}>
       <header className="space-y-2">
         <Link to={ARTICLES_PATH} className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline">
           <ArrowLeft size={16} aria-hidden="true" /> Voltar aos artigos
@@ -291,7 +305,8 @@ export default function ArtigoEditor({ initialArticle }) {
       <div className={`${articleCard} sticky top-[65px] z-10 space-y-2 px-3 py-3 sm:px-4 md:top-0`}>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={secondaryButton} disabled={Boolean(busy) || !dirty || conflict} onClick={saveDraft}>
+            <button type="button" className={secondaryButton} disabled={Boolean(busy) || !dirty || conflict}
+              aria-keyshortcuts="Control+S Meta+S" onClick={saveDraft}>
               <Save size={16} aria-hidden="true" /> Salvar rascunho
             </button>
             <button type="button" className={secondaryButton} disabled={Boolean(busy)} onClick={() => setPreview(current => !current)}>
@@ -318,9 +333,11 @@ export default function ArtigoEditor({ initialArticle }) {
       </div>
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,21rem)]">
-        {preview ? <ArticlePreview article={article} draft={draft} /> : (
-          <ArticleContentEditor articleId={article.id} draft={draft} disabled={Boolean(busy)} updateDraft={updateDraft} onUpload={uploadImage} />
-        )}
+        <div className="min-w-0" hidden={preview}>
+          <ArticleContentEditor key={editorRevision} articleId={article.id} draft={draft}
+            disabled={Boolean(busy)} updateDraft={updateDraft} onUpload={uploadImage} />
+        </div>
+        {preview && <ArticlePreview article={article} draft={draft} />}
         <PublicationCard article={article} dirty={dirty} issues={issues} disabled={Boolean(busy) || conflict} onAction={openConfirmation} />
       </div>
 
