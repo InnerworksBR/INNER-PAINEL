@@ -1,0 +1,133 @@
+import assert from 'node:assert/strict';
+import test, { type TestContext } from 'node:test';
+import { buildApp } from '../src/app';
+import { marketingConfig, marketingLink } from '../src/services/site-marketing';
+import { clearSettingsCache, isMaintenanceModeEnabled } from '../src/services/settings-service';
+
+const prefix = '/api/admin/marketing';
+const publicPrefix = '/api/public/ebooks';
+const id = '11111111-1111-4111-8111-111111111111';
+const email = 'editor@example.test';
+const formKey = 'homologacao-formulario-para-testes-marketing-1';
+
+async function scenario(t: TestContext, enabled: boolean, maintenance = false) {
+  clearSettingsCache();
+  t.after(clearSettingsCache);
+  Object.assign(process.env, {
+    SUPABASE_URL: 'http://127.0.0.1:1',
+    SUPABASE_KEY: 'marketing-test-public-key',
+    SUPABASE_SERVICE_ROLE_KEY: 'marketing-test-service-key',
+    JWT_SECRET: 'marketing-test-jwt-secret',
+    SITE_MARKETING_ENABLED: String(enabled),
+    SITE_MARKETING_SITE_ORIGIN: 'https://example.test',
+    SITE_MARKETING_PUBLIC_API_ORIGIN: 'http://127.0.0.1:5001',
+    SITE_MARKETING_FORM_KEY: formKey,
+    SITE_MARKETING_TOKEN_SECRET: 'homologacao-links-para-testes-marketing-1',
+    SITE_MARKETING_DELIVERY_SMTP_HOST: '127.0.0.1',
+    SITE_MARKETING_DELIVERY_SMTP_PORT: '1025',
+    SITE_MARKETING_DELIVERY_SMTP_FROM: 'ebooks@example.test',
+  });
+  const app = buildApp({ logger: false });
+  t.after(() => app.close());
+  await app.ready();
+  const calls: { fn: string; params: Record<string, unknown> }[] = [];
+  let role = 'admin';
+  t.mock.method(app.supabaseAdmin, 'from', (table: string) => {
+    if (table === 'system_settings') return { select: async () => ({
+      data: [{ key: 'maintenanceMode', value: String(maintenance) }], error: null,
+    }) };
+    assert.equal(table, 'profiles');
+    return { select: () => ({ eq: () => ({ maybeSingle: async () => ({
+      data: { role, status: 'active', company_id: null }, error: null,
+    }) }) }) };
+  });
+  t.mock.method(app.supabaseAdmin, 'rpc', async (fn: string, params: Record<string, unknown>) => {
+    calls.push({ fn, params });
+    const operation = params.p_operation;
+    if (operation === 'access') return { data: { allowed: true }, error: null };
+    if (operation === 'capture') return { data: { accepted: true }, error: null };
+    if (operation === 'list') return { data: { ebooks: [], page: 1, hasMore: false }, error: null };
+    if (operation === 'pauseCampaign') return { data: null, error: { code: '40001', message: 'internal' } };
+    if (operation === 'download') return { data: null, error: { code: 'P0002', message: 'expired' } };
+    if (operation === 'contacts') return { data: { contacts: [], page: 1, hasMore: false }, error: null };
+    if (operation === 'unsubscribe') return { data: { unsubscribed: true }, error: null };
+    throw new Error('unexpected RPC');
+  });
+  return {
+    app, calls, setRole: (value: string) => { role = value; },
+    auth: { authorization: 'Bearer ' + app.jwt.sign({ user: { id, email, role: 'admin' } }) },
+  };
+}
+
+test('hides the disabled marketing area and checks the current role on each authenticated request', async t => {
+  const { app, auth, setRole, calls } = await scenario(t, false);
+  const access = await app.inject({ url: prefix + '/access', headers: auth });
+  assert.equal(access.statusCode, 200);
+  assert.deepEqual(access.json(), { allowed: false, deliveryReady: false, campaignReady: false });
+  assert.equal((await app.inject({ url: prefix + '/contacts', headers: auth })).statusCode, 403);
+  assert.equal((await app.inject(publicPrefix)).statusCode, 404);
+  setRole('client');
+  assert.equal((await app.inject({ url: prefix + '/access', headers: auth })).statusCode, 403);
+  assert.deepEqual(calls, []);
+});
+
+test('receives a real opt-in only from the site, normalizes contact data and hides the address in the response', async t => {
+  const { app, calls } = await scenario(t, true);
+  const url = publicPrefix + '/guia/requests';
+  const payload = { email: '  Pessoas@Example.Test ', name: ' Ana ', marketingConsent: true, website: '' };
+  assert.equal((await app.inject({ method: 'POST', url, payload })).statusCode, 403);
+  assert.deepEqual(calls, []);
+  const response = await app.inject({ method: 'POST', url, payload, headers: { 'x-marketing-form-key': formKey } });
+  assert.equal(response.statusCode, 202);
+  assert.deepEqual(response.json(), { accepted: true });
+  assert.equal(response.headers['cache-control'], 'private, no-store');
+  const [{ fn, params }] = calls;
+  assert.equal(fn, 'site_marketing_public');
+  assert.equal(params.p_operation, 'capture');
+  assert.deepEqual(params.p_data, {
+    slug: 'guia', email: 'pessoas@example.test', name: 'Ana', consent: true, sourceKey: (params.p_data as { sourceKey: string }).sourceKey,
+  });
+  assert.match((params.p_data as { sourceKey: string }).sourceKey, /^site:[a-f0-9]{64}$/);
+});
+
+test('rejects stale changes without returning private database errors', async t => {
+  const { app, auth } = await scenario(t, true);
+  const result = await app.inject({ method: 'POST', url: prefix + '/campaigns/' + id + '/pause', headers: auth, payload: { version: 2 } });
+  assert.equal(result.statusCode, 409);
+  assert.equal(result.json().code, 'conflict');
+  assert.doesNotMatch(result.body, /internal/);
+});
+
+test('passes a signed download through Fastify routing and rejects reuse as a confirmation', async t => {
+  const { app, calls } = await scenario(t, true);
+  const path = new URL(marketingLink(marketingConfig(), 'download', id)).pathname;
+  assert.equal((await app.inject(path)).statusCode, 404);
+  assert.equal((await app.inject({ method: 'POST', url: path.replace('/download/', '/confirm/') })).statusCode, 404);
+  assert.deepEqual(calls, [{ fn: 'site_marketing_public', params: { p_operation: 'download', p_data: { id } } }]);
+});
+
+test('keeps previously sent unsubscribe links available when the feature is paused', async t => {
+  const { app, calls } = await scenario(t, false, true);
+  assert.equal(await isMaintenanceModeEnabled(app.supabaseAdmin), true);
+  const url = new URL(marketingLink(marketingConfig(), 'unsubscribe', id)).pathname;
+  assert.equal((await app.inject(url)).statusCode, 200);
+  assert.deepEqual(calls, []);
+  const response = await app.inject({
+    method: 'POST', url,
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    payload: 'List-Unsubscribe=One-Click',
+  });
+  assert.equal(response.statusCode, 204);
+  assert.deepEqual(calls, [{ fn: 'site_marketing_public', params: { p_operation: 'unsubscribe', p_data: { id } } }]);
+});
+
+test('checks and forwards the contact request date filter', async t => {
+  const { app, auth, calls } = await scenario(t, true);
+  const url = prefix + '/contacts';
+  assert.equal((await app.inject({ url: url + '?from=2026-02-30', headers: auth })).statusCode, 422);
+  assert.equal((await app.inject({ url: url + '?from=2026-11-17&to=2026-11-16', headers: auth })).statusCode, 422);
+  assert.deepEqual(calls, []);
+  assert.equal((await app.inject({ url: url + '?from=2026-11-17&to=2026-11-17', headers: auth })).statusCode, 200);
+  const { params } = calls[0];
+  assert.deepEqual(params.p_data, { page: 1, ebookId: undefined, status: undefined, q: undefined, from: '2026-11-17', to: '2026-11-17' });
+});

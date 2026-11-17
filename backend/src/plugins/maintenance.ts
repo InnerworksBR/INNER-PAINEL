@@ -8,7 +8,9 @@ const BYPASS_PREFIXES = ['/api/auth/login', '/api/health'];
 
 export default fp(async function maintenancePlugin(fastify: FastifyInstance) {
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    if (BYPASS_PREFIXES.some((path) => request.url.startsWith(path))) {
+    const path = request.url.split('?', 1)[0];
+    const publicEbooks = path === '/api/public/ebooks' || path.startsWith('/api/public/ebooks/');
+    if (publicEbooks || BYPASS_PREFIXES.some((prefix) => path.startsWith(prefix))) {
       return;
     }
 

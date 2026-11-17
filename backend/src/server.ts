@@ -1,11 +1,25 @@
 import dotenv from 'dotenv';
 import { buildApp } from './app';
 import { startSyncScheduler } from './jobs/sync-scheduler';
+import { startSiteMarketingMail } from './jobs/site-marketing-mail';
 import { ensureBucketExists } from './services/storage-service';
 
 dotenv.config();
 
-const fastify = buildApp();
+const fastify = buildApp({
+  logger: {
+    serializers: {
+      req(request) {
+        const url = (request.url ?? '')
+          .replace(/(\/api\/public\/ebooks\/(?:download|confirm|unsubscribe)\/)[^?#]*/i, '$1[redacted]')
+          .replace(/(\/api\/admin\/marketing\/contacts)\?.*/i, '$1');
+        return { method: request.method, url, host: request.hostname, remoteAddress: request.ip, remotePort: request.socket?.remotePort };
+      },
+    },
+  },
+});
+let stopMarketingMail: (() => void) | undefined;
+fastify.addHook('onClose', async () => { stopMarketingMail?.(); });
 
 const start = async () => {
   try {
@@ -21,6 +35,7 @@ const start = async () => {
     }
 
     startSyncScheduler(fastify.supabaseAdmin);
+    stopMarketingMail = startSiteMarketingMail(fastify);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
