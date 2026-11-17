@@ -27,6 +27,10 @@ import AuditAdmin from "../pages/paginasAdmin/auditAdmin/auditAdmin";
 import InventarioAdmin from "../pages/paginasAdmin/inventarioAdmin/inventarioAdmin";
 import DocumentCreator from "../pages/paginasAdmin/DocumentCreator/documentCreator";
 import { ArtigoRoute, ArtigosAccessRoute, ArtigosList } from "../pages/paginasAdmin/Artigos/ArtigosRoutes";
+import MarketingRoute from "../pages/paginasAdmin/Marketing/MarketingRoute";
+import EbooksPanel from "../pages/paginasAdmin/Marketing/EbooksPanel";
+import ContactsPanel from "../pages/paginasAdmin/Marketing/ContactsPanel";
+import CampaignsPanel from "../pages/paginasAdmin/Marketing/CampaignsPanel";
 
 // Route Protection
 import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
@@ -95,6 +99,15 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <ArtigosList /> },
           { path: ":articleId", element: <ArtigoRoute /> },
+        ],
+      },
+      {
+        path: "marketing",
+        element: <MarketingRoute />,
+        children: [
+          { index: true, element: <EbooksPanel /> },
+          { path: "contatos", element: <ContactsPanel /> },
+          { path: "campanhas", element: <CampaignsPanel /> },
         ],
       },
       { path: "conta", element: <Conta /> },

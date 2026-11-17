@@ -3,6 +3,8 @@ import type { FastifyInstance, FastifyServerOptions } from 'fastify';
 
 import adminAuditRoutes from './routes/admin/audit-routes';
 import siteArticleRoutes from './routes/admin/site-article-routes';
+import siteMarketingRoutes from './routes/admin/site-marketing-routes';
+import siteMarketingPublicRoutes from './routes/site-marketing-public-routes';
 import adminSecurityRoutes from './routes/admin/security-routes';
 import adminDocumentCreatorRoutes from './routes/admin/document-creator-routes';
 import clientSecurityRoutes from './routes/client/security-routes';
@@ -55,6 +57,8 @@ export function buildApp(options: FastifyServerOptions = { logger: true }): Fast
 
   fastify.register(adminUserRoutes, { prefix: '/api/admin/users' });
   fastify.register(siteArticleRoutes, { prefix: '/api/admin/artigos' });
+  fastify.register(siteMarketingRoutes, { prefix: '/api/admin/marketing' });
+  fastify.register(siteMarketingPublicRoutes, { prefix: '/api/public/ebooks' });
   fastify.register(adminCompaniesRoutes, { prefix: '/api/admin/companies' });
   fastify.register(monthlyGlpiSettingsRoutes, { prefix: '/api/admin/companies' });
   fastify.register(adminDocsRoutes, { prefix: '/api/admin/docs' });
