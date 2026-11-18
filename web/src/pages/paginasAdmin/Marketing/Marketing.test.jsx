@@ -23,7 +23,7 @@ const CAMPAIGN = {
   ebookId: EBOOK.id, state: 'draft', version: 2,
 };
 
-async function openPage({ path = URL, allowed = true, campaignReady = true, ebooks = [], campaigns = [], getContacts } = {}) {
+async function openPage({ path = URL, allowed = true, campaignReady = true, ebooks = [], campaigns = [], getContacts, getEmail } = {}) {
   localStorage.setItem('token', 'signed-admin-session');
   localStorage.setItem('user', JSON.stringify(ADMIN));
   api.get.mockImplementation(async (path, options) => {
@@ -34,6 +34,7 @@ async function openPage({ path = URL, allowed = true, campaignReady = true, eboo
     if (path === URL + '/ebooks') return { data: { ebooks } };
     if (path === URL + '/contacts') return { data: getContacts(options.params) };
     if (path === URL + '/campaigns') return { data: { campaigns } };
+    if (path === URL + '/email') return { data: getEmail() };
     if (path === URL + '/campaigns/' + CAMPAIGN.id + '/audience') return { data: { eligible: 17 } };
     if (path === URL + '/ebooks/' + EBOOK.id + '/cover') return { data: new Blob(['image'], { type: 'image/webp' }) };
     throw new Error('Requisição inesperada ' + path);
@@ -42,6 +43,7 @@ async function openPage({ path = URL, allowed = true, campaignReady = true, eboo
   await act(async () => {
     render(<AuthProvider><RouterProvider router={memoryRouter} /></AuthProvider>);
   });
+  return memoryRouter;
 }
 
 afterEach(() => {
@@ -61,6 +63,24 @@ it('protege também o acesso direto a Contatos quando o módulo está desabilita
   expect(await screen.findByRole('heading', { name: 'Marketing indisponível' })).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Marketing' })).not.toBeInTheDocument();
   expect(api.get).not.toHaveBeenCalledWith(URL + '/contacts', expect.anything());
+});
+
+it('conclui a autorização da Microsoft pela tela de e-mail sem manter o código na URL', async () => {
+  let email = { configured: true, connected: false, mailbox: null };
+  api.post.mockImplementationOnce(async () => {
+    email = { configured: true, connected: true, mailbox: 'marketing@example.test' };
+    return { data: email };
+  });
+  const page = await openPage({
+    path: URL + '/email?code=authorize-once&state=state-one-time',
+    getEmail: () => email,
+  });
+  expect(await screen.findByText('marketing@example.test')).toBeInTheDocument();
+  expect(api.post).toHaveBeenCalledExactlyOnceWith(URL + '/email/microsoft/finish', {
+    code: 'authorize-once', state: 'state-one-time',
+  });
+  expect(page.state.location.search).toBe('');
+  expect(screen.getByRole('button', { name: 'Desconectar Microsoft' })).toBeEnabled();
 });
 
 it('publica somente após confirmação e usa a versão devolvida pelo upload de PDF', async () => {

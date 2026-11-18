@@ -31,6 +31,7 @@ import MarketingRoute from "../pages/paginasAdmin/Marketing/MarketingRoute";
 import EbooksPanel from "../pages/paginasAdmin/Marketing/EbooksPanel";
 import ContactsPanel from "../pages/paginasAdmin/Marketing/ContactsPanel";
 import CampaignsPanel from "../pages/paginasAdmin/Marketing/CampaignsPanel";
+import MarketingEmailPanel from "../pages/paginasAdmin/Marketing/MarketingEmailPanel";
 
 // Route Protection
 import { ProtectedRoute, AdminRoute } from "../components/ProtectedRoute";
@@ -108,6 +109,7 @@ export const router = createBrowserRouter([
           { index: true, element: <EbooksPanel /> },
           { path: "contatos", element: <ContactsPanel /> },
           { path: "campanhas", element: <CampaignsPanel /> },
+          { path: "email", element: <MarketingEmailPanel /> },
         ],
       },
       { path: "conta", element: <Conta /> },

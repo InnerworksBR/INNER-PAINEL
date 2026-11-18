@@ -1,4 +1,4 @@
-import { BookOpen, Mail, Users } from 'lucide-react';
+import { BookOpen, Mail, Settings, Users } from 'lucide-react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useMarketingAccess } from '../../../context/MarketingAccessContext';
 import { articleCard, primaryButton, secondaryButton } from '../Artigos/ArticleUi';
@@ -8,6 +8,7 @@ const tabs = [
   { to: MARKETING_PATH, name: 'E-books', Icon: BookOpen },
   { to: MARKETING_PATH + '/contatos', name: 'Contatos', Icon: Users },
   { to: MARKETING_PATH + '/campanhas', name: 'Campanhas', Icon: Mail },
+  { to: MARKETING_PATH + '/email', name: 'Configurações de e-mail', Icon: Settings },
 ];
 
 export default function MarketingRoute() {

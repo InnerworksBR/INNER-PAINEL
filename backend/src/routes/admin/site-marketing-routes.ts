@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { verifyAdmin } from '../../hooks/auth-hook';
 import { readArticleImage } from '../../services/site-article-images';
 import { readEbookPdf, sendMarketingAsset } from '../../services/site-marketing-assets';
+import { marketingMailAvailability, microsoftMarketingMail } from '../../services/site-marketing-microsoft';
 import {
   MARKETING_BUCKET, MarketingError, marketingConfig, marketingEmail, marketingError,
   marketingId, marketingObject, marketingPage, marketingRpc, marketingSchedule, marketingText, marketingVersion,
@@ -50,6 +51,7 @@ function campaignFields(body: unknown) {
 export default async function siteMarketingRoutes(fastify: FastifyInstance) {
   const config = marketingConfig();
   const db = fastify.supabaseAdmin;
+  const microsoft = microsoftMarketingMail(db, config);
 
   function admin<T>(request: FastifyRequest, operation: string, input = {}) {
     return marketingRpc<T>(db, 'admin', operation, input, request.user.user.id);
@@ -69,12 +71,16 @@ export default async function siteMarketingRoutes(fastify: FastifyInstance) {
     return { ebook: publicLink(ebook) };
   }
 
-  function requireDelivery() {
-    if (!config.deliveryReady) throw new MarketingError('Configure o envio de e-books antes de publicar.', 503);
+  async function requireDelivery() {
+    if (!(await marketingMailAvailability(config, microsoft)).deliveryReady) {
+      throw new MarketingError('Configure o envio de e-books antes de publicar.', 503);
+    }
   }
 
-  function requireCampaign() {
-    if (!config.campaignReady) throw new MarketingError('Configure o envio de campanhas no servidor.', 503);
+  async function requireCampaign() {
+    if (!(await marketingMailAvailability(config, microsoft)).campaignReady) {
+      throw new MarketingError('Configure o envio de campanhas nas configurações de e-mail.', 503);
+    }
   }
 
   fastify.addHook('onRequest', async (_request, reply) => {
@@ -86,12 +92,41 @@ export default async function siteMarketingRoutes(fastify: FastifyInstance) {
 
   fastify.get('/access', async request => {
     const allowed = config.enabled && (await admin<{ allowed: boolean }>(request, 'access')).allowed;
-    return { allowed, deliveryReady: allowed && config.deliveryReady, campaignReady: allowed && config.campaignReady };
+    const readiness = allowed ? await marketingMailAvailability(config, microsoft)
+      : { deliveryReady: false, campaignReady: false };
+    return { allowed, ...readiness };
   });
 
   await fastify.register(async routes => {
     routes.addHook('onRequest', async () => {
       if (!config.enabled) throw new MarketingError(entitlement, 403);
+    });
+
+    async function authorizeEmailSettings(request: FastifyRequest) {
+      if (!(await admin<{ allowed: boolean }>(request, 'access')).allowed) throw new MarketingError(entitlement, 403);
+    }
+
+    function requireMicrosoft() {
+      if (!microsoft) throw new MarketingError('Cadastre o aplicativo Microsoft Entra antes de conectar a conta.', 503);
+      return microsoft;
+    }
+
+    routes.get('/email', async request => {
+      await authorizeEmailSettings(request);
+      return microsoft ? microsoft.status() : { configured: false, connected: false, mailbox: null };
+    });
+    routes.post('/email/microsoft/start', { bodyLimit: 4096 }, async request => {
+      await authorizeEmailSettings(request);
+      return requireMicrosoft().start(request.user.user.id, request.body);
+    });
+    routes.post('/email/microsoft/finish', { bodyLimit: 16384 }, async request => {
+      await authorizeEmailSettings(request);
+      return requireMicrosoft().complete(request.user.user.id, request.body);
+    });
+    routes.delete('/email/microsoft', async (request, reply) => {
+      await authorizeEmailSettings(request);
+      await requireMicrosoft().disconnect();
+      return reply.code(204).send();
     });
 
     routes.get('/ebooks', async request => {
@@ -150,7 +185,7 @@ export default async function siteMarketingRoutes(fastify: FastifyInstance) {
     }
 
     routes.post<ById>('/ebooks/:id/publish', async request => {
-      requireDelivery();
+      await requireDelivery();
       return ebookAction(request, 'publishEbook', {
         id: marketingId(request.params.id), version: marketingVersion(marketingObject(request.body).version),
       });
@@ -184,7 +219,7 @@ export default async function siteMarketingRoutes(fastify: FastifyInstance) {
     }));
     routes.get<ById>('/campaigns/:id/audience', async request => admin(request, 'audience', { id: marketingId(request.params.id) }));
     routes.post<ById>('/campaigns/:id/test', async (request, reply) => {
-      requireCampaign();
+      await requireCampaign();
       const { version, email } = marketingObject(request.body);
       const result = await admin(request, 'testCampaign', {
         id: marketingId(request.params.id), version: marketingVersion(version), email: marketingEmail(email),
@@ -192,7 +227,7 @@ export default async function siteMarketingRoutes(fastify: FastifyInstance) {
       return reply.code(202).send(result);
     });
     routes.post<ById>('/campaigns/:id/activate', async request => {
-      requireCampaign();
+      await requireCampaign();
       const { version, scheduledAt, expectedAudience } = marketingObject(request.body);
       if (typeof expectedAudience !== 'number' || !Number.isInteger(expectedAudience) || expectedAudience < 1 || expectedAudience > 1000000) {
         throw new MarketingError('Confira a quantidade de destinatários antes de ativar.');
@@ -206,7 +241,7 @@ export default async function siteMarketingRoutes(fastify: FastifyInstance) {
       id: marketingId(request.params.id), version: marketingVersion(marketingObject(request.body).version),
     }));
     routes.post<ById>('/campaigns/:id/resume', async request => {
-      requireCampaign();
+      await requireCampaign();
       return admin(request, 'resumeCampaign', {
         id: marketingId(request.params.id), version: marketingVersion(marketingObject(request.body).version),
       });

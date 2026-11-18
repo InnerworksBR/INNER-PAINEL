@@ -1,9 +1,11 @@
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import nodemailer from 'nodemailer';
 import {
   marketingConfig, marketingLink, marketingRpc, type MarketingConfig, type MarketingMailConfig,
 } from '../services/site-marketing';
+import {
+  marketingTransport, microsoftMarketingMail, type MicrosoftMarketingMail,
+} from '../services/site-marketing-microsoft';
 
 type Channel = 'delivery' | 'campaign';
 
@@ -111,9 +113,13 @@ function deliveryFailure(error: unknown, attempts: number): Failure {
   return { state: 'uncertain', reason: 'smtp_uncertain' };
 }
 
-async function sendBatch(db: SupabaseClient, log: FastifyBaseLogger, config: MarketingConfig, channel: Channel, transport: ReturnType<typeof nodemailer.createTransport>, smtp: MarketingMailConfig, active: () => boolean) {
+async function sendBatch(
+  db: SupabaseClient, log: FastifyBaseLogger, config: MarketingConfig, channel: Channel,
+  transport: ReturnType<typeof marketingTransport>, smtp: MarketingMailConfig, active: () => boolean,
+  limit = instructions[channel].batch, recover?: (error: unknown) => Promise<Failure | null>,
+) {
   const { jobs } = await marketingRpc<{ jobs: MailJob[] }>(db, 'worker', 'claim', {
-    channels: [channel], limit: instructions[channel].batch, leaseSeconds: 300,
+    channels: [channel], limit, leaseSeconds: 300,
   });
   for (const job of jobs) {
     if (!active()) return;
@@ -128,46 +134,80 @@ async function sendBatch(db: SupabaseClient, log: FastifyBaseLogger, config: Mar
           ? { state: 'accepted' }
           : { state: 'failed', reason: 'smtp_recipient_rejected' };
       } catch (error) {
-        outcome = deliveryFailure(error, job.attempts);
+        outcome = (await recover?.(error)) ?? deliveryFailure(error, job.attempts);
       }
       await marketingRpc(db, 'worker', 'finish', { ...identity, ...outcome });
     } catch {
       log.warn({ jobId: job.id, channel }, 'Falha ao registrar processamento de e-mail');
     }
   }
+  return jobs.length > 0;
 }
 
-function createWorker(fastify: FastifyInstance, config: MarketingConfig, channel: Channel, smtp: MarketingMailConfig) {
-  const { from: _from, ...options } = smtp;
-  const transport = nodemailer.createTransport({
-    ...options, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
-    disableFileAccess: true, disableUrlAccess: true,
-  });
+function poll(fastify: FastifyInstance, channel: Channel | 'microsoft', intervalMs: number,
+  run: (active: () => boolean) => Promise<unknown>) {
   let busy = false;
   let running = true;
   async function tick() {
     if (busy || !running) return;
     busy = true;
     try {
-      await sendBatch(fastify.supabaseAdmin, fastify.log, config, channel, transport, smtp, () => running);
+      await run(() => running);
     } catch {
       fastify.log.warn({ channel }, 'Fila de Marketing temporariamente indisponível');
     } finally {
       busy = false;
     }
   }
-  const timer = setInterval(() => { void tick(); }, instructions[channel].intervalMs);
+  const timer = setInterval(() => { void tick(); }, intervalMs);
   timer.unref();
   void tick();
   return () => {
     running = false;
     clearInterval(timer);
-    transport.close();
   };
+}
+
+function createWorker(fastify: FastifyInstance, config: MarketingConfig, channel: Channel, smtp: MarketingMailConfig) {
+  const transport = marketingTransport(smtp);
+  const stop = poll(fastify, channel, instructions[channel].intervalMs, active =>
+    sendBatch(fastify.supabaseAdmin, fastify.log, config, channel, transport, smtp, active));
+  return () => { stop(); transport.close(); };
+}
+
+function microsoftWorker(fastify: FastifyInstance, config: MarketingConfig, microsoft: MicrosoftMarketingMail) {
+  return poll(fastify, 'microsoft', 2300, async active => {
+    const connection = await microsoft.credentials();
+    if (!connection || !active() || !await microsoft.capacity(connection)) return;
+    const transport = marketingTransport(connection.smtp);
+    const recover = async (error: unknown): Promise<Failure | null> => {
+      const failure = error as { responseCode?: number; response?: string };
+      const code = Number(failure?.responseCode);
+      const tenantLimit = code === 550 && /\b5\.7\.233\b/.test(failure?.response ?? '');
+      if (code !== 535 && code !== 432 && code !== 454 && !tenantLimit) return null;
+      const delay = tenantLimit ? 3600 : 60;
+      if (code === 535) await microsoft.invalidate(connection);
+      else await microsoft.defer(connection, delay);
+      return {
+        state: 'retry', nextAttemptAt: new Date(Date.now() + delay * 1000).toISOString(),
+        reason: code === 535 ? 'smtp_microsoft_reconnect' : 'smtp_microsoft_throttled',
+      };
+    };
+    const deliver = (channel: Channel) => sendBatch(fastify.supabaseAdmin, fastify.log, config, channel,
+      transport, connection.smtp, active, 1, recover);
+    try {
+      const delivered = config.formKey && await deliver('delivery');
+      if (!delivered && active()) await deliver('campaign');
+    } finally {
+      transport.close();
+    }
+  });
 }
 
 export function startSiteMarketingMail(fastify: FastifyInstance) {
   const config = marketingConfig();
+  const microsoft = microsoftMarketingMail(fastify.supabaseAdmin, config);
+  if (microsoft && config.linksReady) return microsoftWorker(fastify, config, microsoft);
   const stops: (() => void)[] = [];
   if (config.deliveryReady && config.delivery) stops.push(createWorker(fastify, config, 'delivery', config.delivery));
   if (config.campaignReady && config.campaign) stops.push(createWorker(fastify, config, 'campaign', config.campaign));

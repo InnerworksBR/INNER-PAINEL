@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { sendMarketingAsset } from '../services/site-marketing-assets';
+import { marketingMailAvailability, microsoftMarketingMail } from '../services/site-marketing-microsoft';
 import {
   MarketingError, equalSecret, markDigest, marketingConfig, marketingEmail, marketingError, marketingId,
   marketingObject, marketingPage, marketingRpc, marketingSlug, marketingText, marketingTokenId,
@@ -24,6 +25,7 @@ function contactPage(reply: FastifyReply, title: string, description: string, la
 export default async function siteMarketingPublicRoutes(fastify: FastifyInstance) {
   const config = marketingConfig();
   const db = fastify.supabaseAdmin;
+  const microsoft = microsoftMarketingMail(db, config);
   fastify.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'private, no-store');
     reply.header('X-Robots-Tag', 'noindex, nofollow');
@@ -52,7 +54,9 @@ export default async function siteMarketingPublicRoutes(fastify: FastifyInstance
     if (!equalSecret(config.formKey, request.headers['x-marketing-form-key'])) {
       throw new MarketingError('Formulário indisponível.', 403);
     }
-    if (!config.deliveryReady || !config.formKey) throw new MarketingError('Entrega temporariamente indisponível.', 503);
+    if (!config.formKey || !(await marketingMailAvailability(config, microsoft)).deliveryReady) {
+      throw new MarketingError('Entrega temporariamente indisponível.', 503);
+    }
     const data = marketingObject(request.body);
     if (typeof data.website === 'string' && data.website.trim()) return reply.code(202).send({ accepted: true });
     if (typeof data.marketingConsent !== 'boolean') throw new MarketingError('Confira a sua preferência de recebimento.');

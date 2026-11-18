@@ -18,7 +18,7 @@ export interface MarketingMailConfig {
   from: string;
   secure: boolean;
   requireTLS: boolean;
-  auth?: { user: string; pass: string };
+  auth?: { user: string; pass: string } | { type: 'OAuth2'; user: string; accessToken: string };
 }
 
 type MarketingChannel = 'delivery' | 'campaign';
@@ -72,11 +72,12 @@ export function marketingConfig(env = process.env) {
   const eventsSecret = secret(env.SITE_MARKETING_EVENTS_SECRET);
   const siteOrigin = origin(env.SITE_MARKETING_SITE_ORIGIN ?? 'https://innerworks.com.br');
   const apiOrigin = origin(env.SITE_MARKETING_PUBLIC_API_ORIGIN);
+  const panelOrigin = origin(env.SITE_MARKETING_PANEL_ORIGIN ?? env.FRONTEND_URL);
   const delivery = mailConfig(env, 'delivery');
   const campaign = mailConfig(env, 'campaign');
   const linksReady = enabled && Boolean(siteOrigin && apiOrigin && tokenSecret);
   return {
-    enabled, formKey, tokenSecret, eventsSecret, siteOrigin, apiOrigin,
+    enabled, formKey, tokenSecret, eventsSecret, siteOrigin, apiOrigin, panelOrigin, linksReady,
     delivery, campaign,
     deliveryReady: linksReady && Boolean(delivery && formKey),
     campaignReady: linksReady && Boolean(campaign && campaign.from.toLowerCase() !== delivery?.from.toLowerCase()),
@@ -174,7 +175,7 @@ export function marketingTokenId(config: MarketingConfig, purpose: LinkPurpose, 
 
 export async function marketingRpc<T>(
   db: SupabaseClient,
-  scope: 'admin' | 'public' | 'worker',
+  scope: 'admin' | 'public' | 'worker' | 'microsoft_mail',
   operation: string,
   input: Record<string, unknown> = {},
   actor?: string,
