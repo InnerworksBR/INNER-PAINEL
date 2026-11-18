@@ -113,7 +113,7 @@ export default async function siteMarketingRoutes(fastify: FastifyInstance) {
 
     routes.get('/email', async request => {
       await authorizeEmailSettings(request);
-      return microsoft ? microsoft.status() : { configured: false, connected: false, mailbox: null };
+      return microsoft ? microsoft.status() : { configured: false, connected: false, mailbox: null, username: null };
     });
     routes.post('/email/microsoft/start', { bodyLimit: 4096 }, async request => {
       await authorizeEmailSettings(request);

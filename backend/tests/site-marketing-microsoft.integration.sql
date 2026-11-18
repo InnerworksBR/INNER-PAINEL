@@ -24,9 +24,11 @@ BEGIN
   ASSERT public.site_marketing_microsoft_mail('connect', pending || '{"encryptedGrant":"first-grant"}') = 'true'::jsonb;
   ASSERT public.site_marketing_microsoft_mail('connect', pending || '{"encryptedGrant":"duplicate"}') = 'false'::jsonb;
 
-  ASSERT public.site_marketing_microsoft_mail('status', '{}') = '{"mailbox":"marketing@example.test","connected":true}'::jsonb;
+  ASSERT public.site_marketing_microsoft_mail('status', '{}') =
+    '{"mailbox":"marketing@example.test","username":"marketing@example.test","connected":true}'::jsonb;
   connection := public.site_marketing_microsoft_mail('credentials', '{}');
   ASSERT connection->>'encryptedGrant' = 'first-grant';
+  ASSERT connection->>'username' = 'marketing@example.test';
   ASSERT public.site_marketing_microsoft_mail('reserve', connection) = 'true'::jsonb;
   ASSERT public.site_marketing_microsoft_mail('reserve', connection) = 'false'::jsonb;
   ASSERT public.site_marketing_microsoft_mail('credentials', '{}') IS NULL;
@@ -36,6 +38,18 @@ BEGIN
   ASSERT public.site_marketing_microsoft_mail('status', '{}')->>'connected' = 'true';
   ASSERT public.site_marketing_microsoft_mail('invalidate', connection || '{"encryptedGrant":"refreshed"}') = 'true'::jsonb;
   ASSERT public.site_marketing_microsoft_mail('status', '{}')->>'connected' = 'false';
+
+  PERFORM public.site_marketing_microsoft_mail('disconnect', '{}');
+  UPDATE site_marketing.microsoft_mail SET next_send_at = '-infinity' WHERE singleton;
+  PERFORM public.site_marketing_microsoft_mail('begin', jsonb_build_object(
+    'actor', actor, 'mailbox', 'shared@example.test', 'username', 'user@example.test',
+    'stateHash', 'shared-state', 'verifier', 'shared-verifier'
+  ));
+  pending := public.site_marketing_microsoft_mail('take', jsonb_build_object('actor', actor, 'stateHash', 'shared-state'));
+  ASSERT pending->>'mailbox' = 'shared@example.test' AND pending->>'username' = 'user@example.test';
+  ASSERT public.site_marketing_microsoft_mail('connect', pending || '{"encryptedGrant":"shared-grant","username":"ignored@example.test"}') = 'true'::jsonb;
+  connection := public.site_marketing_microsoft_mail('credentials', '{}');
+  ASSERT connection->>'mailbox' = 'shared@example.test' AND connection->>'username' = 'user@example.test';
 END;
 $$;
 

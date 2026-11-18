@@ -83,6 +83,25 @@ it('conclui a autorização da Microsoft pela tela de e-mail sem manter o códig
   expect(screen.getByRole('button', { name: 'Desconectar Microsoft' })).toBeEnabled();
 });
 
+it('envia a conta de autenticação junto com a caixa compartilhada', async () => {
+  api.post.mockRejectedValue({ response: { data: { error: 'Conexão de teste' } } });
+  await openPage({
+    path: URL + '/email',
+    getEmail: () => ({ configured: true, connected: false, mailbox: null, username: null }),
+  });
+  fireEvent.change(await screen.findByLabelText('E-mail da caixa remetente'), {
+    target: { value: 'comercial@example.test' },
+  });
+  fireEvent.change(screen.getByLabelText(/Conta Microsoft para autenticação/), {
+    target: { value: 'editor@example.test' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Conectar Microsoft', exact: true }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledExactlyOnceWith(URL + '/email/microsoft/start', {
+    mailbox: 'comercial@example.test', username: 'editor@example.test',
+  }));
+  expect(await screen.findByText('Conexão de teste')).toBeInTheDocument();
+});
+
 it('publica somente após confirmação e usa a versão devolvida pelo upload de PDF', async () => {
   const coverReady = { ...EBOOK, coverReady: true, version: 2 };
   const pdfReady = { ...coverReady, pdfReady: true, pdfName: 'guia.pdf', version: 3 };

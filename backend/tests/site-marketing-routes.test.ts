@@ -3,6 +3,7 @@ import test, { type TestContext } from 'node:test';
 import nodemailer from 'nodemailer';
 import { buildApp } from '../src/app';
 import { marketingConfig, marketingLink } from '../src/services/site-marketing';
+import { microsoftMarketingMail } from '../src/services/site-marketing-microsoft';
 import { clearSettingsCache, isMaintenanceModeEnabled } from '../src/services/settings-service';
 
 const prefix = '/api/admin/marketing';
@@ -45,6 +46,8 @@ async function scenario(t: TestContext, enabled: boolean, maintenance = false, m
   let role = 'admin';
   let pending: Record<string, unknown> | null = null;
   let activeMailbox: string | null = null;
+  let activeUsername: string | null = null;
+  let activeGrant: string | null = null;
   t.mock.method(app.supabaseAdmin, 'from', (table: string) => {
     if (table === 'system_settings') return { select: async () => ({
       data: [{ key: 'maintenanceMode', value: String(maintenance) }], error: null,
@@ -60,7 +63,7 @@ async function scenario(t: TestContext, enabled: boolean, maintenance = false, m
     if (fn === 'site_marketing_microsoft_mail') {
       const fields = params.p_data as Record<string, unknown>;
       if (operation === 'status') {
-        return { data: { mailbox: activeMailbox, connected: Boolean(activeMailbox) }, error: null };
+        return { data: { mailbox: activeMailbox, username: activeUsername, connected: Boolean(activeGrant) }, error: null };
       }
       if (operation === 'begin') {
         pending = fields;
@@ -70,18 +73,27 @@ async function scenario(t: TestContext, enabled: boolean, maintenance = false, m
         if (!pending || pending.stateHash !== fields.stateHash || pending.actor !== fields.actor) {
           return { data: null, error: null };
         }
-        const { mailbox, verifier } = pending;
+        const { mailbox, username, verifier } = pending;
         pending = null;
-        return { data: { id, mailbox, verifier }, error: null };
+        return { data: { id, mailbox, username, verifier }, error: null };
       }
       if (operation === 'connect') {
         activeMailbox = fields.mailbox as string;
+        activeUsername = fields.username as string;
+        activeGrant = fields.encryptedGrant as string;
         return { data: true, error: null };
       }
       if (operation === 'disconnect') {
         activeMailbox = null;
+        activeUsername = null;
+        activeGrant = null;
         pending = null;
         return { data: true, error: null };
+      }
+      if (operation === 'credentials') {
+        return { data: activeGrant ? {
+          id, mailbox: activeMailbox, username: activeUsername, encryptedGrant: activeGrant,
+        } : null, error: null };
       }
     }
     if (operation === 'access') return { data: { allowed: true }, error: null };
@@ -105,7 +117,7 @@ test('connects an Exchange mailbox through delegated OAuth and exposes readiness
   const start = settings + '/microsoft/start';
   assert.equal((await app.inject({ method: 'POST', url: start, payload: { mailbox: email } })).statusCode, 401);
   const initial = await app.inject({ url: settings, headers: auth });
-  assert.deepEqual(initial.json(), { configured: true, connected: false, mailbox: null });
+  assert.deepEqual(initial.json(), { configured: true, connected: false, mailbox: null, username: null });
   const started = await app.inject({ method: 'POST', url: start, headers: auth, payload: { mailbox: email } });
   assert.equal(started.statusCode, 200);
   const url = new URL(started.json().authorizationUrl);
@@ -113,6 +125,7 @@ test('connects an Exchange mailbox through delegated OAuth and exposes readiness
   assert.equal(url.searchParams.get('response_type'), 'code');
   assert.equal(url.searchParams.get('redirect_uri'), 'https://portal.example.test/admin/marketing/email');
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(url.searchParams.get('prompt'), 'select_account');
   assert.match(url.searchParams.get('scope')!, /https:\/\/outlook\.office\.com\/SMTP\.Send offline_access/);
   assert.doesNotMatch(started.body, /only-the-backend-uses-this|code_verifier/);
   const exchange = t.mock.method(globalThis, 'fetch', async (input: string, init: RequestInit) => {
@@ -141,7 +154,7 @@ test('connects an Exchange mailbox through delegated OAuth and exposes readiness
   setRole('admin');
   const connected = await app.inject(complete);
   assert.equal(connected.statusCode, 200);
-  assert.deepEqual(connected.json(), { configured: true, connected: true, mailbox: email });
+  assert.deepEqual(connected.json(), { configured: true, connected: true, mailbox: email, username: email });
   assert.equal(verified.mock.callCount(), 1);
   assert.equal(exchange.mock.callCount(), 1);
   const saved = calls.find(call => call.params.p_operation === 'connect');
@@ -156,6 +169,37 @@ test('connects an Exchange mailbox through delegated OAuth and exposes readiness
   assert.deepEqual((await app.inject({ url: prefix + '/access', headers: auth })).json(), {
     allowed: true, deliveryReady: false, campaignReady: false,
   });
+});
+
+test('authenticates with the delegated user and keeps the shared mailbox as the sender', async t => {
+  const { app, auth } = await scenario(t, true, false, true);
+  const settings = prefix + '/email/microsoft';
+  const mailbox = 'comercial@example.test';
+  const started = await app.inject({
+    method: 'POST', url: settings + '/start', headers: auth, payload: { mailbox, username: email },
+  });
+  assert.equal(started.statusCode, 200);
+  const url = new URL(started.json().authorizationUrl);
+  assert.equal(url.searchParams.get('login_hint'), email);
+  t.mock.method(globalThis, 'fetch', async () => Response.json({
+    access_token: 'shared-access-token', refresh_token: 'shared-refresh-token', expires_in: 3600,
+  }));
+  t.mock.method(nodemailer, 'createTransport', (options: unknown) => {
+    assert.deepEqual((options as { auth: unknown }).auth, {
+      type: 'OAuth2', user: email, accessToken: 'shared-access-token',
+    });
+    return { verify: async () => true, close() {} };
+  });
+  const complete = await app.inject({
+    method: 'POST', url: settings + '/finish', headers: auth,
+    payload: { code: 'shared-code', state: url.searchParams.get('state'), username: 'ignored@example.test' },
+  });
+  assert.equal(complete.statusCode, 200);
+  assert.deepEqual(complete.json(), { configured: true, connected: true, mailbox, username: email });
+  const connection = await microsoftMarketingMail(app.supabaseAdmin, marketingConfig())!.credentials();
+  assert.ok(connection);
+  assert.equal(connection.smtp.from, mailbox);
+  assert.equal(connection.smtp.auth!.user, email);
 });
 
 test('hides the disabled marketing area and checks the current role on each authenticated request', async t => {

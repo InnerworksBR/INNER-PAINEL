@@ -18,6 +18,7 @@ export default function MarketingEmailPanel() {
   const action = useMarketingAction();
   const callback = useRef(null);
   const [address, setAddress] = useState(null);
+  const [loginAddress, setLoginAddress] = useState(null);
   const { run } = action;
 
   useEffect(() => {
@@ -35,11 +36,12 @@ export default function MarketingEmailPanel() {
   }, [search, navigate, run, checkAgain]);
 
   const mailbox = address ?? settings.data?.mailbox ?? '';
+  const username = loginAddress ?? settings.data?.username ?? '';
 
   function connect(event) {
     event.preventDefault();
     void run(async () => {
-      const { data } = await api.post(microsoftPath + '/start', { mailbox });
+      const { data } = await api.post(microsoftPath + '/start', { mailbox, username: username.trim() || mailbox });
       window.location.assign(data.authorizationUrl);
     }, connectionError);
   }
@@ -60,6 +62,9 @@ export default function MarketingEmailPanel() {
           <div className="space-y-3">
             <p className="text-sm text-slate-700">Caixa Microsoft conectada</p>
             <p className="break-all font-semibold text-slate-900">{settings.data.mailbox}</p>
+            {settings.data.username && settings.data.username !== settings.data.mailbox && (
+              <p className="break-all text-sm text-slate-600">Conta Microsoft usada na autenticação {settings.data.username}</p>
+            )}
             <p className="text-sm text-slate-600">Esta caixa é usada na entrega dos e-books e nas campanhas.</p>
             <button type="button" className={secondaryButton} disabled={action.pending} onClick={disconnect}>
               Desconectar Microsoft
@@ -76,6 +81,12 @@ export default function MarketingEmailPanel() {
                 onChange={event => setAddress(event.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
             </MarketingField>
+            <MarketingField label="Conta Microsoft para autenticação" optional>
+              <input type="email" autoComplete="username" maxLength={254} value={username}
+                onChange={event => setLoginAddress(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+            </MarketingField>
+            <p className="text-sm text-slate-600">Para uma caixa compartilhada, informe sua conta com permissão para enviar por ela.</p>
             <button type="submit" className={primaryButton} disabled={action.pending}>
               {settings.data.mailbox ? 'Reconectar Microsoft' : 'Conectar Microsoft'}
             </button>

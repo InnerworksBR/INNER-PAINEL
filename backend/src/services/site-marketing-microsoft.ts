@@ -8,20 +8,20 @@ import {
 const scope = 'https://outlook.office.com/SMTP.Send offline_access';
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
-type EmailStatus = { connected: boolean; mailbox: string | null };
+type EmailStatus = { connected: boolean; mailbox: string | null; username: string | null };
 type Grant = { accessToken: string; refreshToken: string; expiresAt: number };
-type Connection = { id: string; mailbox: string; encryptedGrant: string };
+type Connection = { id: string; mailbox: string; username?: string; encryptedGrant: string };
 type SmtpConnection = Connection & { smtp: MarketingMailConfig };
-type Pending = { id: string; mailbox: string; verifier: string };
+type Pending = { id: string; mailbox: string; username?: string; verifier: string };
 
 function digest(value: string) {
   return createHash('sha256').update(value).digest('base64url');
 }
 
-function exchangeSmtp(mailbox: string, token: string): MarketingMailConfig {
+function exchangeSmtp(mailbox: string, token: string, username = mailbox): MarketingMailConfig {
   return {
     host: 'smtp.office365.com', port: 587, from: mailbox, secure: false, requireTLS: true,
-    auth: { type: 'OAuth2', user: mailbox, accessToken: token },
+    auth: { type: 'OAuth2', user: username, accessToken: token },
   };
 }
 
@@ -101,14 +101,17 @@ export class MicrosoftMarketingMail {
   }
 
   async start(actor: string, input: unknown) {
-    const mailbox = marketingEmail(marketingObject(input).mailbox);
+    const fields = marketingObject(input);
+    const mailbox = marketingEmail(fields.mailbox);
+    const username = fields.username === undefined ? mailbox : marketingEmail(fields.username);
     const state = randomBytes(32).toString('base64url');
     const verifier = randomBytes(48).toString('base64url');
-    await this.rpc('begin', { actor, mailbox, stateHash: digest(state), verifier });
+    await this.rpc('begin', { actor, mailbox, username, stateHash: digest(state), verifier });
     const url = new URL(this.oauthUrl + '/authorize');
     url.search = new URLSearchParams({
       client_id: this.clientId, redirect_uri: this.redirectUri, response_type: 'code', response_mode: 'query',
-      scope, state, code_challenge: digest(verifier), code_challenge_method: 'S256', login_hint: mailbox,
+      scope, state, code_challenge: digest(verifier), code_challenge_method: 'S256',
+      login_hint: username, prompt: 'select_account',
     }).toString();
     return { authorizationUrl: url.toString() };
   }
@@ -123,7 +126,8 @@ export class MicrosoftMarketingMail {
     const grant = await this.exchange({
       grant_type: 'authorization_code', redirect_uri: this.redirectUri, code, code_verifier: pending.verifier,
     });
-    const transport = marketingTransport(exchangeSmtp(pending.mailbox, grant.accessToken));
+    const username = pending.username ?? pending.mailbox;
+    const transport = marketingTransport(exchangeSmtp(pending.mailbox, grant.accessToken, username));
     try {
       await transport.verify();
     } catch {
@@ -132,7 +136,7 @@ export class MicrosoftMarketingMail {
       transport.close();
     }
     const connected = await this.rpc<boolean>('connect', {
-      id: pending.id, mailbox: pending.mailbox, encryptedGrant: this.seal(grant, pending.mailbox),
+      id: pending.id, mailbox: pending.mailbox, username, encryptedGrant: this.seal(grant, pending.mailbox),
     });
     if (!connected) throw new MarketingError(restart);
     return this.status();
@@ -168,7 +172,7 @@ export class MicrosoftMarketingMail {
       const updated = await this.rpc<boolean>('renew', { ...connection, previous });
       if (!updated) return null;
     }
-    return { ...connection, smtp: exchangeSmtp(connection.mailbox, grant.accessToken) };
+    return { ...connection, smtp: exchangeSmtp(connection.mailbox, grant.accessToken, connection.username) };
   }
 
   capacity(connection: Connection) {
