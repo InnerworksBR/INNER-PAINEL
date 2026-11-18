@@ -1,9 +1,13 @@
-import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X, UserRound, Shield, ChevronRight, Monitor, Sparkles } from "lucide-react";
+import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, FileSearch, Boxes, X, UserRound, Shield, ChevronRight, Monitor, Sparkles, Newspaper, Megaphone } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useArtigosAccess } from "../context/ArtigosAccessContext";
+import { useMarketingAccess } from "../context/MarketingAccessContext";
 
 const SidebarAdmin = ({ isOpen, onClose }) => {
     const { user, logout } = useAuth();
+    const { access } = useArtigosAccess();
+    const { access: marketingAccess } = useMarketingAccess();
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -17,6 +21,8 @@ const SidebarAdmin = ({ isOpen, onClose }) => {
         { to: "/admin/empresasAdmin", icon: Building2, label: 'Empresas' },
         { to: "/admin/docAdmin", icon: FileText, label: 'Documentação' },
         { to: "/admin/document-creator", icon: Sparkles, label: 'Docs IA' },
+        ...(access === 'allowed' ? [{ to: "/admin/artigos", icon: Newspaper, label: 'Artigos do site' }] : []),
+        ...(marketingAccess === 'allowed' ? [{ to: "/admin/marketing", icon: Megaphone, label: 'Marketing' }] : []),
         { to: "/admin/usuariosAdmin", icon: Users, label: 'Usuários' },
         { to: "/admin/auditAdmin", icon: FileSearch, label: 'Auditoria' },
         { to: "/admin/inventarioAdmin", icon: Boxes, label: 'Inventário' },
@@ -112,7 +118,7 @@ const SidebarAdmin = ({ isOpen, onClose }) => {
                 {/* Navigation */}
                 <nav className="flex-1 px-3 py-4 overflow-y-auto">
                     <div className="space-y-1">
-                        {menuItems.map((item, index) => (
+                        {menuItems.map(item => (
                             <NavLink
                                 key={item.to}
                                 to={item.to}

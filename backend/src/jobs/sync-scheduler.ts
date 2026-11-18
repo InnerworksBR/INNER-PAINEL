@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { syncTickets } from '../services/glpi-service';
 import { syncMS365Metrics } from '../services/ms-graph-service';
 import { isDetailedLoggingEnabled } from '../services/settings-service';
+import { runMonthlyGlpiReports } from './monthly-glpi-reports';
 
 const SCHEDULED_SYNC_TYPES = ['glpi', 'ms365'] as const;
 export const NETWORK_RAW_RETENTION_CRON = '0 0 * * * *';
@@ -73,6 +74,10 @@ export function startSyncScheduler(supabaseAdmin: SupabaseClient): void {
   cron.schedule('0 */6 * * *', async () => {
     await syncAllCompanies(supabaseAdmin, 'ms365');
   });
+
+  const runReports = () => runMonthlyGlpiReports(supabaseAdmin).catch(err => console.error('[RELATORIO GLPI] Erro no agendador:', err.message));
+  cron.schedule('0 * * * *', runReports, { timezone: 'America/Sao_Paulo' });
+  void runReports();
 
   cron.schedule(NETWORK_RAW_RETENTION_CRON, async () => {
     await purgeRetainedAgentData(supabaseAdmin);
